@@ -15,6 +15,31 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ */
+ /*
+ * Copyright © 2010 Intel Corporation
+ * Copyright © 2011 Benjamin Franzke
+ * Copyright © 2012-2013 Collabora, Ltd.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice (including the next
+ * paragraph) shall be included in all copies or substantial portions of the
+ * Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
  */
 #include <stdlib.h>
 #include <stdio.h>
@@ -24,6 +49,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <termios.h>
+#include <sys/mman.h>
 #include <sys/time.h>
 
 #include <EGL/egl.h>
@@ -32,21 +58,29 @@
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 
+#include <xkbcommon/xkbcommon.h>
+
 #include "wayland-client.h"
 #include "wayland-egl.h"
 #include "simpleshell-client-protocol.h"
 
+#define UNUSED(x) ((void)x)
+
+#if !defined (XKB_KEYMAP_COMPILE_NO_FLAGS)
+#define XKB_KEYMAP_COMPILE_NO_FLAGS XKB_MAP_COMPILE_NO_FLAGS
+#endif
+
 static void registryHandleGlobal(void *data, 
                                  struct wl_registry *registry, uint32_t id,
-		                           const char *interface, uint32_t version);
+                                 const char *interface, uint32_t version);
 static void registryHandleGlobalRemove(void *data, 
                                        struct wl_registry *registry,
-			                              uint32_t name);
+                                       uint32_t name);
 
 static const struct wl_registry_listener registryListener = 
 {
-	registryHandleGlobal,
-	registryHandleGlobalRemove
+   registryHandleGlobal,
+   registryHandleGlobalRemove
 };
 
 static void shellSurfaceId(void *data,
@@ -111,8 +145,15 @@ typedef struct _AppCtx
    struct wl_pointer *pointer;
    struct wl_touch *touch;
    struct wl_surface *surface;
+   struct wl_output *output;
    struct wl_egl_window *native;
    struct wl_callback *frameCallback;
+
+   struct xkb_context *xkbCtx;
+   struct xkb_keymap *xkbKeymap;
+   struct xkb_state *xkbState;
+   xkb_mod_index_t modAlt;
+   xkb_mod_index_t modCtrl;
 
    EGLDisplay eglDisplay;
    EGLConfig eglConfig;
@@ -124,7 +165,8 @@ typedef struct _AppCtx
    bool getShell;
    InputState inputState;
    Attribute attribute;
-   
+
+   bool haveMode;
    int planeX;
    int planeY;
    int planeWidth;
@@ -145,18 +187,22 @@ typedef struct _AppCtx
    int surfaceDWidth;
    int surfaceDHeight;
 
-	struct 
-	{
-		GLuint rotation_uniform;
-		GLuint pos;
-		GLuint col;
-	} gl;
-	long long startTime;
-	long long currTime;
-	bool needRedraw;
+   struct
+   {
+      GLuint rotation_uniform;
+      GLuint pos;
+      GLuint col;
+   } gl;
+   long long startTime;
+   long long currTime;
+   bool noAnimation;
+   bool needRedraw;
+   bool verboseLog;
+   int pointerX, pointerY;
 } AppCtx;
 
 
+static void processInput( AppCtx *ctx, uint32_t sym );
 static void drawFrame( AppCtx *ctx );
 static bool setupEGL( AppCtx *ctx );
 static void termEGL( AppCtx *ctx );
@@ -164,7 +210,7 @@ static bool createSurface( AppCtx *ctx );
 static void resizeSurface( AppCtx *ctx, int dx, int dy, int width, int height );
 static void destroySurface( AppCtx *ctx );
 static bool setupGL( AppCtx *ctx );
-static bool renderGL( AppCtx *ctx );
+static void renderGL( AppCtx *ctx );
 
 int g_running= 0;
 int g_log= 0;
@@ -172,7 +218,7 @@ int g_log= 0;
 static void signalHandler(int signum)
 {
    printf("signalHandler: signum %d\n", signum);
-	g_running = 0;
+   g_running = 0;
 }
 
 static long long currentTimeMillis()
@@ -188,18 +234,304 @@ static long long currentTimeMillis()
 
 static void shmFormat(void *data, struct wl_shm *wl_shm, uint32_t format)
 {
-   AppCtx *ctx = (AppCtx*)data;
-
    printf("shm format: %X\n", format);
 }
 
 struct wl_shm_listener shmListener = {
-	shmFormat
+   shmFormat
+};
+
+static void keyboardKeymap( void *data, struct wl_keyboard *keyboard, uint32_t format, int32_t fd, uint32_t size )
+{
+   AppCtx *ctx= (AppCtx*)data;
+
+   if ( format == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1 )
+   {
+      void *map= mmap( 0, size, PROT_READ, MAP_SHARED, fd, 0 );
+      if ( map != MAP_FAILED )
+      {
+         if ( !ctx->xkbCtx )
+         {
+            ctx->xkbCtx= xkb_context_new( XKB_CONTEXT_NO_FLAGS );
+         }
+         else
+         {
+            printf("error: xkb_context_new failed\n");
+         }
+         if ( ctx->xkbCtx )
+         {
+            if ( ctx->xkbKeymap )
+            {
+               xkb_keymap_unref( ctx->xkbKeymap );
+               ctx->xkbKeymap= 0;
+            }
+            ctx->xkbKeymap= xkb_keymap_new_from_string( ctx->xkbCtx, (char*)map, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
+            if ( !ctx->xkbKeymap )
+            {
+               printf("error: xkb_keymap_new_from_string failed\n");
+            }
+            if ( ctx->xkbState )
+            {
+               xkb_state_unref( ctx->xkbState );
+               ctx->xkbState= 0;
+            }
+            ctx->xkbState= xkb_state_new( ctx->xkbKeymap );
+            if ( !ctx->xkbState )
+            {
+               printf("error: xkb_state_new failed\n");
+            }
+            if ( ctx->xkbKeymap )
+            {
+               ctx->modAlt= xkb_keymap_mod_get_index( ctx->xkbKeymap, XKB_MOD_NAME_ALT );
+               ctx->modCtrl= xkb_keymap_mod_get_index( ctx->xkbKeymap, XKB_MOD_NAME_CTRL );
+            }
+         }
+         munmap( map, size );
+      }
+   }
+
+   close( fd );
+}
+
+static void keyboardEnter( void *data, struct wl_keyboard *keyboard, uint32_t serial,
+                           struct wl_surface *surface, struct wl_array *keys )
+{
+   UNUSED(data);
+   UNUSED(keyboard);
+   UNUSED(serial);
+   UNUSED(keys);
+
+   printf("keyboard enter surface %p\n", surface );
+}
+
+static void keyboardLeave( void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *surface )
+{
+   UNUSED(data);
+   UNUSED(keyboard);
+   UNUSED(serial);
+
+   printf("keyboard leave surface %p\n", surface );
+}
+
+static void keyboardKey( void *data, struct wl_keyboard *keyboard, uint32_t serial,
+                         uint32_t time, uint32_t key, uint32_t state )
+{
+   AppCtx *ctx= (AppCtx*)data;
+   UNUSED(keyboard);
+   UNUSED(serial);
+   xkb_keycode_t keyCode;
+   uint32_t sym;
+
+   if ( ctx->xkbState )
+   {
+      // As per wayland protocol for XKB_V1 map, we must add 8 to the key code
+      keyCode= key+8;
+
+      sym= xkb_state_key_get_one_sym( ctx->xkbState, keyCode );
+
+      if ( ctx->verboseLog )
+      {
+         int ctrl= 0;
+         int alt= 0;
+
+         if ( xkb_state_mod_index_is_active( ctx->xkbState, ctx->modCtrl, XKB_STATE_MODS_DEPRESSED) == 1 )
+         {
+            ctrl= 1;
+         }
+
+         if ( xkb_state_mod_index_is_active( ctx->xkbState, ctx->modAlt, XKB_STATE_MODS_DEPRESSED) == 1 )
+         {
+            alt= 1;
+         }
+
+         printf("keyboardKey: sym %X state %s ctrl %d alt %d time %u\n",
+                sym, (state == WL_KEYBOARD_KEY_STATE_PRESSED ? "Down" : "Up"), ctrl, alt, time);
+      }
+
+      if ( state == WL_KEYBOARD_KEY_STATE_PRESSED )
+      {
+         processInput( ctx, sym );
+      }
+   }
+}
+
+static void keyboardModifiers( void *data, struct wl_keyboard *keyboard, uint32_t serial,
+                               uint32_t mods_depressed, uint32_t mods_latched,
+                               uint32_t mods_locked, uint32_t group )
+{
+   AppCtx *ctx= (AppCtx*)data;
+   if ( ctx->xkbState )
+   {
+      xkb_state_update_mask( ctx->xkbState, mods_depressed, mods_latched, mods_locked, 0, 0, group );
+   }
+}
+
+static void keyboardRepeatInfo( void *data, struct wl_keyboard *keyboard, int32_t rate, int32_t delay )
+{
+   UNUSED(data);
+   UNUSED(keyboard);
+   UNUSED(rate);
+   UNUSED(delay);
+}
+
+static const struct wl_keyboard_listener keyboardListener= {
+   keyboardKeymap,
+   keyboardEnter,
+   keyboardLeave,
+   keyboardKey,
+   keyboardModifiers,
+   keyboardRepeatInfo
+};
+
+static void pointerEnter( void* data, struct wl_pointer *pointer, uint32_t serial,
+                          struct wl_surface *surface, wl_fixed_t sx, wl_fixed_t sy )
+{
+   UNUSED(pointer);
+   UNUSED(serial);
+   AppCtx *ctx= (AppCtx*)data;
+   int x, y;
+
+   x= wl_fixed_to_int( sx );
+   y= wl_fixed_to_int( sy );
+
+   ctx->pointerX= x;
+   ctx->pointerY= y;
+
+   printf("pointer enter surface %p (%d,%d)\n", surface, x, y );
+}
+
+static void pointerLeave( void* data, struct wl_pointer *pointer, uint32_t serial, struct wl_surface *surface )
+{
+   UNUSED(data);
+   UNUSED(pointer);
+   UNUSED(serial);
+
+   printf("pointer leave surface %p\n", surface );
+}
+
+static void pointerMotion( void *data, struct wl_pointer *pointer, uint32_t time, wl_fixed_t sx, wl_fixed_t sy )
+{
+   UNUSED(pointer);
+   AppCtx *ctx= (AppCtx*)data;
+   int x, y;
+
+   x= wl_fixed_to_int( sx );
+   y= wl_fixed_to_int( sy );
+
+   ctx->pointerX= x;
+   ctx->pointerY= y;
+
+   if ( ctx->verboseLog )
+   {
+      printf("pointer motion surface (%d,%d) time %u\n", x, y, time );
+   }
+}
+
+static void pointerButton( void *data, struct wl_pointer *pointer, uint32_t serial,
+                           uint32_t time, uint32_t button, uint32_t state )
+{
+   UNUSED(pointer);
+   UNUSED(serial);
+   AppCtx *ctx= (AppCtx*)data;
+
+   if ( ctx->verboseLog )
+   {
+      printf("pointer button %u state %u (%d, %d)\n", button, state, ctx->pointerX, ctx->pointerY);
+   }
+
+}
+
+static void pointerAxis( void *data, struct wl_pointer *pointer, uint32_t time,
+                         uint32_t axis, wl_fixed_t value )
+{
+   UNUSED(data);
+   UNUSED(pointer);
+   UNUSED(time);
+   int v;
+
+   v= wl_fixed_to_int( value );
+   printf("pointer axis %u value %d\n", axis, v);
+}
+
+static const struct wl_pointer_listener pointerListener = {
+   pointerEnter,
+   pointerLeave,
+   pointerMotion,
+   pointerButton,
+   pointerAxis
+};
+
+static void touchHandleDown( void *data, struct wl_touch *touch,
+                             uint32_t serial, uint32_t time, struct wl_surface *surface,
+                             int32_t id, wl_fixed_t sx, wl_fixed_t sy )
+{
+   UNUSED(touch);
+   UNUSED(serial);
+   UNUSED(surface);
+   AppCtx *ctx= (AppCtx*)data;
+
+   int x, y;
+
+   x= wl_fixed_to_int( sx );
+   y= wl_fixed_to_int( sy );
+
+   if ( ctx->verboseLog )
+   {
+      printf("touch down id %x (%d,%d) time %u\n", id, x, y, time);
+   }
+}
+
+static void touchHandleUp( void *data, struct wl_touch *touch,
+                           uint32_t serial, uint32_t time, int32_t id )
+{
+   UNUSED(touch);
+   UNUSED(serial);
+   AppCtx *ctx= (AppCtx*)data;
+
+   if ( ctx->verboseLog )
+   {
+      printf("touch up id %x time %u\n", id, time);
+   }
+}
+
+static void touchHandleMotion( void *data, struct wl_touch *touch,
+                               uint32_t time, int32_t id, wl_fixed_t sx, wl_fixed_t sy )
+{
+   UNUSED(touch);
+   AppCtx *ctx= (AppCtx*)data;
+
+   int x, y;
+
+   x= wl_fixed_to_int( sx );
+   y= wl_fixed_to_int( sy );
+
+   if ( ctx->verboseLog )
+   {
+      printf("touch motion id %x (%d,%d) time %u\n", id, x, y, time);
+   }
+}
+
+static void touchHandleFrame( void *data, struct wl_touch *touch )
+{
+   UNUSED(touch);
+   AppCtx *ctx= (AppCtx*)data;
+
+   if ( ctx->verboseLog )
+   {
+      printf("touch frame\n");
+   }
+}
+
+static const struct wl_touch_listener touchListener= {
+   touchHandleDown,
+   touchHandleUp,
+   touchHandleMotion,
+   touchHandleFrame
 };
 
 static void seatCapabilities( void *data, struct wl_seat *seat, uint32_t capabilities )
 {
-	AppCtx *ctx = (AppCtx*)data;
+   AppCtx *ctx = (AppCtx*)data;
 
    printf("seat %p caps: %X\n", seat, capabilities );
    
@@ -208,24 +540,26 @@ static void seatCapabilities( void *data, struct wl_seat *seat, uint32_t capabil
       printf("  seat has keyboard\n");
       ctx->keyboard= wl_seat_get_keyboard( ctx->seat );
       printf("  keyboard %p\n", ctx->keyboard );
+      wl_keyboard_add_listener( ctx->keyboard, &keyboardListener, ctx );
    }
    if ( capabilities & WL_SEAT_CAPABILITY_POINTER )
    {
       printf("  seat has pointer\n");
       ctx->pointer= wl_seat_get_pointer( ctx->seat );
       printf("  pointer %p\n", ctx->pointer );
+      wl_pointer_add_listener( ctx->pointer, &pointerListener, ctx );
    }
    if ( capabilities & WL_SEAT_CAPABILITY_TOUCH )
    {
       printf("  seat has touch\n");
       ctx->touch= wl_seat_get_touch( ctx->seat );
       printf("  touch %p\n", ctx->touch );
+      wl_touch_add_listener( ctx->touch, &touchListener, ctx );
    }   
 }
 
 static void seatName( void *data, struct wl_seat *seat, const char *name )
 {
-	AppCtx *ctx = (AppCtx*)data;
    printf("seat %p name: %s\n", seat, name);
 }
 
@@ -234,12 +568,69 @@ static const struct wl_seat_listener seatListener = {
    seatName 
 };
 
+static void outputGeometry( void *data, struct wl_output *output, int32_t x, int32_t y,
+                            int32_t physical_width, int32_t physical_height, int32_t subpixel,
+                            const char *make, const char *model, int32_t transform )
+{
+   UNUSED(data);
+   UNUSED(output);
+   UNUSED(x);
+   UNUSED(y);
+   UNUSED(physical_width);
+   UNUSED(physical_height);
+   UNUSED(subpixel);
+   UNUSED(make);
+   UNUSED(model);
+   UNUSED(transform);
+}
+
+static void outputMode( void *data, struct wl_output *output, uint32_t flags,
+                        int32_t width, int32_t height, int32_t refresh )
+{
+   AppCtx *ctx = (AppCtx*)data;
+
+   if ( flags & WL_OUTPUT_MODE_CURRENT )
+   {
+      ctx->haveMode= true;
+      if ( (width !=  ctx->planeWidth) || (height != ctx->planeHeight) )
+      {
+         ctx->planeWidth= width;
+         ctx->planeHeight= height;
+         if ( ctx->verboseLog )
+         {
+            printf("outputMode: resize egl window to (%d,%d)\n", ctx->planeWidth, ctx->planeHeight );
+         }
+         resizeSurface( ctx, 0, 0, ctx->planeWidth, ctx->planeHeight);
+      }
+   }
+}
+
+static void outputDone( void *data, struct wl_output *output )
+{
+   UNUSED(data);
+   UNUSED(output);
+}
+
+static void outputScale( void *data, struct wl_output *output, int32_t factor )
+{
+   UNUSED(data);
+   UNUSED(output);
+   UNUSED(factor);
+}
+
+static const struct wl_output_listener outputListener = {
+   outputGeometry,
+   outputMode,
+   outputDone,
+   outputScale
+};
+
 static void registryHandleGlobal(void *data, 
                                  struct wl_registry *registry, uint32_t id,
-		                           const char *interface, uint32_t version)
+                                 const char *interface, uint32_t version)
 {
-	AppCtx *ctx = (AppCtx*)data;
-	int len;
+   AppCtx *ctx = (AppCtx*)data;
+   int len;
 
    printf("westeros-test: registry: id %d interface (%s) version %d\n", id, interface, version );
 
@@ -247,7 +638,7 @@ static void registryHandleGlobal(void *data,
    if ( (len==6) && !strncmp(interface, "wl_shm", len)) {
       ctx->shm= (struct wl_shm*)wl_registry_bind(registry, id, &wl_shm_interface, 1);
       printf("shm %p\n", ctx->shm);
-		wl_shm_add_listener(ctx->shm, &shmListener, ctx);
+      wl_shm_add_listener(ctx->shm, &shmListener, ctx);
    }
    else if ( (len==13) && !strncmp(interface, "wl_compositor", len) ) {
       ctx->compositor= (struct wl_compositor*)wl_registry_bind(registry, id, &wl_compositor_interface, 1);
@@ -256,8 +647,14 @@ static void registryHandleGlobal(void *data,
    else if ( (len==7) && !strncmp(interface, "wl_seat", len) ) {
       ctx->seat= (struct wl_seat*)wl_registry_bind(registry, id, &wl_seat_interface, 4);
       printf("seat %p\n", ctx->seat);
-		wl_seat_add_listener(ctx->seat, &seatListener, ctx);
-   } 
+      wl_seat_add_listener(ctx->seat, &seatListener, ctx);
+   }
+   else if ( (len==9) && !strncmp(interface, "wl_output", len) ) {
+      ctx->output= (struct wl_output*)wl_registry_bind(registry, id, &wl_output_interface, 2);
+      printf("output %p\n", ctx->output);
+      wl_output_add_listener(ctx->output, &outputListener, ctx);
+      wl_display_roundtrip(ctx->display);
+   }
    else if ( (len==15) && !strncmp(interface, "wl_simple_shell", len) ) {
       if ( ctx->getShell ) {
          ctx->shell= (struct wl_simple_shell*)wl_registry_bind(registry, id, &wl_simple_shell_interface, 1);      
@@ -269,7 +666,7 @@ static void registryHandleGlobal(void *data,
 
 static void registryHandleGlobalRemove(void *data, 
                                        struct wl_registry *registry,
-			                              uint32_t name)
+                                       uint32_t name)
 {
 }
 
@@ -278,14 +675,12 @@ static void shellSurfaceId(void *data,
                            struct wl_surface *surface,
                            uint32_t surfaceId)
 {
-	AppCtx *ctx = (AppCtx*)data;
+   AppCtx *ctx = (AppCtx*)data;
    char name[32];
   
-	sprintf( name, "westeros-test-surface-%x", surfaceId );
+   sprintf( name, "westeros-test-surface-%x", surfaceId );
    printf("shell: surface created: %p id %x\n", surface, surfaceId);
-	wl_simple_shell_set_name( ctx->shell, surfaceId, name );
-   wl_simple_shell_set_geometry( ctx->shell, surfaceId, ctx->surfaceX, ctx->surfaceY, ctx->surfaceWidth, ctx->surfaceHeight );
-
+   wl_simple_shell_set_name( ctx->shell, surfaceId, name );
 }
                            
 static void shellSurfaceCreated(void *data,
@@ -293,7 +688,7 @@ static void shellSurfaceCreated(void *data,
                                 uint32_t surfaceId,
                                 const char *name)
 {
-	AppCtx *ctx = (AppCtx*)data;
+   AppCtx *ctx = (AppCtx*)data;
 
    printf("shell: surface created: %x name: %s\n", surfaceId, name);
    ctx->surfaceIdOther= ctx->surfaceIdCurrent;
@@ -307,8 +702,8 @@ static void shellSurfaceDestroyed(void *data,
                                   uint32_t surfaceId,
                                   const char *name)
 {
-	AppCtx *ctx = (AppCtx*)data;
-	
+   AppCtx *ctx = (AppCtx*)data;
+
    printf("shell: surface destroyed: %x name: %s\n", surfaceId, name);
    
    if ( ctx->surfaceIdCurrent == surfaceId )
@@ -336,7 +731,7 @@ static void shellSurfaceStatus(void *data,
                                wl_fixed_t opacity,
                                wl_fixed_t zorder)
 {
-	AppCtx *ctx = (AppCtx*)data;
+   AppCtx *ctx = (AppCtx*)data;
 
    printf("shell: surface: %x name: %s\n", surfaceId, name);
    printf("shell: position (%d,%d,%d,%d) visible %d opacity %f zorder %f\n",
@@ -354,8 +749,7 @@ static void shellSurfaceStatus(void *data,
 static void shellGetSurfacesDone(void *data,
                                  struct wl_simple_shell *wl_simple_shell)
 {
-	AppCtx *ctx = (AppCtx*)data;
-	printf("shell: get all surfaces done\n");
+   printf("shell: get all surfaces done\n");
 }                                        
 
 #define NON_BLOCKING_ENABLED (0)
@@ -383,73 +777,80 @@ static void setBlockingMode(int blockingState )
    tcsetattr(STDIN_FILENO, TCSANOW, &ttystate);   
 }
 
-static int kbhit()  
-{  
-   struct timeval tv;  
-   fd_set fds;  
-   tv.tv_sec = 0;  
-   tv.tv_usec = 0;  
-   FD_ZERO(&fds);  
-   FD_SET(STDIN_FILENO, &fds); //STDIN_FILENO is 0  
-   select(STDIN_FILENO+1, &fds, NULL, NULL, &tv);  
-   return FD_ISSET(STDIN_FILENO, &fds);  
+static bool isKeyHit()
+{
+   bool keyHit= false;
+   fd_set fdset;
+   struct timeval tval;
+
+   // do a non-blocking check to see if any keys
+   // are ready to read from stdin
+   tval.tv_sec= 0;
+   tval.tv_usec= 0;
+   FD_ZERO(&fdset);
+   FD_SET(STDIN_FILENO, &fdset);
+   select(STDIN_FILENO+1, &fdset, NULL, NULL, &tval);
+
+   keyHit= FD_ISSET(STDIN_FILENO, &fdset);
+
+   return keyHit;
 }
 
-static void adjustAttribute( AppCtx *ctx, int c )
+static void adjustAttribute( AppCtx *ctx, uint32_t sym )
 {
    switch( ctx->attribute )
    {
       case Attribute_position:
-         switch( c )
+         switch( sym )
          {
-            case 0x41: //UP
+            case XKB_KEY_Up:
                --ctx->surfaceDY;
                break;
-            case 0x42: //DOWN
+            case XKB_KEY_Down:
                ++ctx->surfaceDY;
                break;
-            case 0x43: //RIGHT
+            case XKB_KEY_Right:
                ++ctx->surfaceDX;
                break;
-            case 0x44: //LEFT
+            case XKB_KEY_Left:
                --ctx->surfaceDX;
                break;
          }
          break;
       case Attribute_size:
-         switch( c )
+         switch( sym )
          {
-            case 0x41: //UP
+            case XKB_KEY_Up:
                --ctx->surfaceDHeight;
                break;
-            case 0x42: //DOWN
+            case XKB_KEY_Down:
                ++ctx->surfaceDHeight;
                break;
-            case 0x43: //RIGHT
+            case XKB_KEY_Right:
                ++ctx->surfaceDWidth;
                break;
-            case 0x44: //LEFT
+            case XKB_KEY_Left:
                --ctx->surfaceDWidth;
                break;
          }
          break;
       case Attribute_visibility:
-         switch( c )
+         switch( sym )
          {
-            case 0x41: //UP
-            case 0x43: //RIGHT
-            case 0x42: //DOWN
-            case 0x44: //LEFT
+            case XKB_KEY_Up:
+            case XKB_KEY_Right:
+            case XKB_KEY_Down:
+            case XKB_KEY_Left:
                ctx->surfaceVisible= !ctx->surfaceVisible;
                wl_simple_shell_set_visible( ctx->shell, ctx->surfaceIdCurrent, (ctx->surfaceVisible ? 1 : 0) );
                break;
          }
          break;
       case Attribute_opacity:
-         switch( c )
+         switch( sym )
          {
-            case 0x41: //UP
-            case 0x43: //RIGHT
+            case XKB_KEY_Up:
+            case XKB_KEY_Right:
                ctx->surfaceOpacity += 0.1;
                if ( ctx->surfaceOpacity > 1.0 )
                {
@@ -457,8 +858,8 @@ static void adjustAttribute( AppCtx *ctx, int c )
                }
                wl_simple_shell_set_opacity( ctx->shell, ctx->surfaceIdCurrent, wl_fixed_from_double(ctx->surfaceOpacity) );
                break;
-            case 0x42: //DOWN
-            case 0x44: //LEFT
+            case XKB_KEY_Down:
+            case XKB_KEY_Left:
                ctx->surfaceOpacity -= 0.1;
                if ( ctx->surfaceOpacity < 0.0 )
                {
@@ -469,10 +870,10 @@ static void adjustAttribute( AppCtx *ctx, int c )
          }
          break;
       case Attribute_zorder:
-         switch( c )
+         switch( sym )
          {
-            case 0x41: //UP
-            case 0x43: //RIGHT
+            case XKB_KEY_Up:
+            case XKB_KEY_Right:
                ctx->surfaceZOrder += 0.1;
                if ( ctx->surfaceZOrder > 1.0 )
                {
@@ -480,8 +881,8 @@ static void adjustAttribute( AppCtx *ctx, int c )
                }
                wl_simple_shell_set_zorder( ctx->shell, ctx->surfaceIdCurrent, wl_fixed_from_double(ctx->surfaceZOrder) );
                break;
-            case 0x42: //DOWN
-            case 0x44: //LEFT
+            case XKB_KEY_Down:
+            case XKB_KEY_Left:
                ctx->surfaceZOrder -= 0.1;
                if ( ctx->surfaceZOrder < 0.0 )
                {
@@ -494,40 +895,30 @@ static void adjustAttribute( AppCtx *ctx, int c )
    }
 }
 
-static void processInputMain( AppCtx *ctx, int c )
+static void processInputMain( AppCtx *ctx, uint32_t sym )
 {
-   switch( c )
+   switch( sym )
    {
-      case 0x1B:
-         c= fgetc(stdin);
-         if ( c == 0x5B )
+      case XKB_KEY_Left:
+      case XKB_KEY_Up:
+      case XKB_KEY_Right:
+      case XKB_KEY_Down:
+         if ( ctx->surfaceIdCurrent )
          {
-            c= fgetc(stdin);
-            switch( c )
-            {
-               case 0x41: //UP
-               case 0x42: //DOWN
-               case 0x43: //RIGHT
-               case 0x44: // LEFT
-                  if ( ctx->surfaceIdCurrent )
-                  {
-                     adjustAttribute( ctx, c );
-                  }
-                  break;
-            }
+            adjustAttribute( ctx, sym );
          }
          break;
-      case 'a':
+      case XKB_KEY_a:
          ctx->inputState= InputState_attribute;
          printf("attribute: (p) osition, (s) ize, (v) isible, (o) pacity, (z) order (x) back to main\n");
          break;
-      case 's':
+      case XKB_KEY_s:
          if ( ctx->surfaceIdCurrent )
          {
             wl_simple_shell_get_status( ctx->shell, ctx->surfaceIdCurrent );
          }
          break;
-      case 'n':
+      case XKB_KEY_n:
          if ( ctx->surfaceIdOther )
          {
             uint32_t temp= ctx->surfaceIdCurrent;
@@ -537,36 +928,39 @@ static void processInputMain( AppCtx *ctx, int c )
             wl_simple_shell_get_status( ctx->shell, ctx->surfaceIdCurrent );
          }
          break;
-      case 'l':
+      case XKB_KEY_l:
          printf("get all surfaces:\n");
          wl_simple_shell_get_surfaces( ctx->shell );
          break;
-      case 'r':
-         ctx->planeWidth= (ctx->planeWidth == 1280) ? 640 : 1280;
-         ctx->planeHeight= (ctx->planeHeight == 720) ? 360 : 720;
-         printf("resize egl window to (%d,%d)\n", ctx->planeWidth, ctx->planeHeight );
-         resizeSurface( ctx, 0, 0, ctx->planeWidth, ctx->planeHeight);
+      case XKB_KEY_r:
+         if ( ctx->haveMode )
+         {
+            int surfaceWidth= (ctx->surfaceWidth == ctx->planeWidth) ? ctx->planeWidth/2 : ctx->planeWidth;
+            int surfaceHeight= (ctx->surfaceHeight == ctx->planeHeight) ? ctx->planeHeight/2 : ctx->planeHeight;
+            printf("resize egl window to (%d,%d)\n", surfaceWidth, surfaceHeight );
+            resizeSurface( ctx, 0, 0, surfaceWidth, surfaceHeight);
+         }
          break;
    }
 }
 
-static void processInputAttribute( AppCtx *ctx, int c )
+static void processInputAttribute( AppCtx *ctx, uint32_t sym )
 {
-   switch( c )
+   switch( sym )
    {
-      case 'p':
+      case XKB_KEY_p:
          ctx->attribute= Attribute_position;
          break;
-      case 's':
+      case XKB_KEY_s:
          ctx->attribute= Attribute_size;
          break;
-      case 'v':
+      case XKB_KEY_v:
          ctx->attribute= Attribute_visibility;
          break;
-      case 'o':
+      case XKB_KEY_o:
          ctx->attribute= Attribute_opacity;
          break;
-      case 'z':
+      case XKB_KEY_z:
          ctx->attribute= Attribute_zorder;
          break;
       default:
@@ -576,15 +970,15 @@ static void processInputAttribute( AppCtx *ctx, int c )
    ctx->inputState= InputState_main;
 }
 
-static void processInput( AppCtx *ctx, int c )
+static void processInput( AppCtx *ctx, uint32_t sym )
 {
    switch( ctx->inputState )
    {
       case InputState_main:
-         processInputMain( ctx, c );
+         processInputMain( ctx, sym );
          break;
       case InputState_attribute:
-         processInputAttribute( ctx, c );
+         processInputAttribute( ctx, sym );
          break;
    }
 }
@@ -598,6 +992,8 @@ static void showUsage()
    printf("  --shell : use wl_simple_shell protocol\n" );
    printf("  --display <name> : wayland display to connect to\n" );
    printf("  --noframe : don't pace rendering with frame requests\n" );
+   printf("  --noanimate : don't use animation\n" );
+   printf("  --verbose : verbose logging\n" );
    printf("  -? : show usage\n" );
    printf("\n" );
 }
@@ -606,7 +1002,7 @@ static void redraw( void *data, struct wl_callback *callback, uint32_t time )
 {
    AppCtx *ctx= (AppCtx*)data;
 
-   if ( g_log ) printf("redraw: time %d\n", time);
+   if ( g_log ) printf("redraw: time %u\n", time);
    wl_callback_destroy( callback );
 
    ctx->needRedraw= true;
@@ -643,16 +1039,17 @@ int main( int argc, char** argv)
 {
    int nRC= 0;
    AppCtx ctx;
-	struct sigaction sigint;
+   struct sigaction sigint;
    struct wl_display *display= 0;
    struct wl_registry *registry= 0;
-   int count;
    int delay= 16667;
    const char *display_name= 0;
    bool paceRendering= true;
-   EGLBoolean swapok;
+   bool isBackgroundProcess;
 
    printf("westeros_test: v1.0\n" );
+
+   isBackgroundProcess= ( getpgrp() != tcgetpgrp(STDOUT_FILENO) );
 
    memset( &ctx, 0, sizeof(AppCtx) );
 
@@ -688,9 +1085,17 @@ int main( int argc, char** argv)
       {
          paceRendering= false;
       }
+      else if (!strcmp( (const char*)argv[i], "--verbose" ) )
+      {
+         ctx.verboseLog= true;
+      }
       else if (!strcmp( (const char*)argv[i], "--log" ) )
       {
          g_log= true;
+      }
+      else if (!strcmp( (const char*)argv[i], "--noanimate" ) )
+      {
+         ctx.noAnimation= true;
       }
       else if ( !strcmp( (const char*)argv[i], "-?" ) )
       {
@@ -740,8 +1145,8 @@ int main( int argc, char** argv)
    
    setupEGL(&ctx);
 
-   ctx.surfaceWidth= 640;
-   ctx.surfaceHeight= 360;
+   ctx.surfaceWidth= ctx.planeWidth;
+   ctx.surfaceHeight= ctx.planeHeight;
    ctx.surfaceX= 0;
    ctx.surfaceY= 0;
 
@@ -754,12 +1159,15 @@ int main( int argc, char** argv)
       drawFrame(&ctx);
    }
   
-	sigint.sa_handler = signalHandler;
-	sigemptyset(&sigint.sa_mask);
-	sigint.sa_flags = SA_RESETHAND;
-	sigaction(SIGINT, &sigint, NULL);
+   sigint.sa_handler = signalHandler;
+   sigemptyset(&sigint.sa_mask);
+   sigint.sa_flags = SA_RESETHAND;
+   sigaction(SIGINT, &sigint, NULL);
 
-   setBlockingMode(NON_BLOCKING_ENABLED);
+   if ( !isBackgroundProcess )
+   {
+      setBlockingMode(NON_BLOCKING_ENABLED);
+   }
 
    ctx.inputState= InputState_main;
    ctx.attribute= Attribute_position;
@@ -772,13 +1180,12 @@ int main( int argc, char** argv)
          break;
       }
 
-      if ( delay > 0 )
-      {
-         usleep(delay);
-      }
-      
       if ( !paceRendering )
       {
+         if ( delay > 0 )
+         {
+            usleep(delay);
+         }
          renderGL(&ctx);
          eglSwapBuffers(ctx.eglDisplay, ctx.eglSurfaceWindow);
       }
@@ -788,12 +1195,41 @@ int main( int argc, char** argv)
          drawFrame(&ctx);
       }
 
-      if ( ctx.getShell )
+      if ( ctx.getShell && !isBackgroundProcess )
       {      
-         if ( kbhit() )
+         if ( isKeyHit() )
          {
+            uint32_t sym= XKB_KEY_NoSymbol;
             int c= fgetc(stdin);
-            processInput(&ctx, c);
+            switch( c )
+            {
+               case 0x1B:
+                  c= fgetc(stdin);
+                  if ( c == 0x5B )
+                  {
+                     c= fgetc(stdin);
+                     switch( c )
+                     {
+                        case 0x41: //UP
+                           sym= XKB_KEY_Up;
+                           break;
+                        case 0x42: //DOWN
+                           sym= XKB_KEY_Down;
+                           break;
+                        case 0x43: //RIGHT
+                           sym= XKB_KEY_Right;
+                           break;
+                        case 0x44: // LEFT
+                           sym= XKB_KEY_Left;
+                           break;
+                     }
+                  }
+                  break;
+               default:
+                  sym= c;
+                  break;
+            }
+            processInput(&ctx, sym);
             
             // Prevent keys from building up while held down
             tcflush(STDIN_FILENO,TCIFLUSH);
@@ -813,7 +1249,10 @@ exit:
 
    printf("westeros_test: exiting...\n");
 
-   setBlockingMode(NON_BLOCKING_DISABLED);
+   if ( !isBackgroundProcess )
+   {
+      setBlockingMode(NON_BLOCKING_DISABLED);
+   }
    
    if ( ctx.compositor )
    {
@@ -828,7 +1267,49 @@ exit:
    }
    
    termEGL(&ctx);
- 
+
+   if ( ctx.xkbState )
+   {
+      xkb_state_unref( ctx.xkbState );
+      ctx.xkbState= 0;
+   }
+
+   if ( ctx.xkbKeymap )
+   {
+      xkb_keymap_unref( ctx.xkbKeymap );
+      ctx.xkbKeymap= 0;
+   }
+
+   if ( ctx.xkbCtx )
+   {
+      xkb_context_unref( ctx.xkbCtx );
+      ctx.xkbCtx= 0;
+   }
+
+   if ( ctx.pointer )
+   {
+      wl_pointer_destroy(ctx.pointer);
+      ctx.pointer= 0;
+   }
+
+   if ( ctx.keyboard )
+   {
+     wl_keyboard_destroy(ctx.keyboard);
+     ctx.keyboard= 0;
+   }
+
+   if ( ctx.seat )
+   {
+      wl_seat_destroy(ctx.seat);
+      ctx.seat= 0;
+   }
+
+   if ( ctx.output )
+   {
+      wl_output_destroy(ctx.output);
+      ctx.output= 0;
+   }
+
    if ( registry )
    {
       wl_registry_destroy(registry);
@@ -867,6 +1348,19 @@ static bool setupEGL( AppCtx *ctx )
    /*
     * Get default EGL display
     */
+   #ifdef EGL_PLATFORM_WAYLAND_EXT
+   PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT= (PFNEGLGETPLATFORMDISPLAYEXTPROC)eglGetProcAddress("eglGetPlatformDisplayEXT");
+   printf("eglGetPlatformDisplayEXT %p\n", eglGetPlatformDisplayEXT);
+   if (eglGetPlatformDisplayEXT)
+   {
+      ctx->eglDisplay = eglGetPlatformDisplayEXT(EGL_PLATFORM_WAYLAND_EXT, (NativeDisplayType)ctx->display, NULL);
+      if ( ctx->eglDisplay == EGL_NO_DISPLAY )
+      {
+         ctx->eglDisplay = eglGetDisplay((NativeDisplayType)ctx->display);
+      }
+   }
+   else
+   #endif
    ctx->eglDisplay = eglGetDisplay((NativeDisplayType)ctx->display);
    printf("eglDisplay=%p\n", ctx->eglDisplay );
    if ( ctx->eglDisplay == EGL_NO_DISPLAY )
@@ -1080,25 +1574,30 @@ static void destroySurface( AppCtx *ctx )
 
 static void resizeSurface( AppCtx *ctx, int dx, int dy, int width, int height )
 {
-   wl_egl_window_resize( ctx->native, width, height, dx, dy );
+   ctx->surfaceWidth= width;
+   ctx->surfaceHeight= height;
+   if ( ctx->native )
+   {
+      wl_egl_window_resize( ctx->native, width, height, dx, dy );
+   }
 }
 
 static const char *vert_shader_text =
-	"uniform mat4 rotation;\n"
-	"attribute vec4 pos;\n"
-	"attribute vec4 color;\n"
-	"varying vec4 v_color;\n"
-	"void main() {\n"
-	"  gl_Position = rotation * pos;\n"
-	"  v_color = color;\n"
-	"}\n";
+   "uniform mat4 rotation;\n"
+   "attribute vec4 pos;\n"
+   "attribute vec4 color;\n"
+   "varying vec4 v_color;\n"
+   "void main() {\n"
+   "  gl_Position = rotation * pos;\n"
+   "  v_color = color;\n"
+   "}\n";
 
 static const char *frag_shader_text =
-	"precision mediump float;\n"
-	"varying vec4 v_color;\n"
-	"void main() {\n"
-	"  gl_FragColor = v_color;\n"
-	"}\n";
+   "precision mediump float;\n"
+   "varying vec4 v_color;\n"
+   "void main() {\n"
+   "  gl_FragColor = v_color;\n"
+   "}\n";
 
 static GLuint createShader(AppCtx *ctx, GLenum shaderType, const char *shaderSource )
 {
@@ -1122,52 +1621,54 @@ static GLuint createShader(AppCtx *ctx, GLenum shaderType, const char *shaderSou
                 logText );
       }
    }
-   
+
    return shader;
 }
 
 static bool setupGL( AppCtx *ctx )
 {
    bool result= false;
-	GLuint frag, vert;
-	GLuint program;
-	GLint status;
+   GLuint frag, vert;
+   GLuint program;
+   GLint status;
 
-	frag= createShader(ctx, GL_FRAGMENT_SHADER, frag_shader_text);
-	vert= createShader(ctx, GL_VERTEX_SHADER, vert_shader_text);
+   frag= createShader(ctx, GL_FRAGMENT_SHADER, frag_shader_text);
+   vert= createShader(ctx, GL_VERTEX_SHADER, vert_shader_text);
 
-	program= glCreateProgram();
-	glAttachShader(program, frag);
-	glAttachShader(program, vert);
-	glLinkProgram(program);
+   program= glCreateProgram();
+   glAttachShader(program, frag);
+   glAttachShader(program, vert);
+   glLinkProgram(program);
 
-	glGetProgramiv(program, GL_LINK_STATUS, &status);
-	if (!status) 
-	{
-		char log[1000];
-		GLsizei len;
-		glGetProgramInfoLog(program, 1000, &len, log);
-		fprintf(stderr, "Error: linking:\n%*s\n", len, log);
-		goto exit;
-	}
+   glGetProgramiv(program, GL_LINK_STATUS, &status);
+   if (!status)
+   {
+      char log[1000];
+      GLsizei len;
+      glGetProgramInfoLog(program, 1000, &len, log);
+      fprintf(stderr, "Error: linking:\n%*s\n", len, log);
+      goto exit;
+   }
 
-	glUseProgram(program);
+   glUseProgram(program);
 
-	ctx->gl.pos= 0;
-	ctx->gl.col= 1;
+   ctx->gl.pos= 0;
+   ctx->gl.col= 1;
 
-	glBindAttribLocation(program, ctx->gl.pos, "pos");
-	glBindAttribLocation(program, ctx->gl.col, "color");
-	glLinkProgram(program);
+   glBindAttribLocation(program, ctx->gl.pos, "pos");
+   glBindAttribLocation(program, ctx->gl.col, "color");
+   glLinkProgram(program);
 
-	ctx->gl.rotation_uniform= glGetUniformLocation(program, "rotation");
-		
+   ctx->gl.rotation_uniform= glGetUniformLocation(program, "rotation");
+
 exit:
-   return result;		
+   return result;
 }
 
-static bool renderGL( AppCtx *ctx )
+static void renderGL( AppCtx *ctx )
 {
+   if ( !ctx->haveMode ) return;
+
    static const GLfloat verts[3][2] = {
       { -0.5, -0.5 },
       {  0.5, -0.5 },
@@ -1186,7 +1687,6 @@ static bool renderGL( AppCtx *ctx )
       { 0, 0, 0, 1 }
    };
    static const uint32_t speed_div = 5;
-   EGLint rect[4];
 
    glViewport( 0, 0, ctx->planeWidth, ctx->planeHeight );
    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -1194,7 +1694,7 @@ static bool renderGL( AppCtx *ctx )
 
    ctx->currTime= currentTimeMillis();
 
-   angle = ((ctx->currTime-ctx->startTime) / speed_div) % 360 * M_PI / 180.0;
+   angle = ctx->noAnimation ? 0.0 : ((ctx->currTime-ctx->startTime) / speed_div) % 360 * M_PI / 180.0;
    rotation[0][0] =  cos(angle);
    rotation[0][2] =  sin(angle);
    rotation[2][0] = -sin(angle);

@@ -36,6 +36,9 @@
 #include "nxclient.h"
 #include "nexus_platform_client.h"
 #include "nexus_surface_client.h"
+#if NEXUS_PLATFORM_VERSION_MAJOR >= 16
+#include "nexus_video_decoder.h"
+#endif
 
 #include <vector>
 
@@ -56,6 +59,7 @@ struct _WstRenderSurface
    float zorder;
    float opacity;
    bool visible;
+   bool sizeOverride;
    
    NxClient_AllocResults allocResults;
    bool eventCreated;
@@ -67,6 +71,9 @@ struct _WstRenderSurface
    int surfaceHeight;
    int surfacePixelFormat;
    NEXUS_SurfaceHandle surface[NUM_SURFACES];
+   NEXUS_SurfaceHandle surfacePending;
+   NEXUS_SurfaceHandle surfacePush;
+   WstRect rectCurr;
 };
 
 typedef struct _WstRendererNX
@@ -75,6 +82,8 @@ typedef struct _WstRendererNX
    int outputWidth;
    int outputHeight;
    std::vector<WstRenderSurface*> surfaces;
+   bool isDelegate;
+   bool secureGraphics;
 
    EGLDisplay eglDisplay;
    bool haveWaylandEGL;
@@ -103,10 +112,57 @@ static const NEXUS_BlendEquation graphicsAlphaBlend = {
   NEXUS_BlendFactor_eSourceAlpha
 };
 
+static bool useSecureGraphics( void )
+{
+   bool useSecure= false;
+
+   #if NEXUS_PLATFORM_VERSION_MAJOR >= 16
+   char *env= getenv("WESTEROS_SECURE_GRAPHICS");
+   if ( env && atoi(env) )
+   {
+      NEXUS_VideoDecoderCapabilities videoDecoderCap;
+      NEXUS_GetVideoDecoderCapabilities(&videoDecoderCap);
+      useSecure=  (videoDecoderCap.memory[0].secure == NEXUS_SecureVideo_eSecure) ? true : false;
+   }
+   #endif
+
+   setenv("WESTEROS_RENDER_PROTECTED_CONTENT", (useSecure ?  "1" : "0"), 1);
+
+   return useSecure;
+}
+
 static void gfxCheckpoint(void *data, int unused)
 {
     BSTD_UNUSED(unused);
     BKNI_SetEvent((BKNI_EventHandle)data);
+}
+
+static void wstRendererPushSurface( WstRendererNX *renderer, WstRenderSurface *surface )
+{
+   NEXUS_Error rc;
+
+   if ( surface->surfacePush )
+   {
+      rc= NEXUS_SurfaceClient_PushSurface(surface->gfxSurfaceClient,
+                                          surface->surfacePush,
+                                          NULL,
+                                          true );
+      if ( rc )
+      {
+         printf("westeros_renderer_nexus: NEXUS_SurfaceClient_PushSurface rc %d\n", rc);
+      }
+
+      surface->surfacePush= 0;
+
+      size_t n= 0;
+      do
+      {
+         NEXUS_SurfaceHandle surface_list[10];
+         int rc = NEXUS_SurfaceClient_RecycleSurface(surface->gfxSurfaceClient, surface_list, 10, &n);
+         if (rc) break;
+      }
+      while (n >= 10);
+   }
 }
 
 static void wstRendererFreeSurfaces( WstRendererNX *renderer, WstRenderSurface *surface )
@@ -183,8 +239,27 @@ static WstRendererNX* wstRendererNXCreate( WstRenderer *renderer )
       printf("westeros_render_nexus: wstRendererNXCreate: NxClient_Join rc=%X as %s\n", rc, joinSettings.name );
       if ( NEXUS_SUCCESS != rc )
       {
+         printf("WstGLInit: NxClient_Join failed: rc=%X\n", rc);
          free( rendererNX );
          rendererNX= 0;
+         goto exit;
+      }
+
+      rendererNX->secureGraphics= useSecureGraphics();
+      printf("westeros_render_nexus: secure graphics: %d\n", rendererNX->secureGraphics);
+      if ( rendererNX->secureGraphics )
+      {
+         NxClient_DisplaySettings displaySettings;
+
+         NxClient_GetDisplaySettings( &displaySettings );
+         #if NEXUS_PLATFORM_VERSION_MAJOR >= 16
+         displaySettings.secure= rendererNX->secureGraphics;
+         #endif
+         rc= NxClient_SetDisplaySettings( &displaySettings );
+         if ( rc != NEXUS_SUCCESS )
+         {
+            printf("WstGLInit: NxClient_SetDisplaySettings failed: rc=%X\n", rc);
+         }
       }
 
       if ( renderer->display )
@@ -236,6 +311,7 @@ static WstRendererNX* wstRendererNXCreate( WstRenderer *renderer )
       }
    }
 
+exit:
    return rendererNX;
 }
 
@@ -294,6 +370,7 @@ static WstRenderSurface* wstRenderNXCreateSurface( WstRendererNX *renderer )
       composition.zorder= (unsigned)(surface->zorder*MAX_ZORDER);;
       composition.colorBlend= graphicsColorBlend;
       composition.alphaBlend= graphicsAlphaBlend;
+      composition.visible= false;
       rc= NxClient_SetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
       
       renderer->renderer->surfaceSetOpacity( renderer->renderer, surface, surface->opacity );
@@ -441,27 +518,21 @@ static void wstRendererNXCommitShm( WstRendererNX *renderer, WstRenderSurface *s
             }
             NEXUS_Surface_Flush( nexusSurface );
 
-            surface->width= surface->surfaceWidth;
-            surface->height= surface->surfaceHeight;
-
-            NxClient_GetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
-            composition.position.width= surface->width;
-            composition.position.height= surface->height;
-            NxClient_SetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
-
-            unsigned n= 0;
-            do
+            if ( !surface->sizeOverride )
             {
-               NEXUS_SurfaceHandle surface_list[10];
-               int rc = NEXUS_SurfaceClient_RecycleSurface(surface->gfxSurfaceClient, surface_list, 10, &n);
-               if (rc) break;
+               surface->width= surface->surfaceWidth;
+               surface->height= surface->surfaceHeight;
             }
-            while (n >= 10);
 
-            NEXUS_SurfaceClient_PushSurface(surface->gfxSurfaceClient, 
-                                            nexusSurface,
-                                            NULL,
-                                            false );
+            if ( !renderer->isDelegate )
+            {
+               NxClient_GetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
+               composition.position.width= surface->width;
+               composition.position.height= surface->height;
+               NxClient_SetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
+            }
+
+            surface->surfacePending= nexusSurface;
          }
 
          wl_shm_buffer_end_access(shmBuffer);
@@ -502,33 +573,22 @@ static void wstRendererNXCommitSB( WstRendererNX *renderer, WstRenderSurface *su
          {
             NEXUS_SurfaceComposition composition;
             
-            surface->width= bufferWidth;
-            surface->height= bufferHeight;
+            if ( !surface->sizeOverride )
+            {
+               surface->width= bufferWidth;
+               surface->height= bufferHeight;
+            }
 
-            NxClient_GetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
-
-            composition.position.width= surface->width;
-            composition.position.height= surface->height;
-            NxClient_SetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
+            if ( !renderer->isDelegate )
+            {
+               NxClient_GetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
+               composition.position.width= surface->width;
+               composition.position.height= surface->height;
+               NxClient_SetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
+            }
          }
-
-         unsigned n= 0;
-         do
-         {
-            NEXUS_SurfaceHandle surface_list[10];
-            int rc = NEXUS_SurfaceClient_RecycleSurface(surface->gfxSurfaceClient, surface_list, 10, &n);
-            if (rc) break;
-         }
-         while (n >= 10);
          
-         rc= NEXUS_SurfaceClient_PushSurface(surface->gfxSurfaceClient, 
-                                             surfaceIn,
-                                             NULL,
-                                             false );
-         if ( rc ) 
-         {
-            printf("westeros_renderer_nexus: NEXUS_SurfaceClient_PushSurface rc %d\n", rc);
-         }
+         surface->surfacePending= surfaceIn;
       }
    }
 }
@@ -557,33 +617,22 @@ static void wstRendererNXCommitBNXS( WstRendererNX *renderer, WstRenderSurface *
       {
          NEXUS_SurfaceComposition composition;
          
-         surface->width= bufferWidth;
-         surface->height= bufferHeight;
+         if ( !surface->sizeOverride )
+         {
+            surface->width= bufferWidth;
+            surface->height= bufferHeight;
+         }
 
-         NxClient_GetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
-
-         composition.position.width= surface->width;
-         composition.position.height= surface->height;
-         NxClient_SetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
+         if ( !renderer->isDelegate )
+         {
+            NxClient_GetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
+            composition.position.width= surface->width;
+            composition.position.height= surface->height;
+            NxClient_SetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
+         }
       }
-
-      unsigned n= 0;
-      do
-      {
-         NEXUS_SurfaceHandle surface_list[10];
-         int rc = NEXUS_SurfaceClient_RecycleSurface(surface->gfxSurfaceClient, surface_list, 10, &n);
-         if (rc) break;
-      }
-      while (n >= 10);
       
-      rc= NEXUS_SurfaceClient_PushSurface(surface->gfxSurfaceClient, 
-                                          surfaceIn,
-                                          NULL,
-                                          false );
-      if ( rc ) 
-      {
-         printf("westeros_renderer_nexus: NEXUS_SurfaceClient_PushSurface rc %d\n", rc);
-      }
+      surface->surfacePending= surfaceIn;
    }
 }
 #endif
@@ -600,9 +649,31 @@ static void wstRendererTerm( WstRenderer *renderer )
 
 static void wstRendererUpdateScene( WstRenderer *renderer )
 {
-   WstRendererNX *rendererNX= (WstRendererNX*)renderer->renderer;   
+   WstRendererNX *rendererNX= (WstRendererNX*)renderer->renderer;
+   WstRenderSurface *surface;
+   NEXUS_SurfaceComposition composition;
 
-   // Nothing to do.   
+
+   for ( std::vector<WstRenderSurface*>::iterator it= rendererNX->surfaces.begin();
+         it != rendererNX->surfaces.end();
+         ++it )
+   {
+      surface= (*it);
+
+      NxClient_GetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
+      if ( composition.visible != surface->visible )
+      {
+         composition.visible= surface->visible;
+         NxClient_SetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
+      }
+
+      if ( surface->surfacePending )
+      {
+         surface->surfacePush= surface->surfacePending;
+         surface->surfacePending= 0;
+         wstRendererPushSurface( rendererNX, surface );
+      }
+   }
 }
 
 static WstRenderSurface* wstRendererSurfaceCreate( WstRenderer *renderer )
@@ -674,6 +745,7 @@ static void wstRendererSurfaceCommit( WstRenderer *renderer, WstRenderSurface *s
    }
    else
    {
+      surface->surfacePending= 0;
       NEXUS_SurfaceClient_Clear(surface->gfxSurfaceClient);
    }
 }
@@ -707,7 +779,12 @@ static bool wstRendererSurfaceGetVisible( WstRenderer *renderer, WstRenderSurfac
    {
       NxClient_GetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
       
-      isVisible= composition.visible;
+      isVisible= surface->visible;
+
+      if(isVisible != composition.visible)
+      {
+         printf("westeros_render_nexus: %s query received before scene update, returning surface->visible=%d, composition.visible=%d\n", __FUNCTION__, surface->visible, composition.visible);
+      }
       
       *visible= isVisible;
    }
@@ -720,11 +797,15 @@ static void wstRendererSurfaceSetGeometry( WstRenderer *renderer, WstRenderSurfa
    NEXUS_Error rc;
    NEXUS_SurfaceComposition composition;
    WstRendererNX *rendererNX= (WstRendererNX*)renderer->renderer;
-   
+
    if ( surface )
    {
       NxClient_GetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
 
+      if ( (width != surface->width) || (height != surface->height) )
+      {
+         surface->sizeOverride= true;
+      }
       surface->x= x;
       surface->y= y;
       surface->width= width;
@@ -735,7 +816,15 @@ static void wstRendererSurfaceSetGeometry( WstRenderer *renderer, WstRenderSurfa
       composition.position.width= width;
       composition.position.height= height;
 
-      rc= NxClient_SetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
+      if ( rendererNX->isDelegate )
+      {
+         // As a delegate we will determine geometry during the wstRendererDelegateUpdateScene method taking
+         // into account the active matrix
+      }
+      else
+      {
+         rc= NxClient_SetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
+      }
    }
 }
 
@@ -870,6 +959,8 @@ static void wstRendererDelegateUpdateScene( WstRenderer *renderer, std::vector<W
    NEXUS_SurfaceComposition composition;
    WstRect rect;
    
+   rendererNX->isDelegate= true;
+
    sx= renderer->matrix[0];
    sy= renderer->matrix[5];
    tx= renderer->matrix[12];
@@ -886,14 +977,31 @@ static void wstRendererDelegateUpdateScene( WstRenderer *renderer, std::vector<W
       NxClient_GetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
 
       composition.colorMatrixEnabled= (opacity < 1.0);
-      rect.x= composition.position.x= (renderer->outputX+surface->x)*sx+(tx-renderer->outputX);
-      rect.y= composition.position.y= (renderer->outputY+surface->y)*sy+(ty-renderer->outputY);
+      rect.x= composition.position.x= surface->x*sx+tx;
+      rect.y= composition.position.y= surface->y*sy+ty;
       rect.width= composition.position.width= surface->width*sx;
       rect.height= composition.position.height= surface->height*sy;
+      if ( composition.visible != surface->visible )
+      {
+         composition.visible= surface->visible;
+      }
 
-      rects.push_back( rect );
+      if ( surface->visible )
+      {
+         rects.push_back( rect );
+      }
+
+      surface->surfacePush= surface->surfacePending;
+      surface->surfacePending= 0;
+
+      surface->rectCurr= rect;
+      composition.position.x= rect.x;
+      composition.position.y= rect.y;
+      composition.position.width= rect.width;
+      composition.position.height= rect.height;
 
       composition.colorMatrixEnabled= (opacity < 1.0);
+      composition.visible= surface->visible;
 
       NEXUS_Graphics2DColorMatrix *pMatrix= &composition.colorMatrix;
       BKNI_Memset(pMatrix, 0, sizeof(*pMatrix));
@@ -904,6 +1012,8 @@ static void wstRendererDelegateUpdateScene( WstRenderer *renderer, std::vector<W
       pMatrix->coeffMatrix[18]= (unsigned int)(opacity*255); /* reduce by server-side alpha */
 
       NxClient_SetSurfaceClientComposition(surface->allocResults.surfaceClient[0].id, &composition);
+
+      wstRendererPushSurface( rendererNX, surface );
    }
    
    renderer->needHolePunch= true;

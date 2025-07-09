@@ -21,9 +21,13 @@
 #include <memory.h>
 #include <assert.h>
 #include <dlfcn.h>
+#include <sys/time.h>
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#if defined (USE_MESA)
+#include <EGL/eglmesaext.h>
+#endif
 
 #if defined (WESTEROS_PLATFORM_EMBEDDED) || defined (WESTEROS_HAVE_WAYLAND_EGL)
   #include <GLES2/gl2.h>
@@ -50,6 +54,10 @@
 #include "westeros-simplebuffer.h"
 #endif
 
+#ifdef ENABLE_LDBPROTOCOL
+#include "linux-dmabuf/westeros-linux-dmabuf.h"
+#endif
+
 #include <vector>
 
 //#define WST_DEBUG
@@ -67,300 +75,159 @@
 #define DEFAULT_SURFACE_WIDTH (0)
 #define DEFAULT_SURFACE_HEIGHT (0)
 
-// assume premultiplied
+#ifndef DRM_FORMAT_R8
+#define DRM_FORMAT_R8 (0x20203852)
+#endif
+
+#ifndef DRM_FORMAT_GR88
+#define DRM_FORMAT_GR88 (0x38385247)
+#endif
+
+#ifndef DRM_FORMAT_RG88
+#define DRM_FORMAT_RG88 (0x38384752)
+#endif
+
+#ifndef DRM_FORMAT_NV12
+#define DRM_FORMAT_NV12 (0x3231564E)
+#endif
+
+#ifndef DRM_FORMAT_NV21
+#define DRM_FORMAT_NV21 (0x3132564E)
+#endif
+
 static const char *fShaderText =
   "#ifdef GL_ES\n"
   "precision mediump float;\n"
   "#endif\n"
-  "uniform sampler2D s_texture;\n"
-  "uniform float u_alpha;\n"
-  "varying vec2 v_uv;\n"
+  "uniform sampler2D texture;\n"
+  "uniform float alpha;\n"
+  "varying vec2 txv;\n"
   "void main()\n"
   "{\n"
-  "  gl_FragColor = texture2D(s_texture, v_uv) * u_alpha;\n"
+  "  gl_FragColor= texture2D(texture, txv) * alpha;\n"
   "}\n";
 
 static const char *vShaderText =
-  "uniform vec2 u_resolution;\n"
-  "uniform mat4 amymatrix;\n"
+  "uniform vec2 resolution;\n"
+  "uniform mat4 matrix;\n"
   "attribute vec2 pos;\n"
-  "attribute vec2 uv;\n"
-  "varying vec2 v_uv;\n"
+  "attribute vec2 texcoord;\n"
+  "varying vec2 txv;\n"
   "void main()\n"
   "{\n"
-  // map from "pixel coordinates"
-  "  vec4 p = amymatrix * vec4(pos, 0, 1);\n"
-  "  vec4 zeroToOne = p / vec4(u_resolution, u_resolution.x, 1);\n"
-  "  vec4 zeroToTwo = zeroToOne * vec4(2.0, 2.0, 1, 1);\n"
-  "  vec4 clipSpace = zeroToTwo - vec4(1.0, 1.0, 0, 0);\n"
-  "  clipSpace.w = 1.0+clipSpace.z;\n"
-  "  gl_Position =  clipSpace * vec4(1, -1, 1, 1);\n"
-  "  v_uv = uv;\n"
+  "  vec4 p= matrix * vec4(pos, 0, 1);\n"
+  "  vec4 zeroToOne= p / vec4(resolution, resolution.x, 1);\n"
+  "  vec4 zeroToTwo= zeroToOne * vec4(2.0, 2.0, 1, 1);\n"
+  "  vec4 clipSpace= zeroToTwo - vec4(1.0, 1.0, 0, 0);\n"
+  "  clipSpace.w= 1.0+clipSpace.z;\n"
+  "  gl_Position=  clipSpace * vec4(1, -1, 1, 1);\n"
+  "  txv= texcoord;\n"
   "}\n";
 
 static const char *fShaderTextYUV =
   "#ifdef GL_ES\n"
   "precision mediump float;\n"
   "#endif\n"
-  "uniform sampler2D s_texturey;\n"
-  "uniform sampler2D s_textureuv;\n"
+  "uniform sampler2D texture;\n"
+  "uniform sampler2D textureuv;\n"
   "const vec3 cc_r = vec3(1.0, -0.8604, 1.59580);\n"
   "const vec4 cc_g = vec4(1.0, 0.539815, -0.39173, -0.81290);\n"
   "const vec3 cc_b = vec3(1.0, -1.071, 2.01700);\n"
-  "uniform float u_alpha;\n"
-  "varying vec2 v_texy;\n"
-  "varying vec2 v_texuv;\n"
+  "uniform float alpha;\n"
+  "varying vec2 txv;\n"
+  "varying vec2 txvuv;\n"
   "void main()\n"
   "{\n"
-  "   vec4 y_vec = texture2D(s_texturey, v_texy);\n"
-  "   vec4 c_vec = texture2D(s_textureuv, v_texuv);\n"
-  "   vec4 temp_vec = vec4(y_vec.a, 1.0, c_vec.b, c_vec.a);\n"
-  "   gl_FragColor = vec4( dot(cc_r,temp_vec.xyw), dot(cc_g,temp_vec), dot(cc_b,temp_vec.xyz), u_alpha );\n"
+  "   vec4 y_vec= texture2D(texture, txv);\n"
+  "   vec4 c_vec= texture2D(textureuv, txvuv);\n"
+  "   vec4 temp_vec= vec4(y_vec.a, 1.0, c_vec.b, c_vec.a);\n"
+  "   gl_FragColor= vec4( dot(cc_r,temp_vec.xyw), dot(cc_g,temp_vec), dot(cc_b,temp_vec.xyz), alpha );\n"
   "}\n";
 
 static const char *vShaderTextYUV =
-  "uniform vec2 u_resolution;\n"
-  "uniform mat4 amymatrix;\n"
+  "uniform vec2 resolution;\n"
+  "uniform mat4 matrix;\n"
   "attribute vec2 pos;\n"
-  "attribute vec2 texcoordy;\n"
+  "attribute vec2 texcoord;\n"
   "attribute vec2 texcoorduv;\n"
-  "varying vec2 v_texy;\n"
-  "varying vec2 v_texuv;\n"
+  "varying vec2 txv;\n"
+  "varying vec2 txvuv;\n"
   "void main()\n"
   "{\n"
-  // map from "pixel coordinates"
-  "  vec4 p = amymatrix * vec4(pos, 0, 1);\n"
-  "  vec4 zeroToOne = p / vec4(u_resolution, u_resolution.x, 1);\n"
-  "  vec4 zeroToTwo = zeroToOne * vec4(2.0, 2.0, 1, 1);\n"
-  "  vec4 clipSpace = zeroToTwo - vec4(1.0, 1.0, 0, 0);\n"
-  "  clipSpace.w = 1.0+clipSpace.z;\n"
-  "  gl_Position =  clipSpace * vec4(1, -1, 1, 1);\n"
-  "  v_texy = texcoordy;\n"
-  "  v_texuv = texcoorduv;\n"
+  "  vec4 p= matrix * vec4(pos, 0, 1);\n"
+  "  vec4 zeroToOne= p / vec4(resolution, resolution.x, 1);\n"
+  "  vec4 zeroToTwo= zeroToOne * vec4(2.0, 2.0, 1, 1);\n"
+  "  vec4 clipSpace= zeroToTwo - vec4(1.0, 1.0, 0, 0);\n"
+  "  clipSpace.w= 1.0+clipSpace.z;\n"
+  "  gl_Position=  clipSpace * vec4(1, -1, 1, 1);\n"
+  "  txv= texcoord;\n"
+  "  txvuv= texcoorduv;\n"
   "}\n";
-  
-static GLuint createShaderProgram(const char* vShaderTxt, const char* fShaderTxt)
+
+static const char *fShaderText_Y_UV =
+  "#ifdef GL_ES\n"
+  "precision mediump float;\n"
+  "#endif\n"
+  "uniform sampler2D texture;\n"
+  "uniform sampler2D textureuv;\n"
+  "const vec3 cc_r = vec3(1.0, -0.8604, 1.59580);\n"
+  "const vec4 cc_g = vec4(1.0, 0.539815, -0.39173, -0.81290);\n"
+  "const vec3 cc_b = vec3(1.0, -1.071, 2.01700);\n"
+  "varying vec2 txv;\n"
+  "varying vec2 txvuv;\n"
+  "void main()\n"
+  "{\n"
+  "   vec4 y_vec= texture2D(texture, txv);\n"
+  "   vec4 c_vec= texture2D(textureuv, txvuv);\n"
+  "   vec4 temp_vec= vec4(y_vec.r, 1.0, c_vec.r, c_vec.g);\n"
+  "   gl_FragColor= vec4( dot(cc_r,temp_vec.xyw), dot(cc_g,temp_vec), dot(cc_b,temp_vec.xyz), 1 );\n"
+  "}\n";
+
+static const char *fShaderTextExternal =
+  "#extension GL_OES_EGL_image_external : require\n"
+  "#ifdef GL_ES\n"
+  "precision mediump float;\n"
+  "#endif\n"
+  "uniform samplerExternalOES texture;\n"
+  "varying vec2 txv;\n"
+  "void main()\n"
+  "{\n"
+  "  gl_FragColor= texture2D(texture, txv);\n"
+  "}\n";
+
+typedef enum _WstShaderType
 {
-  GLuint fragShader, vertShader, program = 0;
-  GLint stat;
-  
-  fragShader = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(fragShader, 1, (const char **) &fShaderTxt, NULL);
-  glCompileShader(fragShader);
-  glGetShaderiv(fragShader, GL_COMPILE_STATUS, &stat);
+   WstShaderType_rgb,
+   WstShaderType_yuv,
+   WstShaderType_external
+} WstShaderType;
 
-  if (!stat)
-  {
-    WST_TRACE("Error: fragment shader did not compile: %d\nSource:\n%s", glGetError(), fShaderTxt);
-    
-    GLint maxLength = 0;
-    glGetShaderiv(fragShader, GL_INFO_LOG_LENGTH, &maxLength);
-    
-    //The maxLength includes the NULL character
-    std::vector<char> errorLog(maxLength);
-    glGetShaderInfoLog(fragShader, maxLength, &maxLength, &errorLog[0]);    
-    WST_TRACE("%s", &errorLog[0]);
-    
-    glDeleteShader(fragShader);
-
-    return GL_NONE;
-  }
-  
-  vertShader = glCreateShader(GL_VERTEX_SHADER);
-  glShaderSource(vertShader, 1, (const char **) &vShaderTxt, NULL);
-  glCompileShader(vertShader);
-  glGetShaderiv(vertShader, GL_COMPILE_STATUS, &stat);
-
-  if (!stat)
-  {
-    WST_TRACE("vertex shader did not compile: %d\nSource:\n%s", glGetError(), vShaderTxt);
-
-    glDeleteShader(fragShader);
-    glDeleteShader(vertShader);
-
-    return GL_NONE;
-  }
-  
-  program = glCreateProgram();
-  glAttachShader(program, fragShader);
-  glAttachShader(program, vertShader);
-  
-  return program;
-}
-
-void linkShaderProgram(GLuint program)
+typedef struct _WstShader
 {
-  GLint stat;
+   bool isYUV;
+   GLuint fragShader;
+   GLuint vertShader;
+   GLuint program;
+   GLuint attrPos;
+   GLuint attrTexcoord;
+   GLuint attrTexcoorduv;
+   GLint uniRes;
+   GLint uniMatrix;
+   GLint uniAlpha;
+   GLint uniTexture;
+   GLint uniTextureuv;
+} WstShader;
 
-  glLinkProgram(program);  /* needed to put attribs into effect */
-  glGetProgramiv(program, GL_LINK_STATUS, &stat);
-  if (!stat)
-  {
-    char log[1000];
-    GLsizei len;
-    glGetProgramInfoLog(program, 1000, &len, log);
-    WST_TRACE("failed to link:%s", log);
-    assert(false);
-  }
-}
+static char message[1024];
+static bool emitFPS= false;
 
-class shaderProgram
-{
-public:
-  virtual void init(const char* v, const char* f)
-  {
-    mProgram = createShaderProgram(v, f);
-
-    prelink();
-    linkShaderProgram(mProgram);
-    postlink();
-  }
-
-  int getUniformLocation(const char* name)
-  {
-    int l = glGetUniformLocation(mProgram, name);
-    if (l == -1)
-    {
-      WST_TRACE("Shader does not define uniform %s.\n", name);
-    }
-    return l;
-  }
-    
-  void use()
-  {
-    glUseProgram(mProgram);
-  }
-
-protected:
-  // Override to do uniform lookups
-  virtual void prelink() {}
-  virtual void postlink() {}
-
-  GLuint mProgram;
-};
-
-class textureShaderProgram: public shaderProgram
-{
-protected:
-  virtual void prelink()
-  {
-    mPosLoc = 0;
-    mUVLoc = 1;
-    glBindAttribLocation(mProgram, mPosLoc, "pos");
-    glBindAttribLocation(mProgram, mUVLoc, "uv");
-  }
-
-  virtual void postlink()
-  {
-    mResolutionLoc = getUniformLocation("u_resolution");
-    mMatrixLoc = getUniformLocation("amymatrix");
-    mAlphaLoc = getUniformLocation("u_alpha");
-    mTextureLoc = getUniformLocation("s_texture");
-  }
-
-public:
-  void draw(int resW, int resH, float* matrix, float alpha, 
-            GLuint textureId, int count,            
-            const float* pos, const float* uv )
-  {
-    use();
-    glUniform2f(mResolutionLoc, resW, resH);
-    glUniformMatrix4fv(mMatrixLoc, 1, GL_FALSE, matrix);
-    glUniform1f(mAlphaLoc, alpha);
-
-    glActiveTexture(GL_TEXTURE1); 
-    glBindTexture(GL_TEXTURE_2D, textureId);
-    glUniform1i(mTextureLoc, 1);
-    glVertexAttribPointer(mPosLoc, 2, GL_FLOAT, GL_FALSE, 0, pos);
-    glVertexAttribPointer(mUVLoc, 2, GL_FLOAT, GL_FALSE, 0, uv);
-    glEnableVertexAttribArray(mPosLoc);
-    glEnableVertexAttribArray(mUVLoc);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, count);
-    glDisableVertexAttribArray(mPosLoc);
-    glDisableVertexAttribArray(mUVLoc);
-  }
-
-private:
-  GLint mResolutionLoc;
-  GLint mMatrixLoc;
-
-  GLint mPosLoc;
-  GLint mUVLoc;
-
-  GLint mAlphaLoc;
-
-  GLint mTextureLoc;
-};
-
-class textureShaderYUVProgram: public shaderProgram
-{
-protected:
-  virtual void prelink()
-  {
-    mPosLoc = 0;
-    mTexYLoc = 1;
-    mTexUVLoc = 2;
-    glBindAttribLocation(mProgram, mPosLoc, "pos");
-    glBindAttribLocation(mProgram, mTexYLoc, "texcoordy");
-    glBindAttribLocation(mProgram, mTexUVLoc, "texcoorduv");
-  }
-
-  virtual void postlink()
-  {
-    mResolutionLoc = getUniformLocation("u_resolution");
-    mMatrixLoc = getUniformLocation("amymatrix");
-    mAlphaLoc = getUniformLocation("u_alpha");
-    mTextureYLoc = getUniformLocation("s_texturey");
-    mTextureUVLoc = getUniformLocation("s_textureuv");
-  }
-
-public:
-  void draw(int resW, int resH, float* matrix, float alpha, 
-            GLuint textureYId, GLuint textureUVId, int count,            
-            const float* pos, const float* uv )
-  {
-    use();
-    glUniform2f(mResolutionLoc, resW, resH);
-    glUniformMatrix4fv(mMatrixLoc, 1, GL_FALSE, matrix);
-    glUniform1f(mAlphaLoc, alpha);
-
-    glActiveTexture(GL_TEXTURE1); 
-    glBindTexture(GL_TEXTURE_2D, textureYId);
-    glUniform1i(mTextureYLoc, 1);
-    glActiveTexture(GL_TEXTURE2); 
-    glBindTexture(GL_TEXTURE_2D, textureUVId);
-    glUniform1i(mTextureUVLoc, 2);
-    glVertexAttribPointer(mPosLoc, 2, GL_FLOAT, GL_FALSE, 0, pos);
-    glVertexAttribPointer(mTexYLoc, 2, GL_FLOAT, GL_FALSE, 0, uv);
-    glVertexAttribPointer(mTexUVLoc, 2, GL_FLOAT, GL_FALSE, 0, uv);
-    glEnableVertexAttribArray(mPosLoc);
-    glEnableVertexAttribArray(mTexYLoc);
-    glEnableVertexAttribArray(mTexUVLoc);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, count);
-    glDisableVertexAttribArray(mPosLoc);
-    glDisableVertexAttribArray(mTexYLoc);
-    glDisableVertexAttribArray(mTexUVLoc);
-  }
-
-private:
-  GLint mResolutionLoc;
-  GLint mMatrixLoc;
-
-  GLint mPosLoc;
-  GLint mTexYLoc;
-  GLint mTexUVLoc;
-
-  GLint mAlphaLoc;
-
-  GLint mTextureYLoc;
-  GLint mTextureUVLoc;
-};
 
 #define MAX_TEXTURES (2)
 
 struct _WstRenderSurface
 {
    int textureCount;
+   bool externalImage;
    GLuint textureId[MAX_TEXTURES];
 
    int bufferWidth;
@@ -386,11 +253,21 @@ struct _WstRenderSurface
    bool visible;
    float opacity;
    float zorder;
+   bool sizeOverride;
    
    bool dirty;
    bool invertedY;
-   
+
+   bool haveCrop;
+   float cropTextureCoord[4][2];
+
    WstRenderSurface *surfaceFast;
+
+   #ifdef ENABLE_LEXPSYNCPROTOCOL
+   // import from client per surface
+   // and to provide render_fence_fd via fenced_release
+   WstExplicitSync bufferSync;
+   #endif
 };
 
 typedef struct _WstRendererEMB
@@ -414,31 +291,52 @@ typedef struct _WstRendererEMB
    PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
    #endif
 
+   bool haveDmaBufImport;
+   bool haveDmaBufImportModifiers;
+   bool haveExternalImage;
+
    #if defined (WESTEROS_HAVE_WAYLAND_EGL)
    bool haveWaylandEGL;
    PFNEGLBINDWAYLANDDISPLAYWL eglBindWaylandDisplayWL;
    PFNEGLUNBINDWAYLANDDISPLAYWL eglUnbindWaylandDisplayWL;
    PFNEGLQUERYWAYLANDBUFFERWL eglQueryWaylandBufferWL;
    #endif
+   #ifdef ENABLE_LDBPROTOCOL
+   PFNEGLQUERYDMABUFFORMATSEXTPROC eglQueryDmaBufFormatsEXT;
+   PFNEGLQUERYDMABUFMODIFIERSEXTPROC eglQueryDmaBufModifiersEXT;
+   #endif
+   #ifdef ENABLE_LEXPSYNCPROTOCOL
+   bool haveNativeFenceSync;
+   PFNEGLCREATESYNCKHRPROC eglCreateSync;
+   PFNEGLDESTROYSYNCKHRPROC eglDestroySync;
+   PFNEGLDUPNATIVEFENCEFDANDROIDPROC eglDupNativeFenceFd;
 
-   textureShaderProgram *textureShader;
-   textureShaderYUVProgram *textureShaderYUV;
+   bool haveWaitSync;
+   PFNEGLWAITSYNCKHRPROC eglWaitSync;
+
+   EGLSyncKHR displaySync;
+   #endif
+
+   WstShader *textureShader;
+   WstShader *textureShaderYUV;
+   WstShader *textureShaderExternal;
    
    std::vector<WstRenderSurface*> surfaces;
    std::vector<GLuint> deadTextures;
 
+   float baseZOrder;
    bool fastPathActive;   
    WstRenderer *rendererFast;
 
 } WstRendererEMB;
 
 
-static bool wstRendererEMBSetupEGL( WstRendererEMB *renderer );
 static WstRendererEMB* wstRendererEMBCreate( WstRenderer *renderer );
 static void wstRendererEMBDestroy( WstRendererEMB *renderer );
 static WstRenderSurface *wstRendererEMBCreateSurface(WstRendererEMB *renderer);
 static void wstRendererEMBDestroySurface( WstRendererEMB *renderer, WstRenderSurface *surface );
 static void wstRendererEMBFlushSurface( WstRendererEMB *renderer, WstRenderSurface *surface );
+static void wstRendererEMBPrepareResource( WstRendererEMB *renderer, WstRenderSurface *surface, struct wl_resource *resource);
 static void wstRendererEMBCommitShm( WstRendererEMB *renderer, WstRenderSurface *surface, struct wl_resource *resource );
 #if defined (WESTEROS_HAVE_WAYLAND_EGL)
 static void wstRendererEMBCommitWaylandEGL( WstRendererEMB *renderer, WstRenderSurface *surface, 
@@ -447,12 +345,22 @@ static void wstRendererEMBCommitWaylandEGL( WstRendererEMB *renderer, WstRenderS
 #ifdef ENABLE_SBPROTOCOL
 static void wstRendererEMBCommitSB( WstRendererEMB *renderer, WstRenderSurface *surface, struct wl_resource *resource );
 #endif
+#ifdef ENABLE_LDBPROTOCOL
+static void wstRendererEMBCommitLDB( WstRendererEMB *renderer, WstRenderSurface *surface, struct wl_resource *resource );
+#endif
 #if defined (WESTEROS_PLATFORM_RPI)
 static void wstRendererEMBCommitDispmanx( WstRendererEMB *renderer, WstRenderSurface *surface, 
                                          DISPMANX_RESOURCE_HANDLE_T dispResource,
                                          EGLint format, int bufferWidth, int bufferHeight );
 #endif                                         
 static void wstRendererEMBRenderSurface( WstRendererEMB *renderer, WstRenderSurface *surface );
+static WstShader* wstRendererEMBCreateShader( WstRendererEMB *renderer, int shaderType );
+static void wstRendererEMBDestroyShader( WstShader *shader );
+static void wstRendererEMBShaderDraw( WstShader *shader,
+                                      int width, int height, float* matrix, float alpha,
+                                      GLuint textureId, GLuint textureUVId,
+                                      int count, const float* vc, const float* txc );
+static void wstRendererHolePunch( WstRenderer *renderer, int x, int y, int width, int height );
 static void wstRendererInitFastPath( WstRendererEMB *renderer );
 static bool wstRendererActivateFastPath( WstRendererEMB *renderer );
 static void wstRendererDeactivateFastPath( WstRendererEMB *renderer );
@@ -465,6 +373,105 @@ static void wstRendererProcessDeadTextures( WstRendererEMB *renderer );
 #define ALPHA_SIZE (8)
 #define DEPTH_SIZE (0)
 
+#ifdef ENABLE_LEXPSYNCPROTOCOL
+static EGLSyncKHR wstCreateRenderSync(WstRendererEMB *rendererEMB)
+{
+   EGLSyncKHR sync;
+   static const EGLint attribs[] = { EGL_NONE };
+
+   if (!rendererEMB->haveNativeFenceSync || !rendererEMB->eglCreateSync)
+   {
+      return EGL_NO_SYNC_KHR;
+   }
+
+   sync= rendererEMB->eglCreateSync(rendererEMB->eglDisplay, EGL_SYNC_NATIVE_FENCE_ANDROID, attribs);
+   if (sync == EGL_NO_SYNC_KHR)
+   {
+      printf("eglCreateSync: Failed to create sync\n");
+   }
+
+   return sync;
+}
+
+static void wstDestroyRenderSync(WstRendererEMB *rendererEMB, EGLSyncKHR sync)
+{
+   if (!rendererEMB->haveNativeFenceSync || !rendererEMB->eglDestroySync)
+   {
+      return;
+   }
+
+   if (sync == EGL_NO_SYNC_KHR)
+   {
+      printf("eglCreateSync: invalid sync to destroy\n");
+   }
+   rendererEMB->eglDestroySync(rendererEMB->eglDisplay, sync);
+}
+
+static int wstCreateFenceFd(WstRendererEMB *rendererEMB, EGLSyncKHR sync)
+{
+   int fd;
+
+   if (sync == EGL_NO_SYNC_KHR || !rendererEMB->eglDupNativeFenceFd)
+   {
+      return -1;
+   }
+
+   fd= rendererEMB->eglDupNativeFenceFd(rendererEMB->eglDisplay, sync);
+   if (fd == EGL_NO_NATIVE_FENCE_FD_ANDROID)
+   {
+      return -1;
+   }
+
+   return fd;
+}
+
+static void wstEnsureSurfaceBufferIsReady(WstRendererEMB *rendererEMB, int fence_fd)
+{
+   EGLSyncKHR sync;
+   EGLint waitRC;
+   EGLint destroyRC;
+   EGLint attribs[]= { EGL_SYNC_NATIVE_FENCE_FD_ANDROID, -1, EGL_NONE };
+
+   if (!rendererEMB->haveNativeFenceSync)
+   {
+      return;
+   }
+
+   if (fence_fd == -1)
+   {
+      printf("Invalid fence fd\n");
+      return;
+   }
+   attribs[1]= dup(fence_fd);
+   if (attribs[1] == -1)
+   {
+      printf("Failed to dup acquire fence\n");
+      return;
+   }
+
+   sync= rendererEMB->eglCreateSync(rendererEMB->eglDisplay, EGL_SYNC_NATIVE_FENCE_ANDROID, attribs);
+   if (sync == EGL_NO_SYNC_KHR)
+   {
+      printf("Failed to create EGLSyncKHR object\n");
+      close(attribs[1]);
+      return;
+   }
+
+   waitRC= rendererEMB->eglWaitSync(rendererEMB->eglDisplay, sync, 0);
+   if (waitRC == EGL_FALSE)
+   {
+      printf("Failed to wait on EGLSyncKHR object\n");
+      /* Continue to try to destroy the sync object. */
+   }
+
+   destroyRC= rendererEMB->eglDestroySync(rendererEMB->eglDisplay, sync);
+   if (destroyRC== EGL_FALSE)
+   {
+      printf("Failed to destroy on EGLSyncKHR object\n");
+   }
+}
+#endif
+
 static WstRendererEMB* wstRendererEMBCreate( WstRenderer *renderer )
 {
    WstRendererEMB *rendererEMB= 0;
@@ -472,12 +479,18 @@ static WstRendererEMB* wstRendererEMBCreate( WstRenderer *renderer )
    rendererEMB= (WstRendererEMB*)calloc(1, sizeof(WstRendererEMB) );
    if ( rendererEMB )
    {
+      if ( getenv("WESTEROS_RENDER_EMBEDDED_FPS" ) )
+      {
+         emitFPS= true;
+      }
+
       rendererEMB->outputWidth= renderer->outputWidth;
       rendererEMB->outputHeight= renderer->outputHeight;
       
       rendererEMB->renderer= renderer;
       rendererEMB->surfaces= std::vector<WstRenderSurface*>();
       rendererEMB->deadTextures= std::vector<GLuint>();
+      rendererEMB->baseZOrder= 0.5;
       
       #if defined (WESTEROS_PLATFORM_EMBEDDED)
       rendererEMB->glCtx= WstGLInit();
@@ -500,7 +513,12 @@ static WstRendererEMB* wstRendererEMBCreate( WstRenderer *renderer )
       WST_TRACE( "glEGLImageTargetTexture2DOES %p\n", rendererEMB->glEGLImageTargetTexture2DOES);
       #endif
 
-      rendererEMB->eglDisplay= eglGetDisplay(EGL_DEFAULT_DISPLAY);
+      rendererEMB->eglDisplay= eglGetCurrentDisplay();
+      if ( rendererEMB->eglDisplay == EGL_NO_DISPLAY )
+      {
+         rendererEMB->eglDisplay= eglGetDisplay(EGL_DEFAULT_DISPLAY);
+         fprintf(stderr,"no current eglDisplay, get eglDisplay %p\n", rendererEMB->eglDisplay);
+      }
 
       #if defined (WESTEROS_HAVE_WAYLAND_EGL)
       const char *extensions= eglQueryString( rendererEMB->eglDisplay, EGL_EXTENSIONS );
@@ -543,8 +561,51 @@ static WstRendererEMB* wstRendererEMBCreate( WstRenderer *renderer )
                printf("wayland-egl support expected, and advertised, but methods are missing: no wayland-egl\n" );
             }
          }
+         if ( strstr( extensions, "EGL_EXT_image_dma_buf_import" ) )
+         {
+            rendererEMB->haveDmaBufImport= true;
+         }
+         if ( strstr( extensions, "EGL_EXT_image_dma_buf_import_modifiers" ) )
+         {
+            rendererEMB->haveDmaBufImportModifiers= true;
+            #ifdef ENABLE_LDBPROTOCOL
+            rendererEMB->eglQueryDmaBufFormatsEXT = (PFNEGLQUERYDMABUFFORMATSEXTPROC)eglGetProcAddress("eglQueryDmaBufFormatsEXT");
+            printf( "eglQueryDmaBufFormatsEXT %p\n", rendererEMB->eglQueryDmaBufFormatsEXT );
+            rendererEMB->eglQueryDmaBufModifiersEXT = (PFNEGLQUERYDMABUFMODIFIERSEXTPROC)eglGetProcAddress("eglQueryDmaBufModifiersEXT");
+            printf( "eglQueryDmaBufModifiersEXT %p\n", rendererEMB->eglQueryDmaBufModifiersEXT );
+            #endif
+         }
+         #ifdef ENABLE_LEXPSYNCPROTOCOL
+         if ( strstr( extensions, "EGL_KHR_fence_sync") &&
+              strstr( extensions, "EGL_ANDROID_native_fence_sync"))
+         {
+            rendererEMB->haveNativeFenceSync= true;
+            rendererEMB->eglCreateSync= (PFNEGLCREATESYNCKHRPROC)eglGetProcAddress("eglCreateSyncKHR");
+            rendererEMB->eglDestroySync= (PFNEGLDESTROYSYNCKHRPROC)eglGetProcAddress("eglDestroySyncKHR");
+            rendererEMB->eglDupNativeFenceFd= (PFNEGLDUPNATIVEFENCEFDANDROIDPROC) eglGetProcAddress("eglDupNativeFenceFDANDROID");
+            rendererEMB->displaySync= EGL_NO_SYNC_KHR;
+         }
+         if ( strstr( extensions, "EGL_KHR_wait_sync") )
+         {
+            rendererEMB->eglWaitSync = (PFNEGLWAITSYNCKHRPROC)eglGetProcAddress("eglWaitSyncKHR");
+            rendererEMB->haveWaitSync = true;
+         }
+         #endif
+      }
+      extensions= (const char *)glGetString(GL_EXTENSIONS);
+      if ( extensions )
+      {
+         #ifdef GL_OES_EGL_image_external
+         if ( strstr( extensions, "GL_OES_EGL_image_external" ) )
+         {
+            rendererEMB->haveExternalImage= true;
+         }
+         #endif
       }
       printf("have wayland-egl: %d\n", rendererEMB->haveWaylandEGL );
+      printf("have dmabuf import: %d\n", rendererEMB->haveDmaBufImport );
+      printf("have dmabuf import modifiers: %d\n", rendererEMB->haveDmaBufImportModifiers );
+      printf("have external image: %d\n", rendererEMB->haveExternalImage );
       #endif
    }
 
@@ -566,15 +627,15 @@ static void wstRendererEMBDestroy( WstRendererEMB *renderer )
          renderer->haveWaylandEGL= false;
       }
       #endif
-      
+
       if ( renderer->textureShader )
       {
-         delete renderer->textureShader;
+         wstRendererEMBDestroyShader( renderer->textureShader );
          renderer->textureShader= 0;
       }
       if ( renderer->textureShaderYUV )
       {
-         delete renderer->textureShaderYUV;
+         wstRendererEMBDestroyShader( renderer->textureShaderYUV );
          renderer->textureShaderYUV= 0;
       }
       #if defined (WESTEROS_PLATFORM_EMBEDDED)
@@ -587,6 +648,7 @@ static void wstRendererEMBDestroy( WstRendererEMB *renderer )
       if ( renderer->rendererFast )
       {
          renderer->rendererFast->renderTerm( renderer->rendererFast );
+         free( renderer->rendererFast );
          renderer->rendererFast= 0;
       }
       free( renderer );
@@ -610,9 +672,13 @@ static WstRenderSurface *wstRendererEMBCreateSurface(WstRendererEMB *renderer)
         surface->y= 0;
         surface->visible= true;
         surface->opacity= 1.0;
-        surface->zorder= 0.5;
+        surface->zorder= renderer->baseZOrder;
         
         surface->dirty= true;
+
+        #ifdef ENABLE_LEXPSYNCPROTOCOL
+        WstLExpSyncClear(&surface->bufferSync);
+        #endif
         
         if ( renderer->fastPathActive )
         {
@@ -621,6 +687,12 @@ static WstRenderSurface *wstRendererEMBCreateSurface(WstRendererEMB *renderer)
             {
                wstRendererDeactivateFastPath( renderer );
             }
+            else
+            {
+               renderer->rendererFast->surfaceSetZOrder( renderer->rendererFast,
+                                                         surface->surfaceFast,
+                                                         surface->zorder );
+           }
         }
     }
    
@@ -677,6 +749,202 @@ static void wstRendererEMBFlushSurface( WstRendererEMB *renderer, WstRenderSurfa
            surface->mem= 0;
         }
     }
+}
+
+static void wstRendererEMBPrepareResource( WstRendererEMB *renderer, WstRenderSurface *surface, struct wl_resource *resource )
+{
+   if ( surface && resource )
+   {
+      EGLImageKHR eglImage= 0;
+
+      #ifdef ENABLE_SBPROTOCOL
+      struct wl_sb_buffer *sbBuffer;
+      sbBuffer= WstSBBufferGet( resource );
+      if ( sbBuffer )
+      {
+         #ifdef EGL_LINUX_DMA_BUF_EXT
+         if ( renderer->haveDmaBufImport )
+         {
+            if ( WstSBBufferGetFd( sbBuffer ) >= 0 )
+            {
+               int i;
+               uint32_t frameFormat, frameWidth, frameHeight;
+               int fd[MAX_TEXTURES];
+               int32_t offset[MAX_TEXTURES], stride[MAX_TEXTURES];
+               EGLint attr[28];
+
+               frameFormat= WstSBBufferGetFormat( sbBuffer );
+               frameWidth= WstSBBufferGetWidth( sbBuffer );
+               frameHeight= WstSBBufferGetHeight( sbBuffer );
+
+               for( i= 0; i < MAX_TEXTURES; ++i )
+               {
+                  fd[i]= WstSBBufferGetPlaneFd( sbBuffer, i );
+                  WstSBBufferGetPlaneOffsetAndStride( sbBuffer, i, &offset[i], &stride[i] );
+               }
+
+               if ( ((uint32_t)surface->bufferWidth != frameWidth) || ((uint32_t)surface->bufferHeight != frameHeight) )
+               {
+                  surface->bufferWidth= frameWidth;
+                  surface->bufferHeight= frameHeight;
+               }
+
+               for( i= 0; i < MAX_TEXTURES; ++i )
+               {
+                  if ( surface->eglImage[i] )
+                  {
+                     renderer->eglDestroyImageKHR( renderer->eglDisplay,
+                                                   surface->eglImage[i] );
+                     surface->eglImage[i]= 0;
+                  }
+               }
+
+               switch( frameFormat )
+               {
+                  case WL_SB_FORMAT_NV12:
+                  case WL_SB_FORMAT_NV21:
+                     if ( renderer->haveExternalImage )
+                     {
+                        if ( fd[1] == -1 )
+                        {
+                           fd[1]= fd[0];
+                        }
+
+                        i= 0;
+                        attr[i++]= EGL_WIDTH;
+                        attr[i++]= frameWidth;
+                        attr[i++]= EGL_HEIGHT;
+                        attr[i++]= frameHeight;
+                        attr[i++]= EGL_LINUX_DRM_FOURCC_EXT;
+                        attr[i++]= (frameFormat == WL_SB_FORMAT_NV12 ? DRM_FORMAT_NV12 : DRM_FORMAT_NV21);
+                        attr[i++]= EGL_DMA_BUF_PLANE0_FD_EXT;
+                        attr[i++]= fd[0];
+                        attr[i++]= EGL_DMA_BUF_PLANE0_OFFSET_EXT;
+                        attr[i++]= offset[0];
+                        attr[i++]= EGL_DMA_BUF_PLANE0_PITCH_EXT;
+                        attr[i++]= stride[0];
+                        attr[i++]= EGL_DMA_BUF_PLANE1_FD_EXT;
+                        attr[i++]= fd[1];
+                        attr[i++]= EGL_DMA_BUF_PLANE1_OFFSET_EXT;
+                        attr[i++]= offset[1];
+                        attr[i++]= EGL_DMA_BUF_PLANE1_PITCH_EXT;
+                        attr[i++]= stride[1];
+                        attr[i++]= EGL_YUV_COLOR_SPACE_HINT_EXT;
+                        attr[i++]= EGL_ITU_REC709_EXT;
+                        attr[i++]= EGL_SAMPLE_RANGE_HINT_EXT;
+                        attr[i++]= EGL_YUV_FULL_RANGE_EXT;
+                        attr[i++]= EGL_NONE;
+
+                        eglImage= renderer->eglCreateImageKHR( renderer->eglDisplay,
+                                                               EGL_NO_CONTEXT,
+                                                               EGL_LINUX_DMA_BUF_EXT,
+                                                               (EGLClientBuffer)NULL,
+                                                               attr );
+                        if ( eglImage )
+                        {
+                           surface->eglImage[0]= eglImage;
+                           if ( surface->textureId[0] != GL_NONE )
+                           {
+                              glDeleteTextures( 1, &surface->textureId[0] );
+                           }
+                           surface->textureId[0]= GL_NONE;
+                        }
+                        else
+                        {
+                           printf("wstRendererEMBPrepareResource: eglCreateImageKHR failed for fd %d, DRM_FORMAT_NV12: errno %X\n", fd[0], eglGetError());
+                        }
+
+                        surface->textureCount= 1;
+                        surface->externalImage= true;
+                     }
+                     else
+                     {
+                        if ( fd[1] == -1 )
+                        {
+                           fd[1]= fd[0];
+                        }
+
+                        i= 0;
+                        attr[i++]= EGL_WIDTH;
+                        attr[i++]= frameWidth;
+                        attr[i++]= EGL_HEIGHT;
+                        attr[i++]= frameHeight;
+                        attr[i++]= EGL_LINUX_DRM_FOURCC_EXT;
+                        attr[i++]= DRM_FORMAT_R8;
+                        attr[i++]= EGL_DMA_BUF_PLANE0_FD_EXT;
+                        attr[i++]= fd[0];
+                        attr[i++]= EGL_DMA_BUF_PLANE0_OFFSET_EXT;
+                        attr[i++]= offset[0];
+                        attr[i++]= EGL_DMA_BUF_PLANE0_PITCH_EXT;
+                        attr[i++]= stride[0];
+                        attr[i++]= EGL_NONE;
+
+                        eglImage= renderer->eglCreateImageKHR( renderer->eglDisplay,
+                                                               EGL_NO_CONTEXT,
+                                                               EGL_LINUX_DMA_BUF_EXT,
+                                                               (EGLClientBuffer)NULL,
+                                                               attr );
+                        if ( eglImage )
+                        {
+                           surface->eglImage[0]= eglImage;
+                           if ( surface->textureId[0] != GL_NONE )
+                           {
+                              wstRendererDeleteTexture( renderer, surface->textureId[0] );
+                           }
+                           surface->textureId[0]= GL_NONE;
+                        }
+                        else
+                        {
+                           printf("wstRendererEMBPrepareResource: eglCreateImageKHR failed for fd %d, DRM_FORMAT_R8: errno %X\n", fd[0], eglGetError());
+                        }
+
+                        i= 0;
+                        attr[i++]= EGL_WIDTH;
+                        attr[i++]= frameWidth/2;
+                        attr[i++]= EGL_HEIGHT;
+                        attr[i++]= frameHeight/2;
+                        attr[i++]= EGL_LINUX_DRM_FOURCC_EXT;
+                        attr[i++]= (frameFormat == WL_SB_FORMAT_NV12 ? DRM_FORMAT_GR88 : DRM_FORMAT_RG88);
+                        attr[i++]= EGL_DMA_BUF_PLANE0_FD_EXT;
+                        attr[i++]= fd[1];
+                        attr[i++]= EGL_DMA_BUF_PLANE0_OFFSET_EXT;
+                        attr[i++]= offset[1];
+                        attr[i++]= EGL_DMA_BUF_PLANE0_PITCH_EXT;
+                        attr[i++]= stride[1];
+                        attr[i++]= EGL_NONE;
+
+                        eglImage= renderer->eglCreateImageKHR( renderer->eglDisplay,
+                                                               EGL_NO_CONTEXT,
+                                                               EGL_LINUX_DMA_BUF_EXT,
+                                                               (EGLClientBuffer)NULL,
+                                                               attr );
+                        if ( eglImage )
+                        {
+                           surface->eglImage[1]= eglImage;
+                           if ( surface->textureId[1] != GL_NONE )
+                           {
+                              wstRendererDeleteTexture( renderer, surface->textureId[1] );
+                           }
+                           surface->textureId[1]= GL_NONE;
+                        }
+                        else
+                        {
+                           printf("wstRendererEMBPrepareResource: eglCreateImageKHR failed for fd %d, DRM_FORMAT_GR88: errno %X\n", fd[1], eglGetError());
+                        }
+
+                        surface->textureCount= 2;
+                     }
+                     break;
+                  default:
+                     printf("wstRendererEMBPrepareResource: unsuppprted texture format: %x\n", frameFormat );
+                     break;
+               }
+            }
+         }
+         #endif
+      }
+      #endif
+   }
 }
 
 static void wstRendererEMBCommitShm( WstRendererEMB *renderer, WstRenderSurface *surface, struct wl_resource *resource )
@@ -1130,8 +1398,216 @@ static void wstRendererEMBCommitSB( WstRendererEMB *renderer, WstRenderSurface *
             }
          }
       }
+      #ifdef EGL_LINUX_DMA_BUF_EXT
+      else if ( renderer->haveDmaBufImport )
+      {
+         int fd= WstSBBufferGetFd( sbBuffer );
+         if ( fd >= 0 )
+         {
+            wstRendererEMBPrepareResource( renderer, surface, resource );
+         }
+      }
+      #endif
    }
    #endif
+   #if WESTEROS_INVERTED_Y
+   surface->invertedY= true;
+   #endif
+}
+#endif
+
+#ifdef ENABLE_LDBPROTOCOL
+static void wstRendererEMBPrepareResourceLDB( WstRendererEMB *renderer, WstRenderSurface *surface, struct wl_resource *resource )
+{
+   if ( surface && resource )
+   {
+      EGLImageKHR eglImage= 0;
+
+      struct wl_ldb_buffer *ldbBuffer;
+      ldbBuffer= WstLDBBufferGet( resource );
+      if ( ldbBuffer )
+      {
+         #ifdef EGL_LINUX_DMA_BUF_EXT
+         if ( renderer->haveDmaBufImport )
+         {
+            if ( WstLDBBufferGetFd( ldbBuffer ) >= 0 )
+            {
+               int i;
+               uint32_t frameFormat, frameWidth, frameHeight;
+               int fd[MAX_TEXTURES];
+               int32_t offset[MAX_TEXTURES], stride[MAX_TEXTURES];
+               uint64_t modifier[MAX_TEXTURES];
+               bool useModifiers= false;
+               EGLint attr[64];
+
+               frameFormat= WstLDBBufferGetFormat( ldbBuffer );
+               frameWidth= WstLDBBufferGetWidth( ldbBuffer );
+               frameHeight= WstLDBBufferGetHeight( ldbBuffer );
+
+               modifier[0]= DRM_FORMAT_MOD_INVALID;
+
+               for( i= 0; i < MAX_TEXTURES; ++i )
+               {
+                  fd[i]= WstLDBBufferGetPlaneFd( ldbBuffer, i );
+                  WstLDBBufferGetPlaneOffsetAndStride( ldbBuffer, i, &offset[i], &stride[i] );
+                  if ( renderer->haveDmaBufImportModifiers )
+                  {
+                     modifier[i]= WstLDBBufferGetPlaneModifier( ldbBuffer, i);
+                  }
+               }
+
+               useModifiers= renderer->haveDmaBufImportModifiers && (modifier[0] != DRM_FORMAT_MOD_INVALID);
+
+               if ( (surface->bufferWidth != frameWidth) || (surface->bufferHeight != frameHeight) )
+               {
+                  surface->bufferWidth= frameWidth;
+                  surface->bufferHeight= frameHeight;
+               }
+
+               for( i= 0; i < MAX_TEXTURES; ++i )
+               {
+                  if ( surface->eglImage[i] )
+                  {
+                     renderer->eglDestroyImageKHR( renderer->eglDisplay,
+                                                   surface->eglImage[i] );
+                     surface->eglImage[i]= 0;
+                  }
+               }
+
+               i= 0;
+               attr[i++]= EGL_WIDTH;
+               attr[i++]= frameWidth;
+               attr[i++]= EGL_HEIGHT;
+               attr[i++]= frameHeight;
+               attr[i++]= EGL_LINUX_DRM_FOURCC_EXT;
+               attr[i++]= frameFormat;
+
+               if ( ldbBuffer->info.planeCount > 0 )
+               {
+                  attr[i++]= EGL_DMA_BUF_PLANE0_FD_EXT;
+                  attr[i++]= fd[0];
+                  attr[i++]= EGL_DMA_BUF_PLANE0_OFFSET_EXT;
+                  attr[i++]= offset[0];
+                  attr[i++]= EGL_DMA_BUF_PLANE0_PITCH_EXT;
+                  attr[i++]= stride[0];
+                  if ( useModifiers )
+                  {
+                     attr[i++]= EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
+                     attr[i++]= (modifier[0] & 0xFFFFFFFFUL);
+                     attr[i++]= EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
+                     attr[i++]= ((modifier[0] >> 32) & 0xFFFFFFFFUL);
+                  }
+               }
+
+               if ( ldbBuffer->info.planeCount > 1 )
+               {
+                  attr[i++]= EGL_DMA_BUF_PLANE0_FD_EXT;
+                  attr[i++]= fd[1];
+                  attr[i++]= EGL_DMA_BUF_PLANE0_OFFSET_EXT;
+                  attr[i++]= offset[1];
+                  attr[i++]= EGL_DMA_BUF_PLANE0_PITCH_EXT;
+                  attr[i++]= stride[1];
+                  if ( useModifiers )
+                  {
+                     attr[i++]= EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
+                     attr[i++]= (modifier[1] & 0xFFFFFFFFUL);
+                     attr[i++]= EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
+                     attr[i++]= ((modifier[1] >> 32) & 0xFFFFFFFFUL);
+                  }
+               }
+
+               if ( ldbBuffer->info.planeCount > 2 )
+               {
+                  attr[i++]= EGL_DMA_BUF_PLANE0_FD_EXT;
+                  attr[i++]= fd[2];
+                  attr[i++]= EGL_DMA_BUF_PLANE0_OFFSET_EXT;
+                  attr[i++]= offset[2];
+                  attr[i++]= EGL_DMA_BUF_PLANE0_PITCH_EXT;
+                  attr[i++]= stride[2];
+                  if ( useModifiers )
+                  {
+                     attr[i++]= EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
+                     attr[i++]= (modifier[2] & 0xFFFFFFFFUL);
+                     attr[i++]= EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
+                     attr[i++]= ((modifier[2] >> 32) & 0xFFFFFFFFUL);
+                  }
+               }
+
+               if ( ldbBuffer->info.planeCount > 3 )
+               {
+                  attr[i++]= EGL_DMA_BUF_PLANE0_FD_EXT;
+                  attr[i++]= fd[3];
+                  attr[i++]= EGL_DMA_BUF_PLANE0_OFFSET_EXT;
+                  attr[i++]= offset[3];
+                  attr[i++]= EGL_DMA_BUF_PLANE0_PITCH_EXT;
+                  attr[i++]= stride[3];
+                  if ( useModifiers )
+                  {
+                     attr[i++]= EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
+                     attr[i++]= (modifier[3] & 0xFFFFFFFFUL);
+                     attr[i++]= EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
+                     attr[i++]= ((modifier[3] >> 32) & 0xFFFFFFFFUL);
+                  }
+               }
+
+               attr[i++]= EGL_NONE;
+
+               eglImage= renderer->eglCreateImageKHR( renderer->eglDisplay,
+                                                               EGL_NO_CONTEXT,
+                                                               EGL_LINUX_DMA_BUF_EXT,
+                                                               (EGLClientBuffer)NULL,
+                                                               attr );
+               if ( eglImage )
+               {
+                  /*
+                   * We have a new eglImage.  Mark the surface as having no texture to
+                   * trigger texture creation during the next scene render
+                   */
+                  surface->eglImage[0]= eglImage;
+                  if ( surface->textureId[0] != GL_NONE )
+                  {
+                     wstRendererDeleteTexture( renderer, surface->textureId[0] );
+                  }
+                  surface->textureId[0]= GL_NONE;
+               }
+               else
+               {
+                  printf("wstRendererEMBPrepareResourceLDB: eglCreateImageKHR failed for fd %d, format %X: errno %X\n", fd[0], frameFormat, eglGetError());
+               }
+
+               surface->textureCount= 1;
+            }
+         }
+         #endif
+      }
+   }
+}
+
+static void wstRendererEMBCommitLDB( WstRendererEMB *renderer, WstRenderSurface *surface, struct wl_resource *resource )
+{
+   struct wl_ldb_buffer *ldbBuffer;
+   void *deviceBuffer;
+   int bufferWidth, bufferHeight;
+
+   EGLNativePixmapType eglPixmap= 0;
+   EGLImageKHR eglImage= 0;
+   bool resize= false;
+
+   ldbBuffer= WstLDBBufferGet( resource );
+   if ( ldbBuffer )
+   {
+      #ifdef EGL_LINUX_DMA_BUF_EXT
+      if ( renderer->haveDmaBufImport )
+      {
+         int fd= WstLDBBufferGetFd( ldbBuffer );
+         if ( fd >= 0 )
+         {
+            wstRendererEMBPrepareResourceLDB( renderer, surface, resource );
+         }
+      }
+      #endif
+   }
+
    #if WESTEROS_INVERTED_Y
    surface->invertedY= true;
    #endif
@@ -1224,7 +1700,7 @@ static void wstRendererEMBCommitDispmanx( WstRendererEMB *renderer, WstRenderSur
 
 static void wstRendererEMBRenderSurface( WstRendererEMB *renderer, WstRenderSurface *surface )
 {
-   if ( (surface->textureId[0] == GL_NONE) || surface->memDirty )
+   if ( (surface->textureId[0] == GL_NONE) || surface->memDirty || surface->externalImage )
    {
       for ( int i= 0; i < surface->textureCount; ++i )
       {
@@ -1239,7 +1715,18 @@ static void wstRendererEMBRenderSurface( WstRendererEMB *renderer, WstRenderSurf
          #if defined (WESTEROS_PLATFORM_EMBEDDED) || defined (WESTEROS_HAVE_WAYLAND_EGL)
          if ( surface->eglImage[i] && renderer->eglContext )
          {
-            renderer->glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, surface->eglImage[i]);
+            #ifdef GL_OES_EGL_image_external
+            if ( surface->externalImage )
+            {
+               renderer->glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, surface->eglImage[i]);
+            }
+            else
+            {
+            #endif
+               renderer->glEGLImageTargetTexture2DOES(GL_TEXTURE_2D, surface->eglImage[i]);
+            #ifdef GL_OES_EGL_image_external
+            }
+            #endif
          }
          else 
          #endif
@@ -1266,15 +1753,18 @@ static void wstRendererEMBRenderSurface( WstRendererEMB *renderer, WstRenderSurf
       }
    }
 
-   surface->width= surface->bufferWidth;
-   surface->height= surface->bufferHeight;
+   if ( !surface->sizeOverride )
+   {
+      surface->width= surface->bufferWidth;
+      surface->height= surface->bufferHeight;
+   }
    
    const float verts[4][2] = 
    {
-      { surface->x, surface->y },
-      { surface->x+surface->width, surface->y },
-      { surface->x,  surface->y+surface->height },
-      { surface->x+surface->width, surface->y+surface->height }
+      { float(surface->x), float(surface->y) },
+      { float(surface->x+surface->width), float(surface->y) },
+      { float(surface->x), float(surface->y+surface->height) },
+      { float(surface->x+surface->width), float(surface->y+surface->height) }
    };
  
    const float uvNormal[4][2] = 
@@ -1293,7 +1783,7 @@ static void wstRendererEMBRenderSurface( WstRendererEMB *renderer, WstRenderSurf
       { 1,  0 }
    };
    
-   const float matrix[4][4] =
+   const float identityMatrix[4][4] =
    {
       {1, 0, 0, 0},
       {0, 1, 0, 0},
@@ -1301,31 +1791,277 @@ static void wstRendererEMBRenderSurface( WstRendererEMB *renderer, WstRenderSurf
       {0, 0, 0, 1}
    };
 
-   const float *uv= surface->invertedY ? (const float*)uvYInverted : (const float*)uvNormal;   
-   
-   if ( surface->textureCount == 1 )
+   float *matrix= (renderer->renderer->hints & WstHints_applyTransform
+                  ? renderer->renderer->matrix : (float*)identityMatrix);
+
+   float alpha= (renderer->renderer->hints & WstHints_applyTransform
+                ? surface->opacity*renderer->renderer->alpha : surface->opacity );
+
+   float *uv;
+
+   int resW, resH;
+   GLint viewport[4];
+
+   if ( surface->haveCrop )
    {
-      renderer->textureShader->draw( renderer->renderer->outputWidth,
-                                     renderer->renderer->outputHeight,
-                                     (float*)matrix,
-                                     surface->opacity,
-                                     surface->textureId[0],
-                                     4,
-                                     (const float*)verts, 
-                                     (const float*)uv );
+      uv= (float*)surface->cropTextureCoord;
    }
    else
    {
-      renderer->textureShaderYUV->draw( renderer->renderer->outputWidth,
-                                        renderer->renderer->outputHeight,
-                                        (float*)matrix,
-                                        surface->opacity,
-                                        surface->textureId[0],
-                                        surface->textureId[1],
-                                        4,
-                                        (const float*)verts, 
-                                        (const float*)uv );
+      uv= surface->invertedY ? (float*)uvYInverted : (float*)uvNormal;
    }
+
+   if ( renderer->renderer->hints & WstHints_fboTarget )
+   {
+      resW= renderer->renderer->outputWidth;
+      resH= renderer->renderer->outputHeight;
+   }
+   else
+   {
+      glGetIntegerv( GL_VIEWPORT, viewport );
+      resW= viewport[2];
+      resH= viewport[3];
+   }
+
+   if ( surface->textureCount == 1 )
+   {
+      wstRendererEMBShaderDraw( surface->externalImage ? renderer->textureShaderExternal : renderer->textureShader,
+                                resW,
+                                resH,
+                                (float*)matrix,
+                                alpha,
+                                surface->textureId[0],
+                                GL_NONE,
+                                4,
+                                (const float*)verts,
+                                (const float*)uv );
+   }
+   else
+   {
+      wstRendererEMBShaderDraw( renderer->textureShaderYUV,
+                                resW,
+                                resH,
+                                (float*)matrix,
+                                alpha,
+                                surface->textureId[0],
+                                surface->textureId[1],
+                                4,
+                                (const float*)verts,
+                                (const float*)uv );
+   }
+}
+
+static WstShader* wstRendererEMBCreateShader( WstRendererEMB *renderer, int shaderType )
+{
+   WstShader *shaderNew= 0;
+   GLuint type;
+   const char *typeName= 0, *src= 0;
+   GLint shader, status, len;
+   bool yuv= (shaderType == WstShaderType_yuv);
+   bool noalpha;
+
+   shaderNew= (WstShader*)calloc( 1, sizeof(WstShader));
+   if ( !shaderNew )
+   {
+      printf("wstRendererEMBCreateShader: failed to allocate WstShader\n");
+      goto exit;
+   }
+
+   shaderNew->isYUV= yuv;
+   shaderNew->program= GL_NONE;
+   shaderNew->fragShader= GL_NONE;
+   shaderNew->vertShader= GL_NONE;
+   shaderNew->uniRes= -1;
+   shaderNew->uniMatrix= -1;
+   shaderNew->uniAlpha= -1;
+   shaderNew->uniTexture= -1;
+   shaderNew->uniTextureuv= -1;
+
+   for( int i= 0; i < 2; ++i )
+   {
+      if ( i == 0 )
+      {
+         type= GL_FRAGMENT_SHADER;
+         typeName= "fragment";
+         noalpha= true;
+         if ( yuv )
+         {
+            src= (renderer->haveDmaBufImport ? fShaderText_Y_UV : fShaderTextYUV);
+         }
+         else if ( shaderType == WstShaderType_external )
+         {
+            src= fShaderTextExternal;
+         }
+         else
+         {
+            src= fShaderText;
+            noalpha= false;
+         }
+      }
+      else
+      {
+         type= GL_VERTEX_SHADER;
+         typeName= "vertex";
+         src= ( yuv ? vShaderTextYUV : vShaderText );
+      }
+      shader= glCreateShader(type);
+      if ( !shader )
+      {
+         printf("wstRendererEMBCreateShader: glCreateShader (%s) error: %d\n", typeName, glGetError());
+         goto exit;
+      }
+      glShaderSource(shader, 1, &src, NULL );
+      glCompileShader(shader);
+      glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+      if ( !status )
+      {
+         glGetShaderInfoLog(shader, sizeof(message), &len, message);
+         printf("wstRendererEMBCreateShader: %s shader compile error: (%s)\n", typeName, message);
+         goto exit;
+      }
+      if ( i == 0 )
+         shaderNew->fragShader= shader;
+      else
+         shaderNew->vertShader= shader;
+   }
+
+   shaderNew->program= glCreateProgram();
+   if ( shaderNew->program == GL_NONE )
+   {
+      printf("wstRendererEMBCreateShader: glCreateProgram error %d\n", glGetError());
+      goto exit;
+   }
+
+   glAttachShader(shaderNew->program, shaderNew->fragShader);
+   glAttachShader(shaderNew->program, shaderNew->vertShader);
+
+   shaderNew->attrPos= 0;
+   glBindAttribLocation(shaderNew->program, shaderNew->attrPos, "pos");
+   shaderNew->attrTexcoord= 1;
+   glBindAttribLocation(shaderNew->program, shaderNew->attrTexcoord, "texcoord");
+   if ( yuv )
+   {
+      shaderNew->attrTexcoorduv= 2;
+      glBindAttribLocation(shaderNew->program, shaderNew->attrTexcoorduv, "texcoorduv");
+   }
+
+   glLinkProgram(shaderNew->program);
+   glGetProgramiv(shaderNew->program, GL_LINK_STATUS, &status);
+   if ( !status )
+   {
+      glGetProgramInfoLog(shaderNew->program, sizeof(message), &len, message);
+      printf("wstRendererEMBCreateShader: %s shader link error: (%s)\n", typeName, message);
+      goto exit;
+   }
+
+   shaderNew->uniRes= glGetUniformLocation(shaderNew->program, "resolution");
+   if ( shaderNew->uniRes == -1 )
+   {
+      printf("wstRendererEMBCreateShader: uniformn 'resolution' location error\n");
+      goto exit;
+   }
+
+   shaderNew->uniMatrix= glGetUniformLocation(shaderNew->program, "matrix");
+   if ( shaderNew->uniMatrix == -1 )
+   {
+      printf("wstRendererEMBCreateShader: uniformn 'matrix' location error\n");
+      goto exit;
+   }
+
+   shaderNew->uniAlpha= glGetUniformLocation(shaderNew->program, "alpha");
+   if ( (shaderNew->uniAlpha == -1) && !noalpha )
+   {
+      printf("wstRendererEMBCreateShader: uniformn 'alpha' location error\n");
+      goto exit;
+   }
+
+   shaderNew->uniTexture= glGetUniformLocation(shaderNew->program, "texture");
+   if ( shaderNew->uniTexture == -1 )
+   {
+      printf("wstRendererEMBCreateShader: uniformn 'texture' location error\n");
+      goto exit;
+   }
+
+   if ( yuv )
+   {
+      shaderNew->uniTextureuv= glGetUniformLocation(shaderNew->program, "textureuv");
+      if ( shaderNew->uniTextureuv == -1 )
+      {
+         printf("wstRendererEMBCreateShader: uniformn 'textureuv' location error\n");
+         goto exit;
+      }
+   }
+
+exit:
+
+   return shaderNew;
+}
+
+static void wstRendererEMBDestroyShader( WstShader *shader )
+{
+   if ( shader )
+   {
+      if ( shader->program != GL_NONE )
+      {
+         if ( shader->fragShader != GL_NONE )
+         {
+            glDetachShader( shader->program, shader->fragShader );
+            glDeleteShader( shader->fragShader );
+            shader->fragShader= GL_NONE;
+         }
+         if ( shader->vertShader != GL_NONE )
+         {
+            glDetachShader( shader->program, shader->vertShader );
+            glDeleteShader( shader->vertShader );
+            shader->vertShader= GL_NONE;
+         }
+         glDeleteProgram( shader->program );
+         shader->program= GL_NONE;
+      }
+      free( shader );
+   }
+}
+
+static void wstRendererEMBShaderDraw( WstShader *shader,
+                                      int width, int height, float* matrix, float alpha,
+                                      GLuint textureId, GLuint textureUVId,
+                                      int count, const float* vc, const float* txc )
+{
+    glUseProgram( shader->program );
+    glUniformMatrix4fv( shader->uniMatrix, 1, GL_FALSE, matrix );
+    glUniform2f( shader->uniRes, width, height );
+    if ( shader->uniAlpha != -1 )
+    {
+       glUniform1f( shader->uniAlpha, alpha );
+    }
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture( GL_TEXTURE_2D, textureId );
+    glUniform1i( shader->uniTexture, 1 );
+    if ( shader->isYUV )
+    {
+       glActiveTexture(GL_TEXTURE2);
+       glBindTexture( GL_TEXTURE_2D, textureUVId );
+       glUniform1i( shader->uniTextureuv, 2 );
+    }
+    glVertexAttribPointer( shader->attrPos, 2, GL_FLOAT, GL_FALSE, 0, vc );
+    glVertexAttribPointer( shader->attrTexcoord, 2, GL_FLOAT, GL_FALSE, 0, txc );
+    if ( shader->isYUV )
+    {
+       glVertexAttribPointer( shader->attrTexcoorduv, 2, GL_FLOAT, GL_FALSE, 0, txc );
+    }
+    glEnableVertexAttribArray( shader->attrPos );
+    glEnableVertexAttribArray( shader->attrTexcoord );
+    if ( shader->isYUV )
+    {
+       glEnableVertexAttribArray( shader->attrTexcoorduv );
+    }
+    glDrawArrays( GL_TRIANGLE_STRIP, 0, count );
+    glDisableVertexAttribArray( shader->attrPos );
+    glDisableVertexAttribArray( shader->attrTexcoord );
+    if ( shader->isYUV )
+    {
+       glDisableVertexAttribArray( shader->attrTexcoorduv );
+    }
 }
 
 static void wstRendererTerm( WstRenderer *renderer )
@@ -1341,9 +2077,52 @@ static void wstRendererTerm( WstRenderer *renderer )
 static void wstRendererUpdateScene( WstRenderer *renderer )
 {
    WstRendererEMB *rendererEMB= (WstRendererEMB*)renderer->renderer;
+   #ifdef ENABLE_LEXPSYNCPROTOCOL
+   bool isFenced= false;
+   #endif
+   GLuint program;
+
+   if ( emitFPS )
+   {
+      static int frameCount= 0;
+      static long long lastReportTime= -1LL;
+      struct timeval tv;
+      long long now;
+      gettimeofday(&tv,0);
+      now= tv.tv_sec*1000LL+(tv.tv_usec/1000LL);
+      ++frameCount;
+      if ( lastReportTime == -1LL ) lastReportTime= now;
+      if ( now-lastReportTime > 5000 )
+      {
+         double fps= ((double)frameCount*1000)/((double)(now-lastReportTime));
+         printf("westeros-render-embedded: fps %f\n", fps);
+         lastReportTime= now;
+         frameCount= 0;
+      }
+   }
+
+   #ifdef ENABLE_LEXPSYNCPROTOCOL
+   // destroy the previous sync
+   if( rendererEMB->displaySync != EGL_NO_SYNC_KHR )
+   {
+      wstDestroyRenderSync(rendererEMB, rendererEMB->displaySync);
+      rendererEMB->displaySync= EGL_NO_SYNC_KHR;
+   }
+   #endif
 
    wstRendererProcessDeadTextures( rendererEMB );
    
+   if ( renderer->fastHint && rendererEMB->rendererFast && !rendererEMB->fastPathActive )
+   {
+      rendererEMB->fastPathActive= wstRendererActivateFastPath( rendererEMB );
+   }
+
+   if ( !renderer->fastHint && rendererEMB->fastPathActive )
+   {
+      wstRendererDeactivateFastPath( rendererEMB );
+      rendererEMB->fastPathActive= false;
+   }
+
    if ( rendererEMB->fastPathActive )
    {
       rendererEMB->rendererFast->outputX= renderer->outputX;
@@ -1353,18 +2132,57 @@ static void wstRendererUpdateScene( WstRenderer *renderer )
       rendererEMB->rendererFast->matrix= renderer->matrix;
       rendererEMB->rendererFast->alpha= renderer->alpha;
 
+      if ( renderer->hints & WstHints_holePunch )
+      {
+         int imax= rendererEMB->surfaces.size();
+         for( int i= 0; i < imax; ++i )
+         {
+            WstRenderSurface *surface= rendererEMB->surfaces[i];
+
+            if ( surface->visible )
+            {
+               int sx, sy, sw, sh;
+
+               if ( surface->surfaceFast )
+               {
+                  rendererEMB->rendererFast->surfaceGetGeometry( rendererEMB->rendererFast, surface->surfaceFast, &sx, &sy, &sw, &sh );
+
+                  if ( sw && sh )
+                  {
+                     WstRect r;
+
+                     r.x= renderer->matrix[0]*sx+renderer->matrix[12];
+                     r.y= renderer->matrix[5]*sy+renderer->matrix[13];
+                     r.width= renderer->matrix[0]*sw;
+                     r.height= renderer->matrix[5]*sh;
+
+                     wstRendererHolePunch( renderer, r.x, r.y, r.width, r.height );
+                  }
+               }
+            }
+         }
+         renderer->needHolePunch= false;
+      }
+      else
+      {
+         renderer->needHolePunch= true;
+      }
+
       rendererEMB->rendererFast->delegateUpdateScene( rendererEMB->rendererFast, renderer->rects );
 
-      renderer->needHolePunch= true;
       return;
    }
 
+   glGetIntegerv( GL_CURRENT_PROGRAM, (GLint*)&program );
+
    if ( !rendererEMB->textureShader )
    {
-      rendererEMB->textureShader= new textureShaderProgram();
-      rendererEMB->textureShader->init(vShaderText,fShaderText);
-      rendererEMB->textureShaderYUV= new textureShaderYUVProgram();
-      rendererEMB->textureShaderYUV->init(vShaderTextYUV,fShaderTextYUV);
+      rendererEMB->textureShader= wstRendererEMBCreateShader( rendererEMB, WstShaderType_rgb );
+      rendererEMB->textureShaderYUV= wstRendererEMBCreateShader( rendererEMB, WstShaderType_yuv );
+      if ( rendererEMB->haveExternalImage )
+      {
+         rendererEMB->textureShaderExternal= wstRendererEMBCreateShader( rendererEMB, WstShaderType_external );
+      }
       rendererEMB->eglContext= eglGetCurrentContext();
    }
 
@@ -1375,7 +2193,7 @@ static void wstRendererUpdateScene( WstRenderer *renderer )
    for( int i= 0; i < imax; ++i )
    {
       WstRenderSurface *surface= rendererEMB->surfaces[i];
-      
+
       if ( surface->visible && 
           (
             #if defined (WESTEROS_PLATFORM_EMBEDDED) || defined (WESTEROS_HAVE_WAYLAND_EGL)
@@ -1386,12 +2204,55 @@ static void wstRendererUpdateScene( WstRenderer *renderer )
           )
         )
       {
+         #ifdef ENABLE_LEXPSYNCPROTOCOL
+         if (surface->bufferSync.acquireFenceFd != -1)
+         {
+            wstEnsureSurfaceBufferIsReady(rendererEMB, surface->bufferSync.acquireFenceFd);
+         }
+         if (surface->bufferSync.bufferRelease != NULL)
+         {
+            isFenced = true;
+         }
+         #endif
          wstRendererEMBRenderSurface( rendererEMB, surface );
       }
    }
-   
-   glFlush();
-   glFinish();
+
+   glUseProgram( program );
+
+   #ifndef ENABLE_LEXPSYNCPROTOCOL
+   #if defined (WESTEROS_PLATFORM_NEXUS )
+   {
+      static bool needFinish= (getenv("WAYLAND_EGL_BNXS_ZEROCOPY") == NULL);
+      // The calls to glFlush/glFinish are not required except on the Broadcom Nexus platform
+      // when older versions of wayland-egl-bnxs are being used.  This code will be removed
+      // in the near future.
+      if ( needFinish )
+      {
+         glFlush();
+         glFinish();
+      }
+   }
+   #endif
+   #endif
+   #ifdef ENABLE_LEXPSYNCPROTOCOL
+   if ( isFenced )
+   {
+      int renderFenceFd;
+      rendererEMB->displaySync= wstCreateRenderSync(rendererEMB);
+      renderFenceFd= wstCreateFenceFd(rendererEMB, rendererEMB->displaySync);
+      for( int i= 0; i < imax; ++i )
+      {
+         WstRenderSurface *surface= rendererEMB->surfaces[i];
+         if ( surface->visible && (surface->bufferSync.bufferRelease != NULL) )
+         {
+            assert( surface->bufferSync.bufferRelease->renderFenceFd == -1 );
+            surface->bufferSync.bufferRelease->renderFenceFd= dup(renderFenceFd);
+         }
+      }
+      close(renderFenceFd);
+   }
+   #endif
 }
 
 static WstRenderSurface* wstRendererSurfaceCreate( WstRenderer *renderer )
@@ -1432,6 +2293,23 @@ static void wstRendererSurfaceDestroy( WstRenderer *renderer, WstRenderSurface *
    
    wstRendererEMBDestroySurface( rendererEMB, surface );
 }
+
+#ifdef ENABLE_LEXPSYNCPROTOCOL
+static void wstRendererSurfaceImportSync( WstRenderer *renderer, WstRenderSurface *surface, WstExplicitSync *bufferSync)
+{
+   if ( surface )
+   {
+      if( bufferSync )
+      {
+         WstLExpSyncCopy(&surface->bufferSync, bufferSync);
+      }
+      else
+      {
+         WstLExpSyncClear(&surface->bufferSync);
+      }
+   }
+}
+#endif
 
 static void wstRendererSurfaceCommit( WstRenderer *renderer, WstRenderSurface *surface, struct wl_resource *resource )
 {
@@ -1475,6 +2353,12 @@ static void wstRendererSurfaceCommit( WstRenderer *renderer, WstRenderSurface *s
       else if ( WstSBBufferGet( resource ) )
       {
          wstRendererEMBCommitSB( rendererEMB, surface, resource );
+      }
+      #endif
+      #ifdef ENABLE_LDBPROTOCOL
+      else if ( WstLDBBufferGet( resource ) )
+      {
+         wstRendererEMBCommitLDB( rendererEMB, surface, resource );
       }
       #endif
       else
@@ -1533,11 +2417,16 @@ static void wstRendererSurfaceSetGeometry( WstRenderer *renderer, WstRenderSurfa
    
    if ( surface )
    {
+      if ( (width != surface->width) || (height != surface->height) )
+      {
+         surface->sizeOverride= true;
+      }
       surface->x= x;
       surface->y= y;
       surface->width= width;
       surface->height= height;
       surface->dirty= true;
+      surface->haveCrop= false;
 
       if ( surface->surfaceFast )
       {
@@ -1673,6 +2562,154 @@ static float wstRendererSurfaceGetZOrder( WstRenderer *renderer, WstRenderSurfac
    return zLevel;
 }
 
+#define TEXTURE_CROP_DENOM (100000)
+static void wstRendererSurfaceSetCrop( WstRenderer *renderer, WstRenderSurface *surface, float x, float y, float width, float height )
+{
+   if ( surface  )
+   {
+      if ( (surface->width > 0) && (surface->height > 0) )
+      {
+         float tx1, ty1, tx2, ty2;
+         tx1= x;
+         tx2= x+width;
+         ty1= y;
+         ty2= y+height;
+
+         if ( surface->invertedY )
+         {
+            surface->cropTextureCoord[0][0]= tx1;
+            surface->cropTextureCoord[0][1]= ty2;
+            surface->cropTextureCoord[1][0]= tx2;
+            surface->cropTextureCoord[1][1]= ty2;
+            surface->cropTextureCoord[2][0]= tx1;
+            surface->cropTextureCoord[2][1]= ty1;
+            surface->cropTextureCoord[3][0]= tx2;
+            surface->cropTextureCoord[3][1]= ty1;
+         }
+         else
+         {
+            surface->cropTextureCoord[0][0]= tx1;
+            surface->cropTextureCoord[0][1]= ty1;
+            surface->cropTextureCoord[1][0]= tx2;
+            surface->cropTextureCoord[1][1]= ty1;
+            surface->cropTextureCoord[2][0]= tx1;
+            surface->cropTextureCoord[2][1]= ty2;
+            surface->cropTextureCoord[3][0]= tx2;
+            surface->cropTextureCoord[3][1]= ty2;
+         }
+
+         surface->haveCrop= true;
+      }
+   }
+}
+
+#ifdef ENABLE_LDBPROTOCOL
+static void wstRendererQueryDmabufFormats( WstRenderer *renderer, int **formats, int *num_formats)
+{
+   WstRendererEMB *rendererEMB= (WstRendererEMB*)renderer->renderer;
+   EGLBoolean b;
+   EGLint numFormats;
+
+   *num_formats= 0;
+   *formats= 0;
+
+   b= rendererEMB->eglQueryDmaBufFormatsEXT( rendererEMB->eglDisplay, 0, NULL, &numFormats );
+   if ( b )
+   {
+      EGLint *theFormats= 0;
+
+      theFormats= (EGLint*)calloc( numFormats, sizeof(EGLint) );
+      if ( theFormats == 0 )
+      {
+         printf("wstRendererQueryDmabufFormats: eglQueryDmaBufFormatsEXT: failed to get num formats\n" );
+         goto exit;
+      }
+      b= rendererEMB->eglQueryDmaBufFormatsEXT( rendererEMB->eglDisplay, numFormats, theFormats, &numFormats );
+      if ( !b )
+      {
+         printf("wstRendererQueryDmabufFormats: eglQueryDmaBufFormatsEXT: failed to get formats\n" );
+         free( theFormats );
+         goto exit;
+      }
+      *num_formats= numFormats;
+      *formats= theFormats;
+   }
+
+exit:
+   return;
+}
+
+static void wstRendererQueryDmabufModifiers( WstRenderer *renderer, int format, uint64_t **modifiers, int *num_modifiers)
+{
+   WstRendererEMB *rendererEMB= (WstRendererEMB*)renderer->renderer;
+   EGLBoolean b;
+   EGLint numModifiers;
+
+   *num_modifiers= 0;
+   *modifiers= 0;
+
+   b= rendererEMB->eglQueryDmaBufModifiersEXT( rendererEMB->eglDisplay, format, 0, NULL, NULL, &numModifiers );
+   if ( b )
+   {
+      uint64_t *theModifiers= 0;
+
+      theModifiers= (uint64_t*)calloc( numModifiers, sizeof(uint64_t) );
+      if ( theModifiers == 0 )
+      {
+         printf("wstRendererQueryDmabufModifiers: eglQueryDmaBufModifiersEXT: failed to get num modifiers\n" );
+         goto exit;
+      }
+      b= rendererEMB->eglQueryDmaBufModifiersEXT( rendererEMB->eglDisplay, format, numModifiers, theModifiers, NULL, &numModifiers );
+      if ( !b )
+      {
+         printf("wstRendererQueryDmabufModifiers: eglQueryDmaBufModifiersEXT: failed to get modifiers\n" );
+         free( theModifiers );
+         goto exit;
+      }
+      *num_modifiers= numModifiers;
+      *modifiers= theModifiers;
+   }
+
+exit:
+   return;
+}
+#endif
+
+static void wstRendererHolePunch( WstRenderer *renderer, int x, int y, int width, int height )
+{
+   GLfloat priorColor[4];
+   GLint priorBox[4];
+   GLint viewport[4];
+   WstRect r;
+
+   bool wasEnabled= glIsEnabled(GL_SCISSOR_TEST);
+   glGetIntegerv( GL_SCISSOR_BOX, priorBox );
+   glGetFloatv( GL_COLOR_CLEAR_VALUE, priorColor );
+   glGetIntegerv( GL_VIEWPORT, viewport );
+
+   glEnable( GL_SCISSOR_TEST );
+   glClearColor( 0.0f, 0.0f, 0.0f, 0.0f );
+
+   r.x= x;
+   r.y= y;
+   r.width= width;
+   r.height= height;
+
+   glScissor( r.x, viewport[3]-(r.y+r.height), r.width, r.height );
+   glClear( GL_COLOR_BUFFER_BIT );
+
+   glClearColor( priorColor[0], priorColor[1], priorColor[2], priorColor[3] );
+
+   if ( wasEnabled )
+   {
+      glScissor( priorBox[0], priorBox[1], priorBox[2], priorBox[3] );
+   }
+   else
+   {
+      glDisable( GL_SCISSOR_TEST );
+   }
+}
+
 static void wstRendererInitFastPath( WstRendererEMB *renderer )
 {
    bool error= false;
@@ -1730,6 +2767,15 @@ static void wstRendererInitFastPath( WstRendererEMB *renderer )
       
       renderer->rendererFast= rendererFast;
       
+      {
+         renderer->baseZOrder= 0.5;
+         const char *env= getenv("WESTEROS_FAST_RENDER_BASE_ZORDER");
+         if ( env )
+         {
+            renderer->baseZOrder= atof(env);
+            printf("wstRendererInitFastPath: base zorder: %f\n", renderer->baseZOrder);
+         }
+      }
       printf("wstRendererInitFastPath: module (%s) loaded and intialized\n", moduleName );
    }
    
@@ -1757,7 +2803,7 @@ exit:
 static bool wstRendererActivateFastPath( WstRendererEMB *renderer )
 {
    bool result= false;
-   
+
    if ( renderer->rendererFast )
    {
       result= true;
@@ -1790,7 +2836,7 @@ static bool wstRendererActivateFastPath( WstRendererEMB *renderer )
                                                       surface->zorder );
          }
       }
-      
+
       if ( result )
       {
          // Discard texture info for all surfaces
@@ -1817,6 +2863,8 @@ static void wstRendererDeactivateFastPath( WstRendererEMB *renderer )
          WstRenderSurface *surface= renderer->surfaces[i];
          if ( surface->surfaceFast && (surface->zorder != 1000000.0) )
          {
+            renderer->rendererFast->surfaceGetGeometry( renderer->rendererFast, surface->surfaceFast,
+                                                        &surface->x, &surface->y, &surface->width, &surface->height );
             renderer->rendererFast->surfaceDestroy( renderer->rendererFast, surface->surfaceFast );
             surface->surfaceFast= 0;
          }
@@ -1856,6 +2904,9 @@ int renderer_init( WstRenderer *renderer, int argc, char **argv )
       renderer->updateScene= wstRendererUpdateScene;
       renderer->surfaceCreate= wstRendererSurfaceCreate;
       renderer->surfaceDestroy= wstRendererSurfaceDestroy;
+      #ifdef ENABLE_LEXPSYNCPROTOCOL
+      renderer->surfaceImportSync= wstRendererSurfaceImportSync;
+      #endif
       renderer->surfaceCommit= wstRendererSurfaceCommit;
       renderer->surfaceSetVisible= wstRendererSurfaceSetVisible;
       renderer->surfaceGetVisible= wstRendererSurfaceGetVisible;
@@ -1865,6 +2916,12 @@ int renderer_init( WstRenderer *renderer, int argc, char **argv )
       renderer->surfaceGetOpacity= wstRendererSurfaceGetOpacity;
       renderer->surfaceSetZOrder= wstRendererSurfaceSetZOrder;
       renderer->surfaceGetZOrder= wstRendererSurfaceGetZOrder;
+      renderer->surfaceSetCrop= wstRendererSurfaceSetCrop;
+      #ifdef ENABLE_LDBPROTOCOL
+      renderer->queryDmabufFormats= wstRendererQueryDmabufFormats;
+      renderer->queryDmabufModifiers= wstRendererQueryDmabufModifiers;
+      #endif
+      renderer->holePunch= wstRendererHolePunch;
       
       wstRendererInitFastPath( rendererEMB );
    }
@@ -1872,10 +2929,8 @@ int renderer_init( WstRenderer *renderer, int argc, char **argv )
    {
       rc= -1;
    }
-
-exit:
    
-   return 0;
+   return rc;
 }
 
 }

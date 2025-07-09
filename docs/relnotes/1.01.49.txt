@@ -1,0 +1,34 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.49 Release Notes
+------------------------------
+
+Date: Sept 13, 2023
+Tag: Westeros-1.01.49
+Changes:
+
+* brcm: adjust buffer release for embedded comp with exp sync
+
+* v4l2: fix initial rpi pixel aspect ratio:
+-for older rpi drivers that require capture setup prior to source change
+events ensure the initial pixel aspect ratio is applied
+
+* brcm: update decoder for immediate-output
+reconfigure video decoder for low latency if the immediate-output
+property is set after the decoder is configured
+
+* v4l2: protect against double renders from basesink
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+
+

@@ -1,0 +1,43 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.54 Release Notes
+------------------------------
+
+Date: Apr 17, 2024
+Tag: Westeros-1.01.54
+Changes:
+
+
+* brcm: remove ENABLE_LEXPSYNCPROTOCOL from public headers
+
+Removed the #ifdef ENABLE_LEXPSYNCPROTOCOL from the public
+_WstRenderer structure because it could cause struct misalignment
+if external renderers don't have ENABLE_LEXPSYNCPROTOCOL set.
+
+We hit this on sky platforms were we don't know (or care) if
+ENABLE_LEXPSYNCPROTOCOL is set, but if westeros is built with
+it, it causes our renderer to crash.
+
+* v4l2: fix loss of precision in conversion from nanoseconds to 90KHz
+
+* brcm: adjust decode rate for immediate output
+
+    Set trickstate rate to 2.0 to allow for overflow recover and low latency decode without excessive frame dropping.  
+
+* core: remove unused local variable
+
+
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+
+

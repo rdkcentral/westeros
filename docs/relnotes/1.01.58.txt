@@ -1,0 +1,48 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.58 Release Notes
+------------------------------
+
+Date: Feb 20, 2025
+Tag: Westeros-1.01.58
+Changes:
+
+* drm: Fix heap corruption resulting from race condition in vidoe disconnect
+
+* sink: Default position to GST_CLOCK_TIME_NONE instead of 0
+
+* drm/sink: Westeros RT Thread Updates
+- Update westeros thread names
+- Allow RT thread priority to be overridden from kernel space
+- Add VSync marker stats
+- FTRACE Debug support controlled via flag
+
+* erm: fix demarsheling of video info in resource request
+
+* all: Cleanup comments containing proprietary device names
+
+* drm: ignore invalid video server rate changes
+
+* sink: Support for video pipeline graph in text form in westerossink
+
+* brcm: prerollrate setting was not correctly honored pre URSR_24 
+remove prerollrate in URSR_24 so it works the same as previously
+
+* v4l2: conifiguring h264 output to AFBC only /double write compressed mode
+
+* v4l2: Ensure geometry ends in same state even if window, zoom-mode, afd 
+and pixel aspect-ratio are set (or arrives from stream) in different order.
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+
+

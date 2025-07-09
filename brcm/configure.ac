@@ -24,7 +24,7 @@ dnl AC_PREREQ([2.65])
 AC_INIT(westeros-soc, version-1.0, jeff_wannamaker@cable.comcast.com,westeros-soc)
 AC_CONFIG_SRCDIR([])
 AC_CONFIG_HEADERS([cfg/config.h])
-AC_CONFIG_MACRO_DIR([cfg])
+AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([cfg])
 AM_INIT_AUTOMAKE([foreign no-dist-gzip dist-bzip2 1.9])
 LT_INIT
@@ -43,6 +43,32 @@ AC_TYPE_SIZE_T
 AC_HEADER_STDBOOL
 
 IARM_CFLAGS=" "
+
+NXCLIENT_LOCAL=" "
+AC_ARG_ENABLE([nxclient_local],
+        AS_HELP_STRING([--enable-nxclient_local],[enable local nxclient ]),
+        [
+          case "${enableval}" in
+           yes) NXCLIENT_LOCAL=true ;;
+           no) NXCLIENT_LOCAL=false ;;
+          *) AC_MSG_ERROR([bad value ${enableval} for --enable-nxclient_local ]) ;;
+           esac
+           ],
+         [echo "local nxclient is enable"])
+AM_CONDITIONAL([NXCLIENT_LOCAL], [test x$NXCLIENT_LOCAL = xtrue])
+AC_SUBST(NXCLIENT_LOCAL)
+
+AC_ARG_ENABLE([brcmwaylandegl],
+              AS_HELP_STRING([--enable-brcmwaylandegl],[enable brcm wayland egl (default is no)]),
+              [
+                case "${enableval}" in
+                 yes) ENABLE_BRCM_WAYLANDEGL=true ;;
+                  no) ENABLE_BRCM_WAYLANDEGL=false ;;
+                   *) AC_MSG_ERROR([bad value ${enableval} for --enable-brcmwaylandegl]) ;;
+                esac
+              ],
+              [echo "use of brcm wayland-egl is disabled"])
+AM_CONDITIONAL([ENABLE_BRCM_WAYLANDEGL], [test x$ENABLE_BRCM_WAYLANDEGL = xtrue])
 
 # Checks for library functions.
 #Add the subdirectories to be considered for building.

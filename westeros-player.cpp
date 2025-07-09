@@ -20,11 +20,17 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <signal.h>
 #include <gst/gst.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "wayland-client.h"
 
 #define UNUSED( x ) ((void)(x))
+
+#define TIMEOUTS_PER_STEP (10)
 
 typedef struct _AppCtx
 {
@@ -36,7 +42,29 @@ typedef struct _AppCtx
    GstElement *westerossink;
    GstBus *bus;
    GMainLoop *loop;
+   guint timerId;
+   bool usePip;
+   bool useCameraLatency;
+   bool useLowDelay;
+   int latencyTarget;
+   bool useSecureVideo;
+   bool useRawSink;
+   bool emitTimeCodes;
+   bool noAudio;
+   gfloat rate;
+   gfloat zorder;
+   bool needToAddStateTimer;
+   bool needToSetRate;
+   bool stepVideo;
+   bool videoPeek;
+   int countDownToStep;
+   const char *videoRectOverride;
+   bool haveMode;
+   int outputWidth;
+   int outputHeight;
 } AppCtx;
+
+static AppCtx *g_ctx= 0;
 
 static void showUsage()
 {
@@ -44,6 +72,19 @@ static void showUsage()
    printf(" westeros_player [options] <uri>\n" );
    printf("  uri - URI of video asset to play\n" );
    printf("where [options] are:\n" );
+   printf("  -r x,y,w,h : video rect\n" );
+   printf("  -P : use PIP window\n" );
+   printf("  -C : use camera latency mode\n" );
+   printf("  -l : use low-delay\n" );
+   printf("  -L <target> : use latency target <target> (in ms)\n" );
+   printf("  -p : emit position logs\n" );
+   printf("  -s : secure video\n" );
+   printf("  -R <rate> : play with rate\n" );
+   printf("  -S : step frame by frame\n" );
+   printf("  -T : time codes\n" );
+   printf("  -M : no audio\n" );
+   printf("  -V : video peek\n" );
+   printf("  -z <zorder> : video z-order, 0.0 - 1.0\n");
    printf("  -? : show usage\n" );
    printf("\n" );   
 }
@@ -83,12 +124,16 @@ static void outputHandleMode( void *data,
    
    if ( flags & WL_OUTPUT_MODE_CURRENT )
    {
+      ctx->haveMode= true;
+      ctx->outputWidth= width;
+      ctx->outputHeight= height;
+
       printf("outputMode: %dx%d flags %X\n", width, height, flags);
    
-      if ( ctx->westerossink )
+      if ( ctx->westerossink && !ctx->videoRectOverride )
       {
          sprintf( work, "%d,%d,%d,%d", 0, 0, width, height );
-         g_object_set(G_OBJECT(ctx->westerossink), "window-set", work, NULL );      
+         g_object_set(G_OBJECT(ctx->westerossink), "window-set", work, NULL );
       }
    }
 }
@@ -146,12 +191,111 @@ static const struct wl_registry_listener registryListener =
 	registryHandleGlobalRemove
 };
 
+gboolean stateChangeTimerTimeout( gpointer userData )
+{
+   AppCtx *ctx= (AppCtx*)userData;
+
+   if ( ctx->pipeline )
+   {
+      GstState stateCurrent, statePending;
+
+      gst_element_get_state( ctx->pipeline, &stateCurrent, &statePending, 0 );
+
+      if ( (stateCurrent == GST_STATE_PAUSED) && (statePending == GST_STATE_VOID_PENDING) )
+      {
+         if ( ctx->needToSetRate )
+         {
+            if ( !gst_element_seek( ctx->pipeline,
+                                    ctx->rate,
+                                    GST_FORMAT_TIME,
+                                    (GstSeekFlags)(GST_SEEK_FLAG_FLUSH|GST_SEEK_FLAG_SEGMENT|GST_SEEK_FLAG_ACCURATE),
+                                    GST_SEEK_TYPE_SET, //start type
+                                    0, //start
+                                    GST_SEEK_TYPE_NONE, //stop type
+                                    GST_CLOCK_TIME_NONE //stop
+                                   ) )
+            {
+               g_print("Error: unable to set rate\n");
+               g_main_loop_quit( ctx->loop );
+               g_ctx= 0;
+            }
+            else
+            {
+               g_object_set( ctx->player, "mute", TRUE, NULL );
+
+               if ( GST_STATE_CHANGE_FAILURE == gst_element_set_state(ctx->pipeline, GST_STATE_PLAYING) )
+               {
+                  g_print("Error: unable to move to PLAYING\n");
+                  g_main_loop_quit( ctx->loop );
+                  g_ctx= 0;
+               }
+            }
+            goto exit;
+         }
+         else if ( ctx->stepVideo )
+         {
+            if ( --ctx->countDownToStep <= 0 )
+            {
+               GstState state, pending;
+               g_object_set(G_OBJECT(ctx->westerossink), "frame-step-on-preroll", TRUE, NULL );
+               gst_element_send_event( ctx->westerossink,
+                                       gst_event_new_step( GST_FORMAT_BUFFERS, 1, 1.0, FALSE, FALSE) );
+               gst_element_get_state(ctx->pipeline, &state, &pending, 100*1000000);
+               g_object_set(G_OBJECT(ctx->westerossink), "frame-step-on-preroll", FALSE, NULL );
+               ctx->countDownToStep= TIMEOUTS_PER_STEP;
+               if ( ctx->videoPeek )
+               {
+                  ctx->stepVideo= false;
+               }
+            }
+            return G_SOURCE_CONTINUE;
+         }
+         else
+         {
+            if ( --ctx->countDownToStep <= 0 )
+            {
+               if ( GST_STATE_CHANGE_FAILURE == gst_element_set_state(ctx->pipeline, GST_STATE_PLAYING) )
+               {
+                  g_print("Error: unable to move to PLAYING\n");
+                  g_main_loop_quit( ctx->loop );
+                  g_ctx= 0;
+               }
+               goto exit;
+            }
+            return G_SOURCE_CONTINUE;
+         }
+      }
+      else
+      {
+         return G_SOURCE_CONTINUE;
+      }
+   }
+
+exit:
+   return G_SOURCE_REMOVE;
+}
+
 static gboolean busCallback(GstBus *bus, GstMessage *message, gpointer data)
 {
    AppCtx *ctx= (AppCtx*)data;
    
    switch ( GST_MESSAGE_TYPE(message) ) 
    {
+      case GST_MESSAGE_STATE_CHANGED:
+         {
+            GstState oldState, newState, pendingState;
+            gst_message_parse_state_changed( message, &oldState, &newState, &pendingState );
+            if ( (oldState == GST_STATE_READY) &&
+                 (newState == GST_STATE_PAUSED) &&
+                 (pendingState == GST_STATE_VOID_PENDING) &&
+                 ctx->needToAddStateTimer  )
+            {
+               ctx->needToAddStateTimer= false;
+
+               g_timeout_add( 500, stateChangeTimerTimeout, ctx );
+            }
+         }
+         break;
       case GST_MESSAGE_ERROR: 
          {
             GError *error;
@@ -166,16 +310,24 @@ static gboolean busCallback(GstBus *bus, GstMessage *message, gpointer data)
             g_error_free(error);
             g_free(debug);
             g_main_loop_quit( ctx->loop );
+            g_ctx= 0;
          }
          break;
      case GST_MESSAGE_EOS:
          g_print( "EOS ctx %p\n", ctx );
          g_main_loop_quit( ctx->loop );
+         g_ctx= 0;
          break;
      default:
          break;
     }
     return TRUE;
+}
+
+static void newTimeCode( GstElement *element, guint hours, guint minutes, guint seconds, void *userData )
+{
+   AppCtx *appCtx= (AppCtx*)userData;
+   fprintf(stderr,"Got timecode signal: %02d:%02d:%02d\n", hours, minutes, seconds);
 }
 
 bool createPipeline( AppCtx *ctx )
@@ -209,16 +361,81 @@ bool createPipeline( AppCtx *ctx )
    }
    gst_object_ref( ctx->player );
 
-   ctx->westerossink= gst_element_factory_make( "westerossink", "vsink" );
-   if ( !ctx->westerossink )
+   if ( ctx->noAudio )
    {
-      printf("Error: unable to create westerossink instance\n" );
-      goto exit;
+      g_object_set(G_OBJECT(ctx->player), "flags", 0x01, NULL );
+   }
+
+   if ( ctx->useRawSink )
+   {
+      ctx->westerossink= gst_element_factory_make( "westerosrawsink", "vsink" );
+      if ( !ctx->westerossink )
+      {
+         printf("Error: unable to create westerosrawsink instance\n" );
+         goto exit;
+      }
+   }
+   else
+   {
+      ctx->westerossink= gst_element_factory_make( "westerossink", "vsink" );
+      if ( !ctx->westerossink )
+      {
+         printf("Error: unable to create westerossink instance\n" );
+         goto exit;
+      }
    }
    gst_object_ref( ctx->westerossink );
-   
+
+   if ( ctx->usePip )
+   {
+      g_object_set(G_OBJECT(ctx->westerossink), "pip", TRUE, NULL );
+   }
+
+   if ( ctx->useCameraLatency )
+   {
+      g_object_set(G_OBJECT(ctx->westerossink), "camera-latency", TRUE, NULL );
+   }
+
+   if ( ctx->useLowDelay )
+   {
+      g_object_set(G_OBJECT(ctx->westerossink), "low-delay", TRUE, NULL );
+      if ( ctx->latencyTarget )
+      {
+         g_object_set(G_OBJECT(ctx->westerossink), "latency-target", ctx->latencyTarget, NULL );
+      }
+   }
+
+   if ( ctx->useSecureVideo )
+   {
+      g_object_set(G_OBJECT(ctx->westerossink), "secure-video", TRUE, NULL );
+   }
+
+   if ( ctx->stepVideo )
+   {
+      g_object_set(G_OBJECT(ctx->westerossink), "async", TRUE, NULL );
+   }
+
+   if ( ctx->emitTimeCodes )
+   {
+      g_signal_connect( G_OBJECT(ctx->westerossink), "timecode-callback", G_CALLBACK(newTimeCode), ctx );
+      g_object_set(G_OBJECT(ctx->westerossink), "enable-timecode", TRUE, NULL );
+   }
+
+   g_object_set(G_OBJECT(ctx->westerossink), "zorder", ctx->zorder, NULL );
+
    g_object_set(G_OBJECT(ctx->player), "video-sink", ctx->westerossink, NULL );
-   
+
+   if ( ctx->videoRectOverride )
+   {
+      g_object_set(G_OBJECT(ctx->westerossink), "window-set", ctx->videoRectOverride, NULL );
+   }
+   else if ( ctx->haveMode )
+   {
+      char work[32];
+      sprintf( work, "%d,%d,%d,%d", 0, 0, ctx->outputWidth, ctx->outputHeight );
+      g_object_set(G_OBJECT(ctx->westerossink), "window-set", work, NULL );
+   }
+
    if ( !gst_bin_add( GST_BIN(ctx->pipeline), ctx->player) )
    {
       printf("Error: unable to add playbin to pipeline\n");
@@ -260,14 +477,54 @@ void destroyPipeline( AppCtx *ctx )
    }
 }
 
+static void signalHandler(int signum)
+{
+   printf("signalHandler: signum %d\n", signum);
+   if ( g_ctx )
+   {
+	   g_main_loop_quit( g_ctx->loop );
+	   g_ctx= 0;
+	}
+}
+
+gboolean progressTimerTimeout( gpointer userData )
+{
+   AppCtx *ctx= (AppCtx*)userData;
+
+   if ( ctx->pipeline )
+   {
+      gint64 pos= 0;
+      if ( gst_element_query_position( ctx->pipeline, GST_FORMAT_TIME, &pos ) )
+      {
+         printf("westeros_player: pos: %" GST_TIME_FORMAT "\n", GST_TIME_ARGS(pos));
+      }
+   }
+   return G_SOURCE_CONTINUE;
+}
+
 int main( int argc, char **argv )
 {
    int result= -1;
    int argidx;
    const char *uri= 0;
+   bool usePip= false;
+   bool useCameraLatency= false;
+   bool useLowDelay= false;
+   int latencyTarget= 0;
+   bool emitPosition= false;
+   bool emitTimeCodes= false;
+   bool noAudio= false;
+   bool useSecureVideo= false;
+   bool stepVideo= false;
+   bool videoPeek= false;
+   bool useRawSink= false;
+   gfloat rate= 1.0f;
+   gfloat zorder= 0.0f;
+   const char *videoRect= 0;
    AppCtx *ctx= 0;
+   struct sigaction sigint;
    
-   printf("westeros_test: v1.0\n\n" );
+   printf("westeros_player: v1.0\n\n" );
    
    if ( argc < 2 )
    {
@@ -282,6 +539,73 @@ int main( int argc, char **argv )
       {
          switch( argv[argidx][1] )
          {
+            case 'r':
+               if ( argidx+1 < argc )
+               {
+                  videoRect= argv[++argidx];
+               }
+               break;
+            case 'P':
+               usePip= true;
+               break;
+            case 'C':
+               useCameraLatency= true;
+               break;
+            case 'l':
+               useLowDelay= true;
+               break;
+            case 'L':
+               if ( argidx+1 < argc )
+               {
+                  int t= atoi( argv[++argidx] );
+                  if ( (t > 0) && (t <= 2000) )
+                  {
+                     latencyTarget= t;
+                  }
+               }
+               break;
+            case 'p':
+               emitPosition= true;
+               break;
+            case 's':
+               useSecureVideo= true;
+               break;
+            case 'R':
+               if ( argidx+1 < argc )
+               {
+                  float r= atof( argv[++argidx] );
+                  if ( r > 0.0 )
+                  {
+                     rate= r;
+                  }
+               }
+               break;
+            case 'S':
+               stepVideo= true;
+               break;
+            case 'T':
+               emitTimeCodes= true;
+               break;
+            case 'M':
+               noAudio= true;
+               break;
+            case 'V':
+               videoPeek= true;
+               stepVideo= true;
+               break;
+            case 'z':
+               if ( argidx+1 < argc )
+               {
+                  float z= atof( argv[++argidx] );
+                  if ( z >= 0.0 )
+                  {
+                     zorder= z;
+                  }
+               }
+               break;
+            case 'a':
+               useRawSink= true;
+               break;
             case '?':
                showUsage();
                goto exit;
@@ -320,7 +644,30 @@ int main( int argc, char **argv )
       printf("Error: unable to allocate application context\n");
       goto exit;
    }
-   
+
+   ctx->usePip= usePip;
+   ctx->useCameraLatency= useCameraLatency;
+   ctx->useLowDelay= useLowDelay;
+   ctx->latencyTarget= latencyTarget;
+   ctx->useSecureVideo= useSecureVideo;
+   ctx->useRawSink= useRawSink;
+   ctx->videoRectOverride= videoRect;
+   ctx->emitTimeCodes= emitTimeCodes;
+   ctx->noAudio= noAudio;
+   ctx->stepVideo= stepVideo;
+   ctx->videoPeek= videoPeek;
+   ctx->countDownToStep= TIMEOUTS_PER_STEP;
+   ctx->rate= rate;
+   ctx->zorder= zorder;
+   if ( rate != 1.0f )
+   {
+      ctx->needToSetRate= true;
+   }
+   if ( ctx->needToSetRate || ctx->stepVideo )
+   {
+      ctx->needToAddStateTimer= true;
+   }
+
    ctx->display= wl_display_connect( NULL );
    if ( !ctx->display )
    {
@@ -345,11 +692,99 @@ int main( int argc, char **argv )
       
       if ( ctx->loop )
       {
-         g_object_set(G_OBJECT(ctx->player), "uri", uri, NULL );
-         
-         if ( GST_STATE_CHANGE_FAILURE != gst_element_set_state(ctx->pipeline, GST_STATE_PLAYING) )
+         bool startPaused= false;
+
+         if ( emitPosition )
          {
-            g_main_loop_run( ctx->loop );
+            ctx->timerId= g_timeout_add( 1000, progressTimerTimeout, ctx );
+         }
+
+         g_object_set(G_OBJECT(ctx->player), "uri", uri, NULL );
+
+         if ( ctx->needToSetRate || ctx->stepVideo )
+         {
+            startPaused= true;
+         }
+         if ( GST_STATE_CHANGE_FAILURE != gst_element_set_state(ctx->pipeline, startPaused ? GST_STATE_PAUSED : GST_STATE_PLAYING) )
+         {
+            sigint.sa_handler = signalHandler;
+            sigemptyset(&sigint.sa_mask);
+            sigint.sa_flags = SA_RESETHAND;
+            sigaction(SIGINT, &sigint, NULL);
+
+            g_ctx= ctx;
+
+            while( g_ctx )
+            {
+               struct stat finfo;
+               if ( stat( "/tmp/wp-pause", &finfo ) == 0 )
+               {
+                  remove( "/tmp/wp-pause" );
+                  gst_element_set_state(ctx->pipeline, GST_STATE_PAUSED);
+               }
+               else if ( stat( "/tmp/wp-play", &finfo ) == 0 )
+               {
+                  remove( "/tmp/wp-play" );
+                  gst_element_set_state(ctx->pipeline, GST_STATE_PLAYING);
+               }
+               else if ( stat( "/tmp/wp-show", &finfo ) == 0 )
+               {
+                  remove( "/tmp/wp-show" );
+                  g_object_set(G_OBJECT(ctx->westerossink), "show-video-window", TRUE, NULL );
+               }
+               else if ( stat( "/tmp/wp-hide", &finfo ) == 0 )
+               {
+                  remove( "/tmp/wp-hide" );
+                  g_object_set(G_OBJECT(ctx->westerossink), "show-video-window", FALSE, NULL );
+               }
+               else if ( stat( "/tmp/wp-zoom", &finfo ) == 0 )
+               {
+                  static bool full= true;
+                  char work[32];
+                  remove( "/tmp/wp-zoom" );
+                  if ( full )
+                  {
+                     sprintf( work, "%d,%d,%d,%d", 200, 200, 640, 360 );
+                  }
+                  else
+                  {
+                     sprintf( work, "%d,%d,%d,%d", 0, 0, ctx->outputWidth, ctx->outputHeight );
+                  }
+                  full= !full;
+                  g_object_set(G_OBJECT(ctx->westerossink), "window-set", work, NULL );
+               }
+               else if ( stat( "/tmp/wp-peek", &finfo ) == 0 )
+               {
+                  GstState state, pending;
+                  remove( "/tmp/wp-peek" );
+
+                  gst_element_seek( ctx->pipeline,
+                                    1.0,
+                                    GST_FORMAT_TIME,
+                                    (GstSeekFlags)(GST_SEEK_FLAG_FLUSH|GST_SEEK_FLAG_SEGMENT|GST_SEEK_FLAG_ACCURATE),
+                                    GST_SEEK_TYPE_SET, //start type
+                                    0, //start
+                                    GST_SEEK_TYPE_NONE, //stop type
+                                    GST_CLOCK_TIME_NONE //stop
+                                   );
+
+                  usleep( 30000 );
+
+                  g_object_set(G_OBJECT(ctx->westerossink), "frame-step-on-preroll", TRUE, NULL );
+                  gst_element_send_event( ctx->westerossink,
+                                          gst_event_new_step( GST_FORMAT_BUFFERS, 1, 1.0, FALSE, FALSE) );
+                  gst_element_get_state(ctx->pipeline, &state, &pending, 100*1000000);
+                  g_object_set(G_OBJECT(ctx->westerossink), "frame-step-on-preroll", FALSE, NULL );
+               }
+               usleep( 10000 );
+               g_main_context_iteration( NULL, FALSE );
+            }
+         }
+
+         if ( ctx->timerId )
+         {
+            g_source_remove( ctx->timerId );
+            ctx->timerId= 0;
          }
       }
       else

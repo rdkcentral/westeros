@@ -1,0 +1,36 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.50 Release Notes
+------------------------------
+
+Date: Oct 13, 2023
+Tag: Westeros-1.01.50
+Changes:
+
+* core: fix default zorder for embedded
+
+* v4l2: send vpc rect updates to video server
+
+* drm: no video fence for kept frames
+
+* essos: fix vector iteration in essFreeInputDevices
+
+* brcm: fix deadlock in sw decoder data probe destruction
+
+* v4l2: svp support updates
+-add init/term methods
+-add method to pass caps
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+
+

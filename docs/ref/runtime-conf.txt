@@ -1,0 +1,52 @@
+Runtime Configuration
+===============================================================================
+===============================================================================
+
+Amlogic SOC
+===============================================================================
+
+DRM master process
+-------------------------------------------------------------------------------
+
+The DRM (Direct Render Manager) master process is the process that acts as the
+top level compositor and which hosts the westeros-soc-drm video server.  On
+devices using an Amlogic SOC this process should include the following in its
+env:
+
+export XDG_RUNTIME_DIR=<path>
+export LD_PRELOAD=libwesteros_gl.so.0.0.0
+export WESTEROS_GL_GRAPHICS_MAX_SIZE=1920x1080
+export WESTEROS_GL_MODE=3840x2160x60
+export WESTEROS_GL_USE_REFRESH_LOCK=1
+export WESTEROS_GL_USE_AMLOGIC_AVSYNC=1
+
+where:
+
+<path> is the location used as the XDG runtime dir.  Typically this is
+either /tmp or /run.
+
+Last modified: Jan 31, 2023
+
+
+
+Video playback on Amlogoc SOC
+-------------------------------------------------------------------------------
+
+Processes performing media playback with gstreamer on devices using Amlogic SOC
+should include the following in their env:
+
+export XDG_RUNTIME_DIR=<path>
+export WAYLAND_DISPLAY=<display>
+export WESTEROS_SINK_AMLOGIC_USE_DMABUF=1
+export WESTEROS_SINK_USE_FREERUN=1
+export WESTEROS_SINK_USE_ESSRMGR=1
+
+where:
+
+<path> is the location used as the XDG runtime dir.  Typically this is
+either /tmp or /run.
+
+<display> is the name of the Wayland display to use.
+
+Last modified: Jan 31, 2023
+

@@ -1,0 +1,56 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.42 Release Notes
+------------------------------
+
+Date: Feb 13, 2023
+Tag: Westeros-1.01.42
+Changes:
+
+* v4l2: add support for VIDIOC_S_EXT_CTRLS
+
+-on Amlogic, use VIDIOC_S_EXT_CTRLS instead of VIDIOC_S_PARM when the
+Linux version is >= 5.15
+
+* brcm: game mode updates
+-add support for HDMI ALLM
+-improve suppression of video underflows with immediate-output
+-don't alter decode rate when using eGame latency mode
+
+* drm, v4l2: add eos msg to video server
+-add an eos msg that westerossink can send to the westeros-soc-drm
+video server to indicate eos.  This enables the video server to flush
+the display queue in case there is a start threshold keeping the frames
+from displaying.
+
+* drm: fix potential use of null ptr
+
+* brcm: allow HDR source-follow to be disabled.
+
+Disabled by default at build time.  Enable by defining
+preprocessor symbol NEXUS_HAVE_HDMI_OVERRIDE_MATRIX
+
+* essos: add runtime logging verbosity control
+-set log level with env var ESSOS_DEBUG=level where level is 0-4
+
+* drm: make refresh lock available with any driver
+
+* essos: fix event loss during hot plug handling
+
+* brcm: fix eotf handling with gst 1.18
+
+* sink: log gstreamer version
+
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+

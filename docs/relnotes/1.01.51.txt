@@ -1,0 +1,38 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.51 Release Notes
+------------------------------
+
+Date: Nov 13, 2023
+Tag: Westeros-1.01.51
+Changes:
+
+* v4l2: support on-the-fly codec changes
+
+* brcm: use all decode mode for < 4x trick speeds
+
+* v4l2: expand codec change support
+
+* v4l2: fix video server pause race condition
+-if the video server has been paused and there is a seek followed by
+a transition from paused to playing there was a chance the video output
+thread would think the video server was not paused thus leaving it paused
+resulting in black video
+
+* drm: clear frameAdvance on frame pop in play state
+
+* v4l2: process video server messages while paused
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+
+

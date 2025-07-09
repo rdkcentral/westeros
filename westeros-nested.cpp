@@ -21,6 +21,7 @@
 #include <memory.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <sys/socket.h>
 
 #include <map>
 #include <vector>
@@ -72,6 +73,7 @@ typedef struct _WstNestedConnection
    bool started;
    bool stopRequested;
    pthread_t nestedThreadId;
+   pthread_mutex_t buffersToReleaseMutex;
    uint32_t pointerEnterSerial;
    std::vector<WstNestedBufferInfo> buffersToRelease;
    std::map<struct wl_surface*, int32_t> surfaceMap;
@@ -310,6 +312,59 @@ static const struct wl_pointer_listener pointerListener= {
    pointerHandleAxis
 };
 
+static void touchHandleDown( void *data, struct wl_touch *touch,
+                             uint32_t serial, uint32_t time, struct wl_surface *surface,
+                             int32_t id, wl_fixed_t sx, wl_fixed_t sy )
+{
+   WstNestedConnection *nc= (WstNestedConnection*)data;
+
+   if ( nc->nestedListener )
+   {
+      nc->nestedListener->touchHandleDown( nc->nestedListenerUserData,
+                                           surface, time, id, sx, sy );
+   }
+}
+
+static void touchHandleUp( void *data, struct wl_touch *touch,
+                           uint32_t serial, uint32_t time, int32_t id )
+{
+   WstNestedConnection *nc= (WstNestedConnection*)data;
+
+   if ( nc->nestedListener )
+   {
+      nc->nestedListener->touchHandleUp( nc->nestedListenerUserData, time, id );
+   }
+}
+
+static void touchHandleMotion( void *data, struct wl_touch *touch,
+                               uint32_t time, int32_t id, wl_fixed_t sx, wl_fixed_t sy )
+{
+   WstNestedConnection *nc= (WstNestedConnection*)data;
+
+   if ( nc->nestedListener )
+   {
+      nc->nestedListener->touchHandleMotion( nc->nestedListenerUserData,
+                                             time, id, sx, sy );
+   }
+}
+
+static void touchHandleFrame( void *data, struct wl_touch *touch )
+{
+   WstNestedConnection *nc= (WstNestedConnection*)data;
+
+   if ( nc->nestedListener )
+   {
+      nc->nestedListener->touchHandleFrame( nc->nestedListenerUserData );
+   }
+}
+
+static const struct wl_touch_listener touchListener= {
+   touchHandleDown,
+   touchHandleUp,
+   touchHandleMotion,
+   touchHandleFrame
+};
+
 static void seatCapabilities( void *data, struct wl_seat *seat, uint32_t capabilities )
 {
 	WstNestedConnection *nc = (WstNestedConnection*)data;
@@ -327,6 +382,7 @@ static void seatCapabilities( void *data, struct wl_seat *seat, uint32_t capabil
    if ( capabilities & WL_SEAT_CAPABILITY_TOUCH )
    {
       nc->touch= wl_seat_get_touch( nc->seat );
+      wl_touch_add_listener( nc->touch, &touchListener, nc );
    }   
    wl_display_roundtrip( nc->display );
 }
@@ -393,7 +449,9 @@ static void vpcVideoXformChange(void *data,
                                 uint32_t x_scale_num,
                                 uint32_t x_scale_denom,
                                 uint32_t y_scale_num,
-                                uint32_t y_scale_denom)
+                                uint32_t y_scale_denom,
+                                uint32_t output_width,
+                                uint32_t output_height )
 {                                
    WST_UNUSED(vpcSurface);
 	WstNestedConnection *nc = (WstNestedConnection*)data;
@@ -411,7 +469,9 @@ static void vpcVideoXformChange(void *data,
                                                   x_scale_num,
                                                   x_scale_denom,
                                                   y_scale_num,
-                                                  y_scale_denom );
+                                                  y_scale_denom,
+                                                  output_width,
+                                                  output_height );
       }
    }
 }
@@ -568,7 +628,12 @@ static void* wstNestedThread( void *data )
    WstNestedConnection *nc= (WstNestedConnection*)data;
    
    nc->started= true;
-   
+
+   if ( nc->nestedListener )
+   {
+      nc->nestedListener->connectionStarted( nc->nestedListenerUserData );
+   }
+
    while ( !nc->stopRequested )
    {
       if ( wl_display_dispatch( nc->display ) == -1 )
@@ -579,10 +644,12 @@ static void* wstNestedThread( void *data )
    }
  
    nc->started= false;
-   if ( !nc->stopRequested )
+   if ( nc->nestedListener && !nc->stopRequested )
    {
       nc->nestedListener->connectionEnded( nc->nestedListenerUserData );
    }
+
+   return NULL;
 }
 
 WstNestedConnection* WstNestedConnectionCreate( WstCompositor *wctx, 
@@ -607,6 +674,7 @@ WstNestedConnection* WstNestedConnectionCreate( WstCompositor *wctx,
       nc->surfaceInfoMap= std::map<struct wl_surface*, WstNestedSurfaceInfo*>();
       nc->vpcSurfaceMap= std::map<struct wl_vpc_surface*, struct wl_surface*>();
       nc->buffersToRelease= std::vector<WstNestedBufferInfo>();
+      pthread_mutex_init( &nc->buffersToReleaseMutex, 0 );
 
       nc->display= wl_display_connect( displayName );
       if ( !nc->display )
@@ -681,8 +749,11 @@ void WstNestedConnectionDisconnect( WstNestedConnection *nc )
       if ( nc->started )
       {
          nc->stopRequested= true;
-         wl_display_flush( nc->display );
-         wl_display_roundtrip( nc->display );
+         int fd= wl_display_get_fd( nc->display );
+         if ( fd >= 0 )
+         {
+            shutdown( fd, SHUT_RDWR );
+         }
          pthread_join( nc->nestedThreadId, NULL );
       }
    }
@@ -696,8 +767,11 @@ void WstNestedConnectionDestroy( WstNestedConnection *nc )
       if ( threadStarted )
       {
          nc->stopRequested= true;
-         wl_display_flush( nc->display );
-         wl_display_roundtrip( nc->display );
+         int fd= wl_display_get_fd( nc->display );
+         if ( fd >= 0 )
+         {
+            shutdown( fd, SHUT_RDWR );
+         }
          pthread_join( nc->nestedThreadId, NULL );
       }
       if ( nc->touch )
@@ -760,6 +834,7 @@ void WstNestedConnectionDestroy( WstNestedConnection *nc )
          nc->display= 0;
       }
       nc->surfaceMap.clear();
+      pthread_mutex_destroy( &nc->buffersToReleaseMutex );
       free( nc );
    }
 }
@@ -835,16 +910,16 @@ void WstNestedConnectionDestroySurface( WstNestedConnection *nc, struct wl_surfa
          }
       }
       {
-         for ( std::vector<WstNestedBufferInfo>::iterator it= nc->buffersToRelease.begin(); 
-               it != nc->buffersToRelease.end();
-               ++it )
+         pthread_mutex_lock( &nc->buffersToReleaseMutex );
+         for ( std::vector<WstNestedBufferInfo>::iterator it= nc->buffersToRelease.begin();
+               it != nc->buffersToRelease.end(); )
          {
             if ( surface == (*it).surface )
-            {
-               it= nc->buffersToRelease.erase(it);
-               if ( it == nc->buffersToRelease.end() ) break;
-            }
+               it = nc->buffersToRelease.erase(it);
+            else
+                ++it;
          }         
+         pthread_mutex_unlock( &nc->buffersToReleaseMutex );
       }
       wl_surface_destroy( surface );
       wl_display_flush( nc->display );      
@@ -962,7 +1037,7 @@ void WstNestedConnectionAttachAndCommit( WstNestedConnection *nc,
 {
    if ( nc )
    {
-      wl_surface_attach( surface, buffer, 0, 0 );
+      wl_surface_attach( surface, buffer, x, y );
       wl_surface_damage( surface, x, y, width, height);
       wl_surface_commit( surface );
       wl_display_flush( nc->display );      
@@ -995,7 +1070,9 @@ static void buffer_release( void *data, struct wl_buffer *buffer )
             WstNestedBufferInfo bufferInfo;
             bufferInfo.surface= binfo->surface;
             bufferInfo.bufferRemote= bufferRemote;
+            pthread_mutex_lock( &binfo->nc->buffersToReleaseMutex );
             binfo->nc->buffersToRelease.push_back( bufferInfo );
+            pthread_mutex_unlock( &binfo->nc->buffersToReleaseMutex );
          }
       }
       free(binfo);
@@ -1024,7 +1101,7 @@ void WstNestedConnectionAttachAndCommitDevice( WstNestedConnection *nc,
       struct wl_buffer *buffer;
       
       buffer= wl_sb_create_buffer( nc->sb, 
-                                   (uint32_t)deviceBuffer, 
+                                   (uintptr_t)deviceBuffer,
                                    width, 
                                    height, 
                                    stride,
@@ -1062,8 +1139,42 @@ void WstNestedConnectionAttachAndCommitDevice( WstNestedConnection *nc,
    }
 }                                               
 
+void WstNestedConnectionAttachAndCommitClone( WstNestedConnection *nc,
+                                              struct wl_surface *surface,
+                                              struct wl_resource *bufferRemote,
+                                              struct wl_buffer *bufferClone,
+                                              int x,
+                                              int y,
+                                              int width,
+                                              int height )
+{
+   if ( nc && bufferRemote && bufferClone )
+   {
+      bufferInfo *binfo= (bufferInfo*)malloc( sizeof(bufferInfo) );
+      if ( binfo )
+      {
+         binfo->nc= nc;
+         binfo->surface= surface;
+         binfo->bufferRemote= bufferRemote;
+         wl_buffer_add_listener( bufferClone, &wl_buffer_listener, binfo );
+
+         std::map<struct wl_surface*,WstNestedSurfaceInfo*>::iterator it= nc->surfaceInfoMap.find( surface );
+         if ( it != nc->surfaceInfoMap.end() )
+         {
+            WstNestedSurfaceInfo *surfaceInfo= it->second;
+            surfaceInfo->buffer= bufferClone;
+         }
+      }
+      wl_surface_attach( surface, bufferClone, 0, 0 );
+      wl_surface_damage( surface, x, y, width, height);
+      wl_surface_commit( surface );
+      wl_display_flush( nc->display );
+   }
+}
+
 void WstNestedConnectionReleaseRemoteBuffers( WstNestedConnection *nc )
 {
+   pthread_mutex_lock( &nc->buffersToReleaseMutex );
    while( nc->buffersToRelease.size() )
    {
       std::vector<WstNestedBufferInfo>::iterator it= nc->buffersToRelease.begin();
@@ -1071,6 +1182,7 @@ void WstNestedConnectionReleaseRemoteBuffers( WstNestedConnection *nc )
       wl_buffer_send_release( bufferResource );
       nc->buffersToRelease.erase(it);
    }
+   pthread_mutex_unlock( &nc->buffersToReleaseMutex );
 }
 
 void WstNestedConnectionPointerSetCursor( WstNestedConnection *nc, 

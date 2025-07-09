@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <memory.h>
+#include <pthread.h>
 
 #include "westeros-gl.h"
 
@@ -28,8 +29,15 @@
 #include "nexus_config.h"
 #include "nexus_platform.h"
 #include "nexus_display.h"
+#if NEXUS_PLATFORM_VERSION_MAJOR >= 16
+#include "nexus_video_decoder.h"
+#endif
 #include "default_nexus.h"
 #include "nxclient.h"
+
+#include <vector>
+
+#define DISPLAY_SAFE_BORDER_PERCENT (5)
 
 /*
  * WstGLNativePixmap:
@@ -49,9 +57,50 @@ typedef struct _WstGLCtx
    NEXUS_Graphics2DHandle gfx;
    bool gfxEventCreated;
    BKNI_EventHandle gfxEvent;
+   bool secureGraphics;
 } WstGLCtx;
 
+typedef struct _WstGLDisplayCtx
+{
+   NxClient_AllocSettings allocSettings;
+   NxClient_AllocResults allocResults;
+   NEXUS_SurfaceClientHandle surfaceClient;
+   int displayWidth;
+   int displayHeight;
+} WstGLDisplayCtx;
+
+typedef struct _WstGLSizeCBInfo
+{
+   WstGLCtx* ctx;
+   void *userData;
+   WstGLDisplaySizeCallback listener;
+   int width;
+   int height;
+} WstGLSizeCBInfo;
+
 static int ctxCount= 0;
+static pthread_mutex_t g_mutex= PTHREAD_MUTEX_INITIALIZER;
+static WstGLDisplayCtx *gDisplayCtx= 0;
+static std::vector<WstGLSizeCBInfo> gSizeListeners;
+
+static bool useSecureGraphics( void )
+{
+   bool useSecure= false;
+
+   #if NEXUS_PLATFORM_VERSION_MAJOR >= 16
+   char *env= getenv("WESTEROS_SECURE_GRAPHICS");
+   if ( env && atoi(env) )
+   {
+      NEXUS_VideoDecoderCapabilities videoDecoderCap;
+      NEXUS_GetVideoDecoderCapabilities(&videoDecoderCap);
+      useSecure=  (videoDecoderCap.memory[0].secure == NEXUS_SecureVideo_eSecure) ? true : false;
+   }
+   #endif
+
+   setenv("WESTEROS_RENDER_PROTECTED_CONTENT", (useSecure ?  "1" : "0"), 1);
+
+   return useSecure;
+}
 
 static void gfxCheckPoint( void *data, int unused )
 {
@@ -59,31 +108,167 @@ static void gfxCheckPoint( void *data, int unused )
    BKNI_SetEvent((BKNI_EventHandle)data);
 }
 
+static void wstGLGetDisplaySize( void )
+{
+   NEXUS_Error rc= NEXUS_SUCCESS;
+   NEXUS_SurfaceClientStatus scStatus;
+
+   pthread_mutex_lock( &g_mutex );
+   if ( gDisplayCtx && gDisplayCtx->surfaceClient )
+   {
+      rc= NEXUS_SurfaceClient_GetStatus( gDisplayCtx->surfaceClient, &scStatus );
+      if ( rc == NEXUS_SUCCESS )
+      {
+         const char *env= 0;
+         gDisplayCtx->displayWidth= scStatus.display.framebuffer.width;
+         gDisplayCtx->displayHeight= scStatus.display.framebuffer.height;
+         printf("WstGLGetDisplaySize: display %dx%d\n", gDisplayCtx->displayWidth, gDisplayCtx->displayHeight);
+         env= getenv("WESTEROS_GL_GRAPHICS_SD_USE_720");
+         if ( !env &&
+              (gDisplayCtx->displayWidth == 720) &&
+              (gDisplayCtx->displayHeight == 480) )
+         {
+            gDisplayCtx->displayWidth= 640;
+            printf("WstGLGetDisplaySize: using SD display %dx%d\n", gDisplayCtx->displayWidth, gDisplayCtx->displayHeight);
+         }
+      }
+   }
+   pthread_mutex_unlock( &g_mutex );
+}
+
+static void wstGLNotifySizeListeners( void )
+{
+   int width=0, height=0;
+   bool haveSize= false;
+   std::vector<WstGLSizeCBInfo> listeners;
+
+   pthread_mutex_lock( &g_mutex );
+   if ( gDisplayCtx )
+   {
+      haveSize= true;
+      width= gDisplayCtx->displayWidth;
+      height= gDisplayCtx->displayHeight;
+
+      for ( std::vector<WstGLSizeCBInfo>::iterator it= gSizeListeners.begin();
+            it != gSizeListeners.end();
+            ++it )
+      {
+         WstGLSizeCBInfo cbInfo= (*it);
+         if ( (width != cbInfo.width) || (height != cbInfo.height) )
+         {
+            (*it).width= width;
+            (*it).height= height;
+            listeners.push_back( cbInfo );
+         }
+      }
+   }
+   pthread_mutex_unlock( &g_mutex );
+
+   if ( haveSize )
+   {
+      for ( std::vector<WstGLSizeCBInfo>::iterator it= listeners.begin();
+            it != listeners.end();
+            ++it )
+      {
+         WstGLSizeCBInfo cbInfo= (*it);
+         cbInfo.listener( cbInfo.userData, width, height );
+      }
+   }
+   listeners.clear();
+}
+
+static void displayStatusChangedCallback( void *context, int param )
+{
+   wstGLGetDisplaySize();
+   wstGLNotifySizeListeners();
+}
+
 WstGLCtx* WstGLInit()
 {
    WstGLCtx *ctx= 0;
    NEXUS_Error rc= NEXUS_SUCCESS;
    NxClient_JoinSettings joinSettings;
+   NEXUS_Graphics2DOpenSettings gfxOpenSettings;
 
    ctx= (WstGLCtx*)calloc( 1, sizeof(WstGLCtx) );
    if ( ctx )
    {
+      pthread_mutex_lock( &g_mutex );
       if ( ctxCount == 0 )
       {
          NxClient_GetDefaultJoinSettings( &joinSettings );
          snprintf( joinSettings.name, NXCLIENT_MAX_NAME, "%s", "westeros-gl");
          rc= NxClient_Join( &joinSettings );
          printf("WstGLInit: NxClient_Join rc=%X as %s\n", rc, joinSettings.name );
+
+         gDisplayCtx= (WstGLDisplayCtx*)calloc( 1, sizeof(WstGLDisplayCtx));
+         if ( gDisplayCtx )
+         {
+            NxClient_GetDefaultAllocSettings( &gDisplayCtx->allocSettings );
+            gDisplayCtx->allocSettings.surfaceClient= 1;
+            rc= NxClient_Alloc( &gDisplayCtx->allocSettings, &gDisplayCtx->allocResults );
+            if ( rc == NEXUS_SUCCESS )
+            {
+               gDisplayCtx->surfaceClient= NEXUS_SurfaceClient_Acquire(gDisplayCtx->allocResults.surfaceClient[0].id);
+               if ( gDisplayCtx->surfaceClient )
+               {
+                  NEXUS_SurfaceClientSettings settings;
+
+                  NEXUS_SurfaceClient_GetSettings( gDisplayCtx->surfaceClient, &settings );
+                  settings.displayStatusChanged.callback= displayStatusChangedCallback;
+                  settings.displayStatusChanged.context= gDisplayCtx;
+                  settings.displayStatusChanged.param= 0;
+                  rc= NEXUS_SurfaceClient_SetSettings( gDisplayCtx->surfaceClient, &settings );
+                  if ( rc != NEXUS_SUCCESS )
+                  {
+                     printf("WstGLInit: NEXUS_SurfaceClient_SetSettings failed: rc=%X\n", rc);
+                  }
+               }
+               else
+               {
+                  printf("WstGLInit: NEXUS_SurfaceClient_Acquire failed\n");
+               }
+            }
+            else
+            {
+               printf("WstGLInit: NxClient_Alloc rc=%X", rc);
+            }
+         }
       }
       ++ctxCount;
+      pthread_mutex_unlock( &g_mutex );
 
+      #if ! defined (WESTEROS_HAVE_BRCM_WAYLAND_EGL)
       NXPL_RegisterNexusDisplayPlatform( &ctx->nxplHandle, 0 );
-      printf("WstGLInit: nxplHandle %x\n", ctx->nxplHandle );
+      #endif
+      printf("WstGLInit: nxplHandle %p\n", ctx->nxplHandle );
       
       BKNI_CreateEvent( &ctx->gfxEvent );
       ctx->gfxEventCreated= true;
       
-      ctx->gfx= NEXUS_Graphics2D_Open(NEXUS_ANY_ID, NULL);
+      ctx->secureGraphics= useSecureGraphics();
+      printf("WstGLInit: secure graphics: %d\n", ctx->secureGraphics);
+      if ( ctx->secureGraphics )
+      {
+         NxClient_DisplaySettings displaySettings;
+
+         NxClient_GetDisplaySettings( &displaySettings );
+         #if NEXUS_PLATFORM_VERSION_MAJOR >= 16
+         displaySettings.secure= ctx->secureGraphics;
+         #endif
+         rc= NxClient_SetDisplaySettings( &displaySettings );
+         if ( rc != NEXUS_SUCCESS )
+         {
+            printf("WstGLInit: NxClient_SetDisplaySettings failed: rc=%X\n", rc);
+         }
+      }
+
+      NEXUS_Graphics2D_GetDefaultOpenSettings(&gfxOpenSettings);
+      #if NEXUS_PLATFORM_VERSION_MAJOR >= 16
+      gfxOpenSettings.secure= ctx->secureGraphics;
+      #endif
+
+      ctx->gfx= NEXUS_Graphics2D_Open(NEXUS_ANY_ID, &gfxOpenSettings);
       if ( ctx->gfx )
       {
          NEXUS_Graphics2DSettings gfxSettings;
@@ -94,11 +279,17 @@ WstGLCtx* WstGLInit()
          NEXUS_Graphics2D_SetSettings( ctx->gfx, &gfxSettings );
       }
 
+      #if defined (WESTEROS_HAVE_BRCM_WAYLAND_EGL)
+      if (!ctx->gfx || !ctx->gfxEventCreated || (NEXUS_SUCCESS != rc) )
+      #else
       if ( !ctx->nxplHandle || !ctx->gfx || !ctx->gfxEventCreated || (NEXUS_SUCCESS != rc) )
+      #endif
       {
          WstGLTerm( ctx );
          ctx= 0;
       }
+
+      wstGLGetDisplaySize();
    }
    
    return ctx;
@@ -108,6 +299,19 @@ void WstGLTerm( WstGLCtx *ctx )
 {
    if ( ctx )
    {
+      pthread_mutex_lock( &g_mutex );
+      for ( std::vector<WstGLSizeCBInfo>::iterator it= gSizeListeners.begin();
+            it != gSizeListeners.end();
+            ++it )
+      {
+         if ( (*it).ctx == ctx )
+         {
+            gSizeListeners.erase(it);
+            break;
+         }
+      }
+      pthread_mutex_unlock( &g_mutex );
+
       if ( ctx->gfxEventCreated )
       {
          ctx->gfxEventCreated= false;
@@ -121,19 +325,185 @@ void WstGLTerm( WstGLCtx *ctx )
       }
       if ( ctx->nxplHandle )
       {
+         #if ! defined (WESTEROS_HAVE_BRCM_WAYLAND_EGL)
          NXPL_UnregisterNexusDisplayPlatform( ctx->nxplHandle );
+         #endif
          ctx->nxplHandle= 0;
       }
+      pthread_mutex_lock( &g_mutex );
       if ( ctxCount > 0 )
       {
          --ctxCount;
          if ( ctxCount == 0 )
          {
+            if ( gDisplayCtx )
+            {
+               if ( gDisplayCtx->surfaceClient )
+               {
+                  NEXUS_SurfaceClient_Release( gDisplayCtx->surfaceClient );
+                  gDisplayCtx->surfaceClient= 0;
+               }
+               NxClient_Free(&gDisplayCtx->allocResults);
+               free( gDisplayCtx );
+            }
             NxClient_Uninit();
          }
       }
+      pthread_mutex_unlock( &g_mutex );
       free( ctx );
    }
+}
+
+#if defined(__cplusplus)
+extern "C"
+{
+#endif
+bool _WstGLGetDisplayInfo( WstGLCtx *ctx, WstGLDisplayInfo *displayInfo )
+{
+   return WstGLGetDisplayInfo( ctx, displayInfo );
+}
+
+bool _WstGLGetDisplaySafeArea( WstGLCtx *ctx, int *x, int *y, int *w, int *h )
+{
+   return WstGLGetDisplaySafeArea( ctx, x, y, w, h );
+}
+
+bool _WstGLAddDisplaySizeListener( WstGLCtx *ctx, void *userData, WstGLDisplaySizeCallback listener )
+{
+   return WstGLAddDisplaySizeListener( ctx, userData, listener );
+}
+
+bool _WstGLRemoveDisplaySizeListener( WstGLCtx *ctx, WstGLDisplaySizeCallback listener )
+{
+   return WstGLRemoveDisplaySizeListener( ctx, listener );
+}
+#if defined(__cplusplus)
+}
+#endif
+
+bool WstGLGetDisplayInfo( WstGLCtx *ctx, WstGLDisplayInfo *displayInfo )
+{
+   bool result= false;
+
+   if ( ctx && displayInfo )
+   {
+      wstGLGetDisplaySize();
+
+      pthread_mutex_lock( &g_mutex );
+      if ( gDisplayCtx )
+      {
+         displayInfo->width= gDisplayCtx->displayWidth;
+         displayInfo->height= gDisplayCtx->displayHeight;
+
+         // Use the SMPTE ST 2046-1 5% safe area border
+         displayInfo->safeArea.x= displayInfo->width*DISPLAY_SAFE_BORDER_PERCENT/100;
+         displayInfo->safeArea.y= displayInfo->height*DISPLAY_SAFE_BORDER_PERCENT/100;
+         displayInfo->safeArea.w= displayInfo->width - 2*displayInfo->safeArea.x;
+         displayInfo->safeArea.h= displayInfo->height - 2*displayInfo->safeArea.y;
+
+         displayInfo->secureGraphics= ctx->secureGraphics;
+
+         result= true;
+      }
+      pthread_mutex_unlock( &g_mutex );
+   }
+
+   return result;
+}
+
+bool WstGLGetDisplaySafeArea( WstGLCtx *ctx, int *x, int *y, int *w, int *h )
+{
+   bool result= false;
+   WstGLDisplayInfo di;
+
+   if ( ctx && x && y && w && h )
+   {
+      if ( WstGLGetDisplayInfo( ctx, &di ) )
+      {
+         *x= di.safeArea.x;
+         *y= di.safeArea.y;
+         *w= di.safeArea.w;
+         *h= di.safeArea.h;
+
+         result= true;
+      }
+   }
+
+   return result;
+}
+
+bool WstGLAddDisplaySizeListener( WstGLCtx *ctx, void *userData, WstGLDisplaySizeCallback listener )
+{
+   bool result= false;
+   bool found= false;
+
+   if ( ctx )
+   {
+      pthread_mutex_lock( &g_mutex );
+
+      for ( std::vector<WstGLSizeCBInfo>::iterator it= gSizeListeners.begin();
+            it != gSizeListeners.end();
+            ++it )
+      {
+         if ( (*it).listener == listener )
+         {
+            found= true;
+            break;
+         }
+      }
+      if ( !found )
+      {
+         WstGLSizeCBInfo newInfo;
+         newInfo.ctx= ctx;
+         newInfo.userData= userData;
+         newInfo.listener= listener;
+         newInfo.width= 0;
+         newInfo.height= 0;
+         gSizeListeners.push_back( newInfo );
+
+         result= true;
+      }
+
+      pthread_mutex_unlock( &g_mutex );
+   }
+
+   if ( result )
+   {
+      wstGLNotifySizeListeners();
+   }
+
+   return result;
+}
+
+bool WstGLRemoveDisplaySizeListener( WstGLCtx *ctx, WstGLDisplaySizeCallback listener )
+{
+   bool result= false;
+   bool found= false;
+
+   if ( ctx )
+   {
+      pthread_mutex_lock( &g_mutex );
+
+      for ( std::vector<WstGLSizeCBInfo>::iterator it= gSizeListeners.begin();
+            it != gSizeListeners.end();
+            ++it )
+      {
+         if ( (*it).listener == listener )
+         {
+            found= true;
+            gSizeListeners.erase( it );
+            break;
+         }
+      }
+      if ( found )
+      {
+         result= true;
+      }
+
+      pthread_mutex_unlock( &g_mutex );
+   }
+
+   return result;
 }
 
 /*
@@ -217,7 +587,11 @@ bool WstGLGetNativePixmap( WstGLCtx *ctx, void *nativeBuffer, void **nativePixma
          if ( (surfaceStatusIn.width != surfaceStatusNPM.width) ||
               (surfaceStatusIn.height != surfaceStatusNPM.height) )
          {
+            #if defined (WESTEROS_HAVE_BRCM_WAYLAND_EGL)
+            if(npm->pixmap) NEXUS_Surface_Destroy((NEXUS_SurfaceHandle)npm->pixmap);
+            #else
             NXPL_DestroyCompatiblePixmap(ctx->nxplHandle, npm->pixmap );
+            #endif
             npm->pixmap= 0;
             npm->surface= 0;
          }
@@ -234,11 +608,66 @@ bool WstGLGetNativePixmap( WstGLCtx *ctx, void *nativeBuffer, void **nativePixma
          
          if ( !npm->pixmap )
          {
-            BEGL_PixmapInfo pixmapInfo;
-
             /*
              * Create a new Nexus surface/native pixmap pair
              */   
+            #if defined (WESTEROS_HAVE_BRCM_WAYLAND_EGL)
+            {
+                NEXUS_SurfaceCreateSettings surfSettings;
+                NEXUS_ClientConfiguration clientConfig;
+
+                NEXUS_Surface_GetDefaultCreateSettings(&surfSettings);
+                NEXUS_Platform_GetClientConfiguration(&clientConfig);
+
+                #ifdef BIG_ENDIAN_CPU
+                surfSettings.pixelFormat = NEXUS_PixelFormat_eR8_G8_B8_A8;
+                #else
+                surfSettings.pixelFormat = NEXUS_PixelFormat_eA8_B8_G8_R8;
+                #endif
+
+                surfSettings.compatibility.graphicsv3d = true;
+                surfSettings.width = surfaceStatusIn.width;
+                surfSettings.height = surfaceStatusIn.height;
+                surfSettings.mipLevel = 0;
+                surfSettings.heap = ctx->secureGraphics ? clientConfig.heap[NXCLIENT_SECURE_GRAPHICS_HEAP] : NEXUS_Platform_GetFramebufferHeap(NEXUS_OFFSCREEN_SURFACE);;
+                surfSettings.alignment = 12; // log2(4096)
+
+                NEXUS_SurfaceHandle nexusSurface = NEXUS_Surface_Create(&surfSettings);
+
+                if (nexusSurface)
+                {
+                    npm->pixmap = nexusSurface;
+                    npm->surface = nexusSurface;
+                }
+                else
+                {
+                    printf("WstGLGetNativePixmap: NXPL_CreateCompatiblePixmapEXT failed\n");
+                    free( npm );
+                    npm= 0;
+                }
+            }
+            #else
+            #if NEXUS_PLATFORM_VERSION_MAJOR >= 16
+            BEGL_PixmapInfoEXT pixmapInfo;
+            NXPL_GetDefaultPixmapInfoEXT(&pixmapInfo);
+
+            pixmapInfo.width= surfaceStatusIn.width;
+            pixmapInfo.height= surfaceStatusIn.height;
+            #ifdef BIG_ENDIAN_CPU
+            pixmapInfo.format= BEGL_BufferFormat_eR8G8B8A8;
+            #else
+            pixmapInfo.format= BEGL_BufferFormat_eA8B8G8R8;
+            #endif
+
+            if ( ctx->secureGraphics )
+            {
+               pixmapInfo.secure= true;
+            }
+
+            if ( !NXPL_CreateCompatiblePixmapEXT(ctx->nxplHandle, &npm->pixmap, &npm->surface, &pixmapInfo) )
+            #else
+            BEGL_PixmapInfo pixmapInfo;
+
             pixmapInfo.width= surfaceStatusIn.width;
             pixmapInfo.height= surfaceStatusIn.height;
             #ifdef BIG_ENDIAN_CPU
@@ -247,11 +676,13 @@ bool WstGLGetNativePixmap( WstGLCtx *ctx, void *nativeBuffer, void **nativePixma
             pixmapInfo.format= BEGL_BufferFormat_eA8B8G8R8;
             #endif
             if ( !NXPL_CreateCompatiblePixmap(ctx->nxplHandle, &npm->pixmap, &npm->surface, &pixmapInfo) )
+            #endif
             {
-               printf("WstGLGetNativePixmap: NXPL_CreateCompatiblePixmap failed\n");
+               printf("WstGLGetNativePixmap: NXPL_CreateCompatiblePixmapEXT failed\n");
                free( npm );
                npm= 0;
             }
+            #endif
          }
 
          if ( npm )
@@ -311,7 +742,11 @@ void WstGLReleaseNativePixmap( WstGLCtx *ctx, void *nativePixmap )
       WstNativePixmap *npm= (WstNativePixmap*)nativePixmap;
       if ( npm->pixmap )
       {
+         #if defined (WESTEROS_HAVE_BRCM_WAYLAND_EGL)
+         NEXUS_Surface_Destroy((NEXUS_SurfaceHandle)npm->pixmap);
+         #else
          NXPL_DestroyCompatiblePixmap(ctx->nxplHandle, npm->pixmap );
+         #endif
          npm->pixmap= 0;
          npm->surface= 0;
       }

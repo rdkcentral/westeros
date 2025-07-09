@@ -27,6 +27,7 @@
 typedef struct _WstCompositor WstCompositor;
 typedef struct _WstNestedConnection WstNestedConnection;
 
+typedef void (*WSTCallbackConnectionStarted)( void *userData );
 typedef void (*WSTCallbackConnectionEnded)( void *userData );
 typedef void (*WSTCallbackOutputHandleGeometry)( void *userData, int32_t x, int32_t y, int32_t mmWidth, int32_t mmHeight,
                                                  int32_t subPixel, const char *make, const char *model, int32_t transform );
@@ -47,6 +48,11 @@ typedef void (*WSTCallbackPointerHandleMotion)( void *userData, uint32_t time, w
 typedef void (*WSTCallbackPointerHandleButton)( void *userData, uint32_t time, uint32_t button, uint32_t state );
 typedef void (*WSTCallbackPointerHandleAxis)( void *userData, uint32_t time, uint32_t axis, wl_fixed_t value );
 
+typedef void (*WSTCallbackTouchHandleDown)( void *userData, struct wl_surface *surface, uint32_t time, int32_t id, wl_fixed_t sx, wl_fixed_t sy );
+typedef void (*WSTCallbackTouchHandleUp)( void *userData, uint32_t time, int32_t id );
+typedef void (*WSTCallbackTouchHandleMotion)( void *userData, uint32_t time, int32_t id, wl_fixed_t sx, wl_fixed_t sy );
+typedef void (*WSTCallbackTouchHandleFrame)( void *userData );
+
 typedef void (*WSTCallbackShmFormat)( void *userData, uint32_t format );
 
 typedef void (*WSTCallbackVpcVideoPathChange)( void *userData, struct wl_surface *surface, uint32_t new_pathway );
@@ -57,10 +63,13 @@ typedef void (*WSTCallbackVpcVideoXformChange)( void *userData,
                                                 uint32_t x_scale_num,
                                                 uint32_t x_scale_denom,
                                                 uint32_t y_scale_num,
-                                                uint32_t y_scale_denom );
+                                                uint32_t y_scale_denom,
+                                                uint32_t output_width,
+                                                uint32_t output_height );
 
 typedef struct _WstNestedConnectionListener
 {
+   WSTCallbackConnectionStarted connectionStarted;
    WSTCallbackConnectionEnded connectionEnded;
    WSTCallbackOutputHandleGeometry outputHandleGeometry;
    WSTCallbackOutputHandleMode outputHandleMode;
@@ -77,6 +86,10 @@ typedef struct _WstNestedConnectionListener
    WSTCallbackPointerHandleMotion pointerHandleMotion;
    WSTCallbackPointerHandleButton pointerHandleButton;
    WSTCallbackPointerHandleAxis pointerHandleAxis;
+   WSTCallbackTouchHandleDown touchHandleDown;
+   WSTCallbackTouchHandleUp touchHandleUp;
+   WSTCallbackTouchHandleMotion touchHandleMotion;
+   WSTCallbackTouchHandleFrame touchHandleFrame;
    WSTCallbackShmFormat shmFormat;
    WSTCallbackVpcVideoPathChange vpcVideoPathChange;
    WSTCallbackVpcVideoXformChange vpcVideoXformChange;
@@ -142,6 +155,15 @@ void WstNestedConnectionAttachAndCommitDevice( WstNestedConnection *nc,
                                                int y,
                                                int width,
                                                int height );
+
+void WstNestedConnectionAttachAndCommitClone( WstNestedConnection *nc,
+                                              struct wl_surface *surface,
+                                              struct wl_resource *bufferRemote,
+                                              struct wl_buffer *bufferClone,
+                                              int x,
+                                              int y,
+                                              int width,
+                                              int height );
 
 void WstNestedConnectionReleaseRemoteBuffers( WstNestedConnection *nc );
 

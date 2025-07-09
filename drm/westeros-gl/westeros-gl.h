@@ -18,7 +18,6 @@
  */
 #ifndef _WESTEROS_GL_H
 #define _WESTEROS_GL_H
-#include "config.h"
 
 #ifndef __cplusplus
 #include <stdbool.h>
@@ -35,8 +34,39 @@ extern "C" {
  */
 typedef struct _WstGLCtx WstGLCtx;
 
+#define WESTEROS_GL_DISPLAY_CAPS
+
+typedef enum _WstGLDisplayCapabilies
+{
+   WstGLDisplayCap_none = 0,
+   WstGLDisplayCap_modeset = (1<<0)
+} WstGLDisplayCapabilities;
+
+typedef struct _WstGLDisplaySafeArea
+{
+   int x;
+   int y;
+   int w;
+   int h;
+} WstGLDisplaySafeArea;
+
+typedef struct _WstGLDisplayInfo
+{
+   int width;
+   int height;
+   WstGLDisplaySafeArea safeArea;
+} WstGLDisplayInfo;
+
+typedef void (*WstGLDisplaySizeCallback)( void *userData, int width, int height );
+
 WstGLCtx* WstGLInit();
 void WstGLTerm( WstGLCtx *ctx );
+bool WstGLGetDisplayCaps( WstGLCtx *ctx, unsigned int *caps );
+bool WstGLSetDisplayMode( WstGLCtx *ctx, const char *mode );
+bool WstGLGetDisplayInfo( WstGLCtx *ctx, WstGLDisplayInfo *displayInfo );
+bool WstGLGetDisplaySafeArea( WstGLCtx *ctx, int *x, int *y, int *w, int *h );
+bool WstGLAddDisplaySizeListener( WstGLCtx *ctx, void *userData, WstGLDisplaySizeCallback listener );
+bool WstGLRemoveDisplaySizeListener( WstGLCtx *ctx, WstGLDisplaySizeCallback listener );
 void* WstGLCreateNativeWindow( WstGLCtx *ctx, int x, int y, int width, int height );
 void WstGLDestroyNativeWindow( WstGLCtx *ctx, void *nativeWindow );
 bool WstGLGetNativePixmap( WstGLCtx *ctx, void *nativeBuffer, void **nativePixmap );

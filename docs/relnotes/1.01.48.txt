@@ -1,0 +1,49 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.48 Release Notes
+------------------------------
+
+Date: Aug 14, 2023
+Tag: Westeros-1.01.48
+Changes:
+
+* v4l2: ensure frame step is not blocked waiting for preroll
+
+* erm: serialize notification callbacks
+
+* brcm: fix resource preemption thread safety
+
+* test: useful additions to westeros-player:
+-emit timecodes with -T argument
+-exclude audio with -M argument
+-show video with 'touch /tmp/wp-show'
+-hide video with 'touch /tmp/wp-hide'
+-vide peek from pause with 'touch /tmp/wp-peek'
+
+* drm: preserve vfm pause state across flush
+
+* raw: raw sink updates:
+-add support for generic av sync
+-add support for single buffer NV12 output which can be enabled
+at build time with -DUSE_SINGLE_BUFFER_NV12
+
+* v4l2: ensure buffer unmap in render error path
+
+* brcm: publish explicit sync header during build
+
+* v4l2: add vframe-source-type property to identify DTV
+
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+
+

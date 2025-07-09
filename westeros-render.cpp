@@ -42,7 +42,6 @@ WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, s
    if ( renderer )
    {
       int rc;
-      const char *displayName= 0;
       int i= 0;
       int len, value;
       int width= DEFAULT_OUTPUT_WIDTH;
@@ -179,6 +178,16 @@ void WstRendererSurfaceDestroy( WstRenderer *renderer, WstRenderSurface *surface
    renderer->surfaceDestroy( renderer, surface );
 }
 
+#ifdef ENABLE_LEXPSYNCPROTOCOL
+void WstRendererSurfaceImportSync( WstRenderer *renderer, WstRenderSurface *surface, WstExplicitSync *sync)
+{
+   if( renderer->surfaceImportSync)
+   {
+      renderer->surfaceImportSync( renderer, surface, sync );
+   }
+}
+#endif
+
 void WstRendererSurfaceCommit( WstRenderer *renderer, WstRenderSurface *surface, struct wl_resource *resource )
 {
    renderer->surfaceCommit( renderer, surface, resource );
@@ -224,8 +233,59 @@ float WstRendererSurfaceGetZOrder( WstRenderer *renderer, WstRenderSurface *surf
    return renderer->surfaceGetZOrder( renderer, surface, z );
 }
 
+void WstRendererSurfaceSetCrop( WstRenderer *renderer, WstRenderSurface *surface, float x, float y, float width, float height )
+{
+   if ( renderer->surfaceSetCrop )
+   {
+      renderer->surfaceSetCrop( renderer, surface, x, y, width, height );
+   }
+}
+
+void WstRendererQueryDmabufFormats( WstRenderer *renderer, int **formats, int *num_formats )
+{
+   if ( renderer->queryDmabufFormats )
+   {
+      renderer->queryDmabufFormats( renderer, formats, num_formats);
+   }
+   else
+   {
+      *num_formats= 0;
+   }
+}
+
+void WstRendererQueryDmabufModifiers( WstRenderer *renderer, int format, uint64_t **modifiers, int *num_modifiers )
+{
+   if ( renderer->queryDmabufModifiers )
+   {
+      renderer->queryDmabufModifiers( renderer, format, modifiers, num_modifiers );
+   }
+   else
+   {
+      *num_modifiers= 0;
+   }
+}
+
 void WstRendererDelegateUpdateScene( WstRenderer *renderer, std::vector<WstRect> &rects )
 {
-   renderer->delegateUpdateScene( renderer, rects );
+   if ( renderer->delegateUpdateScene )
+   {
+      renderer->delegateUpdateScene( renderer, rects );
+   }
+}
+
+void WstRendererResolutionChangeBegin( WstRenderer *renderer )
+{
+   if ( renderer->resolutionChangeBegin )
+   {
+      renderer->resolutionChangeBegin( renderer );
+   }
+}
+
+void WstRendererResolutionChangeEnd( WstRenderer *renderer )
+{
+   if ( renderer->resolutionChangeEnd )
+   {
+      renderer->resolutionChangeEnd( renderer );
+   }
 }
 

@@ -22,6 +22,7 @@
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include <sys/time.h>
 
 #include "westeros-render.h"
 #include "wayland-server.h"
@@ -69,6 +70,7 @@ struct _WstRenderSurface
 
    bool flip;
    bool dirty;
+   bool sizeOverride;
    int front;
    WstRenderResource resource[NUM_BUFFERS];
    DISPMANX_ELEMENT_HANDLE_T element;
@@ -82,7 +84,6 @@ typedef struct _WstRendererDMX
    std::vector<WstRenderSurface*> surfaces;
    
    DISPMANX_DISPLAY_HANDLE_T dispmanDisplay;
-   bool updateInProgress;
 
    EGLDisplay eglDisplay;
    bool haveWaylandEGL;
@@ -105,6 +106,8 @@ static void wstRendererDMXCommitWaylandEGL( WstRendererDMX *rendererDMX, WstRend
                                            struct wl_resource *resource, EGLint format );
 #endif
 
+static bool emitFPS= false;
+
 static WstRendererDMX* wstRendererDMXCreate( WstRenderer *renderer )
 {
    WstRendererDMX *rendererDMX= 0;
@@ -118,6 +121,11 @@ static WstRendererDMX* wstRendererDMXCreate( WstRenderer *renderer )
       rendererDMX->outputWidth= renderer->outputWidth;
       rendererDMX->outputHeight= renderer->outputHeight;
       rendererDMX->surfaces= std::vector<WstRenderSurface*>();
+
+      if ( getenv("WESTEROS_RENDER_DISPMANX_FPS" ) )
+      {
+         emitFPS= true;
+      }
 
       bcm_host_init();
 
@@ -503,13 +511,6 @@ static void wstRendererTerm( WstRenderer *renderer )
    }
 }
 
-static void wstRendererUpdateComplete( DISPMANX_UPDATE_HANDLE_T dispmanUpdate, void *userData )
-{
-   WstRendererDMX *rendererDMX= (WstRendererDMX*)userData;
-   
-   rendererDMX->updateInProgress= false;
-}
-
 static void wstRendererUpdateSceneXform( WstRenderer *renderer, float *matrix, std::vector<WstRect> *rects )
 {
    WstRenderSurface *surface;
@@ -517,15 +518,12 @@ static void wstRendererUpdateSceneXform( WstRenderer *renderer, float *matrix, s
    DISPMANX_UPDATE_HANDLE_T dispmanUpdate;
    WstRect rect;
 
-   if ( !rendererDMX->updateInProgress )
    {
       dispmanUpdate= vc_dispmanx_update_start( 0 );
       if ( dispmanUpdate != DISPMANX_NO_HANDLE )
       {
          float scalex, scaley, transx, transy;
          
-         rendererDMX->updateInProgress= true;
-
          if ( matrix )
          {
             scalex= renderer->matrix[0];
@@ -545,12 +543,16 @@ static void wstRendererUpdateSceneXform( WstRenderer *renderer, float *matrix, s
          {
             surface= (*it);
             
+            bool update= surface->dirty|surface->flip;
             if ( surface->flip )
             {
                surface->flip= false;
                surface->front= ((surface->front+1)%NUM_BUFFERS);
-               surface->width= surface->bufferWidth;
-               surface->height= surface->bufferHeight;
+               if ( !surface->sizeOverride )
+               {
+                  surface->width= surface->bufferWidth;
+                  surface->height= surface->bufferHeight;
+               }
             }
  
             if ( 
@@ -574,20 +576,20 @@ static void wstRendererUpdateSceneXform( WstRenderer *renderer, float *matrix, s
                   dispmanElement= surface->element= DISPMANX_NO_HANDLE;
                }
 
+               rect.x= (renderer->outputX+surface->x)*scalex+(transx-renderer->outputX);
+               rect.y= (renderer->outputY+surface->y)*scaley+(transy-renderer->outputY);
+               rect.width= surface->width*scalex;
+               rect.height= surface->height*scaley;
+
+               if ( rects )
+               {
+                  rects->push_back( rect );
+               }
+
                if ( dispmanElement == DISPMANX_NO_HANDLE )
                {
                   int sx, sy, sw, sh;
                   int dx, dy, dw, dh;
-
-                  rect.x= (renderer->outputX+surface->x)*scalex+(transx-renderer->outputX);
-                  rect.y= (renderer->outputY+surface->y)*scaley+(transy-renderer->outputY);
-                  rect.width= surface->width*scalex;
-                  rect.height= surface->height*scaley;
-
-                  if ( rects )
-                  {
-                     rects->push_back( rect );
-                  }
                   
                   sx= sy= 0;
                   dx= rect.x;
@@ -673,7 +675,7 @@ static void wstRendererUpdateSceneXform( WstRenderer *renderer, float *matrix, s
                   }
                }
                 
-               if ( dispmanElement != DISPMANX_NO_HANDLE )
+               if ( update && (dispmanElement != DISPMANX_NO_HANDLE) )
                {
                   vc_dispmanx_element_change_source( dispmanUpdate, dispmanElement, surface->resource[surface->front].resource );
                }
@@ -685,13 +687,31 @@ static void wstRendererUpdateSceneXform( WstRenderer *renderer, float *matrix, s
             }
          }
          
-         vc_dispmanx_update_submit( dispmanUpdate, wstRendererUpdateComplete, rendererDMX );
+         vc_dispmanx_update_submit_sync( dispmanUpdate );
       }
    }
 }
 
 static void wstRendererUpdateScene( WstRenderer *renderer )
 {
+   if ( emitFPS )
+   {
+      static int frameCount= 0;
+      static long long lastReportTime= -1LL;
+      struct timeval tv;
+      long long now;
+      gettimeofday(&tv,0);
+      now= tv.tv_sec*1000LL+(tv.tv_usec/1000LL);
+      ++frameCount;
+      if ( lastReportTime == -1LL ) lastReportTime= now;
+      if ( now-lastReportTime > 5000 )
+      {
+         double fps= ((double)frameCount*1000)/((double)(now-lastReportTime));
+         printf("westeros-render-dispmanx: fps %f\n", fps);
+         lastReportTime= now;
+         frameCount= 0;
+      }
+   }
    wstRendererUpdateSceneXform( renderer, 0, 0 );
 }
 
@@ -803,6 +823,10 @@ static void wstRendererSurfaceSetGeometry( WstRenderer *renderer, WstRenderSurfa
    
    if ( surface )
    {
+      if ( (width != surface->width) || (height != surface->height) )
+      {
+         surface->sizeOverride= true;
+      }
       surface->x= x;
       surface->y= y;
       surface->width= width;
@@ -909,6 +933,21 @@ static void wstRendererDelegateUpdateScene( WstRenderer *renderer, std::vector<W
    renderer->needHolePunch= true;
 }
 
+static void wstRendererResolutionChangeBegin( WstRenderer *renderer )
+{
+  // Nothing to do
+}
+
+static void wstRendererResolutionChangeEnd( WstRenderer *renderer )
+{
+   WstRendererDMX *rendererDMX= (WstRendererDMX*)renderer->renderer;
+   if ( rendererDMX )
+   {
+      // Update output size
+      rendererDMX->outputWidth= renderer->outputWidth;
+      rendererDMX->outputHeight= renderer->outputHeight;
+   }
+}
 
 extern "C" {
 
@@ -959,6 +998,8 @@ int renderer_init( WstRenderer *renderer, int argc, char **argv )
       renderer->surfaceSetZOrder= wstRendererSurfaceSetZOrder;
       renderer->surfaceGetZOrder= wstRendererSurfaceGetZOrder;
       renderer->delegateUpdateScene= wstRendererDelegateUpdateScene;
+      renderer->resolutionChangeBegin= wstRendererResolutionChangeBegin;
+      renderer->resolutionChangeEnd= wstRendererResolutionChangeEnd;
    }
    else
    {

@@ -1,20 +1,19 @@
 /*
- * If not stated otherwise in this file or this component's Licenses.txt file the
- * following copyright and licenses apply:
+ * Copyright (C) 2016 RDK Management
  *
- * Copyright 2016 RDK Management
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
  *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 #ifndef __WESTEROS_SINK_H__
 #define __WESTEROS_SINK_H__
@@ -22,11 +21,28 @@
 #include "wayland-client.h"
 #include "simpleshell-client-protocol.h"
 #include "vpc-client-protocol.h"
+#include "essos-resmgr.h"
 
 #include <gst/gst.h>
 #include <gst/base/gstbasesink.h>
 
+#define DEFAULT_WINDOW_X (0)
+#define DEFAULT_WINDOW_Y (0)
+#define DEFAULT_WINDOW_WIDTH (1280)
+#define DEFAULT_WINDOW_HEIGHT (720)
+
 #define WESTEROS_UNUSED(x) ((void)(x))
+
+#ifdef USE_RAW_SINK
+typedef struct _GstWesterosRawSink GstWesterosRawSink;
+typedef struct _GstWesterosRawSinkClass GstWesterosRawSinkClass;
+#define _GstWesterosSink _GstWesterosRawSink
+#define GstWesterosSink GstWesterosRawSink
+#define _GstWesterosSinkSoc _GstWesterosRawSinkSoc
+#define GstWesterosSinkSoc GstWesterosRawSinkSoc
+#define _GstWesterosSinkClass _GstWesterosRawSinkClass
+#endif
+
 
 G_BEGIN_DECLS
 
@@ -45,7 +61,45 @@ G_BEGIN_DECLS
 typedef struct _GstWesterosSink GstWesterosSink;
 typedef struct _GstWesterosSinkClass GstWesterosSinkClass;
 
+typedef gboolean (*ProcessPadEvent)(GstWesterosSink *sink, GstPad *pad, GstEvent *event, gboolean *passToDefault);
+typedef gboolean (*ProcessSendEvent)(GstWesterosSink *sink, GstEvent *event, gboolean *passToDefault);
+
+typedef int (*SinkAcquireResources)( GstWesterosSink *sink );
+typedef void (*SinkReleaseResources)( GstWesterosSink *sink );
+
+typedef void (*StatsLogUpdate)( GstWesterosSink *sink, int frameRenderCount, int frameDropCount );
+
+#ifdef ENABLE_SW_DECODE
+#include "../../westeros-sink/westeros-sink-sw.h"
+
+typedef bool (*SinkSWInit)( GstWesterosSink *sink );
+typedef void (*SinkSWTerm)( GstWesterosSink *sink );
+typedef void (*SinkSWLink)( GstWesterosSink *sink );
+typedef void (*SinkSWUnLink)( GstWesterosSink *sink );
+typedef void (*SinkSWEvent)( GstWesterosSink *sink, int id, int p1, void *p2 );
+typedef void (*SinkSWDisplay)( GstWesterosSink *sink, SWFrame *frame );
+#endif
+
+typedef void (*SinkTimeCodePresent)( GstWesterosSink *sink, guint64 pts, guint signnal );
+
+typedef void* (*MediaCaptureCreateContext)( GstElement *element );
+typedef void (*MediaCaptureDestroyContext)( void *context );
+
 #define PROP_SOC_BASE (100)
+
+typedef struct _WstSinkResReqInfo
+{
+   GstWesterosSink *sink;
+   EssRMgrRequest resReq;
+} WstSinkResReqInfo;
+
+typedef struct _WstSinkTimeCode
+{
+   guint64 position;
+   guint hours;
+   guint minutes;
+   guint seconds;
+} WstSinkTimeCode;
 
 #include "westeros-sink-soc.h"
 
@@ -53,6 +107,7 @@ struct _GstWesterosSink
 {
    GstBaseSink parent;
    GstPadEventFunction parentEventFunc;
+   GstPadQueryFunction defaultQueryFunc;
    
    GstPad *peerPad; 
    gboolean rejectPrerollBuffers;
@@ -66,16 +121,27 @@ struct _GstWesterosSink
    
    int srcWidth;
    int srcHeight;
+   int maxWidth;
+   int maxHeight;
+
+   double frameRate;
 
    int windowX;
    int windowY;
    int windowWidth;
    int windowHeight;
+   bool show;
    bool windowChange;
-   
+   bool windowSet;
+   bool windowSizeOverride;
+
+   int displayWidth;
+   int displayHeight;
+
    bool visible;
    float opacity;
    float zorder;
+   gfloat playbackRate;
    
    int transX;
    int transY;
@@ -83,10 +149,15 @@ struct _GstWesterosSink
    int scaleXDenom;
    int scaleYNum;
    int scaleYDenom;
+   int outputWidth;
+   int outputHeight;
 
    gboolean videoStarted;
    gboolean startAfterLink;
+   gboolean startAfterCaps;
    gboolean flushStarted;
+   gboolean needSegment;
+   gboolean passCaps;
    
    gboolean eosEventSeen;
    gboolean eosDetected;
@@ -95,9 +166,15 @@ struct _GstWesterosSink
    gint64 currentPTS;
    gint64 position;
    gint64 positionSegmentStart;
+   gint64 prevPositionSegmentStart;
+   gboolean queryPositionFromPeer;
+   const GstSegment* currentSegment;
+   gboolean useSegmentPosition;
+   GstSegment segment;
 
    unsigned segmentNumber;
-   
+
+   gchar *displayName;
    struct wl_display *display;
    struct wl_registry *registry;
    struct wl_simple_shell *shell;
@@ -107,13 +184,54 @@ struct _GstWesterosSink
    uint32_t surfaceId;
    struct wl_vpc *vpc;
    struct wl_vpc_surface *vpcSurface;
-   
+   struct wl_output *output;
+
+   EssRMgr *rm;
+   guint resPriority;
+   guint resUsage;
+   int resAssignedId;
+   EssRMgrCaps resCurrCaps;
+   WstSinkResReqInfo resReqPrimary;
+   WstSinkResReqInfo resReqSecondary;
+   SinkAcquireResources acquireResources;
+   SinkReleaseResources releaseResources;
+   #ifdef ENABLE_SW_DECODE
+   void *swCtx;
+   SinkSWInit swInit;
+   SinkSWTerm swTerm;
+   SinkSWLink swLink;
+   SinkSWLink swUnLink;
+   SinkSWEvent swEvent;
+   SinkSWDisplay swDisplay;
+   #endif
+
+   ProcessSendEvent processSendEvent;
+   ProcessPadEvent processPadEvent;
+
+   void *mediaCaptureModule;
+   MediaCaptureDestroyContext mediaCaptureDestroyContext;
+   void *mediaCaptureContext;
+
+   gboolean enableTimeCodeSignal;
+   int timeCodeCapacity;
+   int timeCodeCount;
+   WstSinkTimeCode timeCodeActive;
+   WstSinkTimeCode *timeCodes;
+   SinkTimeCodePresent timeCodePresent;
+
+   StatsLogUpdate statsLogUpdate;
+   int statsLogInterval;
+   long long statsLogFirstLogTime;
+   long long statsLogLastLogTime;
+   int statsLogFrameRenderCountLast;
+
    struct _GstWesterosSinkSoc soc;
 };
 
 struct _GstWesterosSinkClass
 {
    GstBaseSinkClass parent_class;
+   int canUseResMgr;
 
 };
 

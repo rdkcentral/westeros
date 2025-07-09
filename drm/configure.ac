@@ -24,7 +24,7 @@ dnl AC_PREREQ([2.65])
 AC_INIT(westeros-soc, version-1.0, jeff_wannamaker@cable.comcast.com,westeros-soc)
 AC_CONFIG_SRCDIR([])
 AC_CONFIG_HEADERS([cfg/config.h])
-AC_CONFIG_MACRO_DIR([cfg])
+AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([cfg])
 AM_INIT_AUTOMAKE([foreign no-dist-gzip dist-bzip2 1.9])
 LT_INIT
@@ -55,7 +55,23 @@ AC_SUBST(AM_DEFAULT_VERBOSITY)])
 PKG_CHECK_MODULES([GLIB],[glib-2.0 >= 2.22.5])
 PKG_CHECK_MODULES([GTHREAD],[gthread-2.0 >= 2.38.2])
 PKG_CHECK_MODULES([WAYLAND_CLIENT],[wayland-client >= 1.6.0])
+PKG_CHECK_MODULES([EGL],[egl >= 0.0],[EGL_DETECTED=true],[EGL_DETECTED=false])
+AM_CONDITIONAL([HAVE_EGL], [test x$EGL_DETECTED = xtrue])
 PKG_CHECK_MODULES([WAYLAND_SERVER],[wayland-server >= 1.6.0])
+PKG_CHECK_MODULES([GBM],[gbm >= 10.2])
+PKG_CHECK_MODULES([LIBDRM],[libdrm >= 2.0])
+
+AC_ARG_ENABLE([gbm-modifiers],
+              AS_HELP_STRING([--enable-gbm-modifiers],[enable gbm modifiers (default is no)]),
+              [
+                case "${enableval}" in
+                 yes) ENABLE_GBM_MODIFIERS=true ;;
+                  no) ENABLE_GBM_MODIFIERS=no ;;
+                   *) AC_MSG_ERROR([bad value ${enableval} for --enable-gbm-modifiers]) ;;
+                esac
+              ],
+              [echo "gbm modifiers is disabled"])
+AM_CONDITIONAL([ENABLE_GBM_MODIFIERS], [test x$ENABLE_GBM_MODIFIERS = xtrue])
 
 WAYLANDLIB="-lwayland-client"
 AC_SUBST(WAYLANDLIB)

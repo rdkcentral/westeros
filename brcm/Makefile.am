@@ -35,18 +35,30 @@ AM_CFLAGS = -DUSE_WESTEROS $(NEXUS_CFLAGS) $(NXCLIENT_CFLAGS) -I$(ROCKFORD_TOP)/
 
 AM_LDFLAGS = 
 
+if ENABLE_BRCM_WAYLANDEGL
+AM_CFLAGS += -DWESTEROS_HAVE_BRCM_WAYLAND_EGL
+AM_LDFLAGS += -lwlpl
+endif
+
 lib_LTLIBRARIES = libwesteros_gl.la
 
 libwesteros_gl_la_SOURCES = westeros-gl/westeros-gl.cpp
 
 libwesteros_gl_la_include_HEADERS = westeros-gl/westeros-gl.h
 libwesteros_gl_la_includedir = $(includedir)
-libwesteros_gl_la_CXXFLAGS= $(AM_CFLAGS)
+libwesteros_gl_la_CXXFLAGS= $(AM_CFLAGS) -Wno-deprecated-declarations
 
 libwesteros_gl_la_LDFLAGS= \
    $(AM_LDFLAGS) \
    -lwayland-egl \
-   -lnexus
+   -lpthread \
+   ${NEXUS_LD_LIBRARIES}
+
+if NXCLIENT_LOCAL
+libwesteros_gl_la_LDFLAGS += -lnxclient_local
+else
+libwesteros_gl_la_LDFLAGS += -lnxclient
+endif
 
 distcleancheck_listfiles = *-libtool
 
