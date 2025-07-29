@@ -1,0 +1,43 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.52 Release Notes
+------------------------------
+
+Date: Jan 11, 2024
+Tag: Westeros-1.01.52
+Changes:
+
+* drm: add console command to toggle gfx scaling
+
+* brcm: reduce false underflows on framerate changes
+
+* drm: display gfx centered when actual-size active
+
+* brcm: use decode rate 1.2 for immediate-output
+
+* erm: fix potential crash on client destroy
+
+* v4l2: handle eos prior to capture start
+
+* essos: new api to determine the app platform display type and if extensions should be used
+
+* core: reduce embedded client render latency
+
+* brcm: fix pause at playrates other than 1x
+
+* drm: fix potential video frame leak under heavy cpu load
+
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+
+

@@ -1,0 +1,39 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.44 Release Notes
+------------------------------
+
+Date: Apr 13, 2023
+Tag: Westeros-1.01.44
+Changes:
+
+* brcm: ignore unexpected extra segment event
+
+* v4l2: send keep frame setting on ready-to-null:
+if the stop-keep-frame property has been explicitly set then on the
+ready-to-null transition connect to the video server to update the
+new stop-keep-frame value
+
+* raw: add support for tunnelled operation
+
+* v4l2: logging update
+-add more detail to the verbose logs for VIDIOC_G_SELECTION and VIDIOC_S_SELECTION ioctls
+
+* v4l2: fix locking in soc_render for dmabuf
+
+* brcm, v4l2, raw: shorten thread names
+
+* drm: fix commit error on display disable
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+
+

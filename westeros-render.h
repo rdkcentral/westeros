@@ -1,0 +1,171 @@
+/*
+ * If not stated otherwise in this file or this component's Licenses.txt file the
+ * following copyright and licenses apply:
+ *
+ * Copyright 2016 RDK Management
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#ifndef _WESTEROS_RENDER_H
+#define _WESTEROS_RENDER_H
+
+#include <vector>
+
+#include "wayland-client.h"
+
+#ifdef ENABLE_LEXPSYNCPROTOCOL
+#include "linux-expsync/westeros-linux-expsync.h"
+#endif
+
+/*
+ * Westeros Renderer Interface
+ *
+ * This interface is used by the compositor to preform all necessary
+ * rendering activities required for compositing surfaces.
+ *
+ * Modules that implement this interface must supply an "renderer_init" 
+ * entry point that populates the supplied WstRenderer structure.  
+ */
+
+#define RENDERER_MODULE_INIT "renderer_init"
+
+typedef enum _WstRenderer_format
+{
+   WstRenderer_format_unknown,
+   WstRenderer_format_ARGB8888,
+   WstRenderer_format_BGRA8888,
+   WstRenderer_format_XRGB8888,
+   WstRenderer_format_BGRX8888,
+   WstRenderer_format_RGB565,
+   WstRenderer_format_ARGB4444
+} WstRenderer_format;
+
+typedef struct _WstRect
+{
+   int x;
+   int y;
+   int width;
+   int height;
+} WstRect;
+
+typedef enum _WstHints
+{
+   WstHints_none= 0,
+   WstHints_noRotation= (1<<0),
+   WstHints_holePunch= (1<<1),
+   WstHints_fboTarget= (1<<2),
+   WstHints_applyTransform= (1<<3),
+   WstHints_animating= (1<<4),
+   WstHints_hidden= (1<<5),
+} WstHints;
+
+typedef struct _WstRenderer WstRenderer;
+typedef struct _WstRenderSurface WstRenderSurface;
+typedef struct _WstNestedConnection WstNestedConnection;
+typedef struct _WstExplicitSync WstExplicitSync;
+
+typedef int (*WSTMethodRenderInit)( WstRenderer *renderer, int argc, char **argv);
+typedef void (*WSTMethodRenderTerm)( WstRenderer *renderer );
+typedef void (*WSTMethodUpdateScene)( WstRenderer *renderer );
+typedef WstRenderSurface* (*WSTMethodSurfaceCreate)( WstRenderer *renderer );
+typedef void (*WSTMethodSurfaceDestroy)( WstRenderer *renderer, WstRenderSurface *surf );
+typedef void (*WSTMethodSurfaceImportSync)( WstRenderer *renderer, WstRenderSurface *surf, WstExplicitSync *bufferSync);
+typedef void (*WSTMethodSurfaceCommit)( WstRenderer *renderer, WstRenderSurface *surface, struct wl_resource *resource );
+typedef void (*WSTMethodSurfaceSetVisible)( WstRenderer *renderer, WstRenderSurface *surface, bool visible );
+typedef bool (*WSTMethodSurfaceGetVisible)( WstRenderer *renderer, WstRenderSurface *surface, bool *visible );
+typedef void (*WSTMethodSurfaceSetGeometry)( WstRenderer *renderer, WstRenderSurface *surface, int x, int y, int width, int height );
+typedef void (*WSTMethodSurfaceGetGeometry)( WstRenderer *renderer, WstRenderSurface *surface, int *x, int *y, int *width, int *height );
+typedef void (*WSTMethodSurfaceSetOpacity)( WstRenderer *renderer, WstRenderSurface *surface, float opacity );
+typedef float (*WSTMethodSurfaceGetOpacity)( WstRenderer *renderer, WstRenderSurface *surface, float *opaticty );
+typedef void (*WSTMethodSurfaceSetZOrder)( WstRenderer *renderer, WstRenderSurface *surface, float z );
+typedef float (*WSTMethodSurfaceGetZOrder)( WstRenderer *renderer, WstRenderSurface *surface, float *z );
+typedef void (*WSTMethodSurfaceSetCrop)( WstRenderer *renderer, WstRenderSurface *surface, float x, float y, float width, float height );
+typedef void (*WSTMethodQueryDmabufFormats)( WstRenderer *renderer, int **formats, int *num_formats );
+typedef void (*WSTMethodQueryDmabufModifiers)( WstRenderer *renderer, int format, uint64_t **modifiers, int *num_modifiers );
+typedef void (*WSTMethodDelegateUpdateScene)( WstRenderer *renderer, std::vector<WstRect> &rects );
+typedef void (*WSTMethodHolePunch)( WstRenderer *renderr, int x, int y, int width, int height );
+typedef void (*WSTMethodResolutionChangeBegin)( WstRenderer *renderer );
+typedef void (*WSTMethodResolutionChangeEnd)( WstRenderer *renderer );
+
+typedef struct _WstRenderer
+{
+   int outputWidth;
+   int outputHeight;
+   void *nativeWindow;
+   struct wl_display *display;
+   void *renderer;
+   
+   WSTMethodRenderTerm renderTerm;
+   WSTMethodUpdateScene updateScene;
+   WSTMethodSurfaceCreate surfaceCreate;
+   WSTMethodSurfaceImportSync surfaceImportSync;
+   WSTMethodSurfaceDestroy surfaceDestroy;
+   WSTMethodSurfaceCommit surfaceCommit;
+   WSTMethodSurfaceSetVisible surfaceSetVisible;
+   WSTMethodSurfaceGetVisible surfaceGetVisible;
+   WSTMethodSurfaceSetGeometry surfaceSetGeometry;
+   WSTMethodSurfaceGetGeometry surfaceGetGeometry;
+   WSTMethodSurfaceSetOpacity surfaceSetOpacity;
+   WSTMethodSurfaceGetOpacity surfaceGetOpacity;
+   WSTMethodSurfaceSetZOrder surfaceSetZOrder;
+   WSTMethodSurfaceGetZOrder surfaceGetZOrder;
+   WSTMethodSurfaceSetCrop surfaceSetCrop;
+   WSTMethodQueryDmabufFormats queryDmabufFormats;
+   WSTMethodQueryDmabufModifiers queryDmabufModifiers;
+   WSTMethodDelegateUpdateScene delegateUpdateScene;
+   WSTMethodHolePunch holePunch;
+   WSTMethodResolutionChangeBegin resolutionChangeBegin;
+   WSTMethodResolutionChangeEnd resolutionChangeEnd;
+
+   // For nested composition
+   WstNestedConnection *nc;
+   struct wl_display *displayNested;
+   struct wl_surface *surfaceNested;
+   
+   // For embedded composition
+   int outputX;
+   int outputY;
+   float *matrix;
+   float alpha;
+   bool fastHint;
+   int hints;
+   bool needHolePunch;
+   std::vector<WstRect> rects;
+} WstRenderer;
+
+WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, 
+                                struct wl_display *display, WstNestedConnection *nc );
+void WstRendererDestroy( WstRenderer *renderer );
+
+void WstRendererUpdateScene( WstRenderer *renderer );
+WstRenderSurface* WstRendererSurfaceCreate( WstRenderer *renderer );
+void WstRendererSurfaceDestroy( WstRenderer *renderer, WstRenderSurface *surface );
+void WstRendererSurfaceImportSync( WstRenderer *renderer, WstRenderSurface *surface, WstExplicitSync *bufferSync);
+void WstRendererSurfaceCommit( WstRenderer *renderer, WstRenderSurface *surface, struct wl_resource *resource );
+void WstRendererSurfaceSetVisible( WstRenderer *renderer, WstRenderSurface *surface, bool visible );
+bool WstRendererSurfaceGetVisible( WstRenderer *renderer, WstRenderSurface *surface, bool *visible );
+void WstRendererSurfaceSetGeometry( WstRenderer *renderer, WstRenderSurface *surface, int x, int y, int width, int height );
+void WstRendererSurfaceGetGeometry( WstRenderer *renderer, WstRenderSurface *surface, int *x, int *y, int *width, int *height );
+void WstRendererSurfaceSetOpacity( WstRenderer *renderer, WstRenderSurface *surface, float opacity );
+float WstRendererSurfaceGetOpacity( WstRenderer *renderer, WstRenderSurface *surface, float *opacity );
+void WstRendererSurfaceSetZOrder( WstRenderer *renderer, WstRenderSurface *surface, float z );
+float WstRendererSurfaceGetZOrder( WstRenderer *renderer, WstRenderSurface *surface, float *z );
+void WstRendererSurfaceSetCrop( WstRenderer *renderer, WstRenderSurface *surface, float x, float y, float width, float height );
+void WstRendererQueryDmabufFormats( WstRenderer *renderer, int **formats, int *num_formats );
+void WstRendererQueryDmabufModifiers( WstRenderer *renderer, int format, uint64_t **modifiers, int *num_modifiers );
+void WstRendererDelegateUpdateScene( WstRenderer *renderer, std::vector<WstRect> &rects );
+void WstRendererResolutionChangeBegin( WstRenderer *renderer );
+void WstRendererResolutionChangeEnd( WstRenderer *renderer );
+
+#endif
+

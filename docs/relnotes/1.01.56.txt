@@ -1,0 +1,29 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.56 Release Notes
+------------------------------
+
+Date: July 23, 2024
+Tag: Westeros-1.01.56
+Changes:
+
+
+* Enable frame step on preroll by default in v4l2
+
+* support for assigning surface ownership to virtual embedded compositors 
+
+* Disable frame step on preroll by default Allow to display frame on paused state
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+
+

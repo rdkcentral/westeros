@@ -1,0 +1,32 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.46 Release Notes
+------------------------------
+
+Date: June 13, 2023
+Tag: Westeros-1.01.46
+Changes:
+
+* v4l2, raw: relax tolerance for aspect ratio comparisions for zoom
+
+* drm: fix potential crash with frame advance
+
+* essos: conditionally use eglGetPlatformDisplayEXT
+
+* sink, brcm: frame advance changes
+
+* core, essos: fallback to eglGetDisplay if eglGetPlatformDisplayEXT fails
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+
+

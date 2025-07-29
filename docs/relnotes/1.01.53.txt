@@ -1,0 +1,39 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.53 Release Notes
+------------------------------
+
+Date: Mar 13, 2024
+Tag: Westeros-1.01.53
+Changes:
+
+* v4l2: support use of session sync mode from asink
+-off by default, enabled at build time with -DUSE_AUDIOSINK_SESSION_MODE
+
+* v4l2: enable DI and NR.
+-NR is disable when it is playing progressive movies.
+
+* brcm: Set "videoStarted= FALSE" early in sinkReleaseVideo() to prevent underflow callback lock() race condition
+
+* essos: allow EssAppPlatformDisplayType_waylandExtension on supported platforms
+
+* brcm: adjust decode rate for immediate output
+
+-Set trickstate rate to 1.4 instead of 1.2 or 2.0 to allow for overflow recover and low latency decode without excessive frame dropping.
+
+* drm: fix false underflow unpausing from frame advance
+
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+
+

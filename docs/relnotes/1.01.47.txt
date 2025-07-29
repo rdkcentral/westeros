@@ -1,0 +1,56 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.47 Release Notes
+------------------------------
+
+Date: July 13, 2023
+Tag: Westeros-1.01.47
+Changes:
+
+* drm: add hooks for external video stats
+
+* brcm: fix eos underflow hang during preroll
+
+* brcm: fix play resume after frame step
+
+* drm: thread name and priority changes
+-set names to key threads
+-add env vars for offload and video connection thread priorities
+
+* v4l2: allow frame step request prior to preroll
+
+* drm: filter connector events from hotplug events
+
+* drm: improve display mode specifier parsing
+
+* drm: process all pending uevent as a batch
+
+* drm: no mode set pending in create native window
+
+* drm: display connection fix:
+-enforce display server connection number limit prior to
+creating connection thread.
+
+* drm: adjust expiry limit for low frame rates
+
+* drm: prevent native fence fd leak:
+-during mode changes it is possible to skip an atomic update which would leak a native fence fd
+
+* drm: prefer hdmi connectors
+
+* drm: resize video if mode size changes while paused
+
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+
+

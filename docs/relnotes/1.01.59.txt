@@ -1,0 +1,52 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.59 Release Notes
+------------------------------
+
+Date: June 24, 2025
+Tag: Westeros-1.01.59
+Changes:
+
+* if segstart==0 and 1st decoded pts is small, use 0 for base of position
+
+* Fixes for YTS HW Dual Video Tests
+
+* Fix NPLB timeAfterSeek Tests
+
+* v4l2: decoder reset locking and send HLG info to pqserver by fifo
+
+* avoid gint64 overflow when calculating PTS value
+
+* Fix race condition with vidfilter placing the first buffer into playpump vs setStartPTS/Flush
+
+* Retry VideoDecoder_Start() on OUT_OF_MEMORY error
+
+* Device Frozen at App Launch Screen fix
+
+* fix for white line at start of DV test stream
+
+* API to reset first frame event
+
+* essos: fix xkb and wl resources leak
+
+* WesterosSink fails to complete preroll after seek fix
+
+* add linux-explicit-synchronization for westeros
+
+* Fix framestep for NTS VPEEK test
+
+* AAMP L3 Test 2003, 2005, 2006 failures fixes
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+
+

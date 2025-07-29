@@ -1,0 +1,40 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.55 Release Notes
+------------------------------
+
+Date: May 17, 2024
+Tag: Westeros-1.01.55
+Changes:
+
+
+* all: fix some compile warnings
+
+* sink: fix compiler warnings
+
+* essos: update key repeat
+-filter repeated key press events for the same key so that they do not
+terminate essos key repeat which generates key repeat events while a
+key is pressed until the key is released or a key press for a diferent key
+is received
+
+* core, sink: fix compiler warnings
+
+*  brcm: adjust decode rate to 4.0  for immediate output
+
+Set trickstate rate to 4.0 to allow decoding faster in immediate mode case
+
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+
+

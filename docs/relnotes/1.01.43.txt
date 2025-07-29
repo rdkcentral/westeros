@@ -1,0 +1,29 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.43 Release Notes
+------------------------------
+
+Date: Mar 13, 2023
+Tag: Westeros-1.01.43
+Changes:
+
+* test: add test cases for sink stats query
+
+* drm: iterate all planes during termination
+
+* drm: avoid inappropriate use of join
+
+* drm: prevent buffer leak with keep last frame
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
+

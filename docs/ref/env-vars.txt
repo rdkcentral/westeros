@@ -1,0 +1,1177 @@
+Environment Variables
+===============================================================================
+===============================================================================
+
+
+Contents
+===============================================================================
+
+Common:
+  CLIENT_IDENTIFIER
+  ESSOS_DEBUG
+  ESSOS_NO_EVENT_LOOP_THROTTLE
+  ESSOS_DIRECT_NO_EVENT_LOOP_THROTTLE
+  ESSRMGR_APPID
+  ESSRMGR_CONFIG_FILE
+  ESSRMGR_DEBUG
+  WAYLAND_DISPLAY
+  WESTEROS_CAPTURE_CLIENT_STDOUT
+  WESTEROS_DEBUG
+  WESTEROS_SINK_STATS_LOG
+  WESTEROSSINK_ENABLE_CAPTURE
+  WESTEROS_FAST_RENDER
+  WESTEROS_FAST_RENDER_BASE_ZORDER
+  WESTEROS_FORWARD_CLIENT_STDOUT
+  WESTEROS_RENDER_EMBEDDED_FPS
+  WESTEROS_RENDER_GL_FPS
+  WESTEROS_VPC_BRIDGE
+  XDG_RUNTIME_DIR
+
+Amlogic SOC
+  WESTEROS_SINK_AMLOGIC_DW_MODE
+  WESTEROS_SINK_AMLOGIC_USE_DMABUF
+  WESTEROS_SINK_DRM_NAME
+
+Broadcom SOC
+  WESTEROS_GL_GRAPHICS_SD_USE_720
+  WESTEROS_SINK_USE_ESSRMGR
+  WESTEROS_SINK_USE_GFX
+  WESTEROS_SINK_USE_SW_DECODE
+  WESTEROS_SECURE_GRAPHICS
+
+KMS+V4L2
+  AV_PROGRESSION
+  WESTEROS_DRM_CARD
+  WESTEROS_GL_ALLOW_4K_ZOOM
+  WESTEROS_GL_DEBUG
+  WESTEROS_GL_DEBUG_FRAME
+  WESTEROS_GL_FPS
+  WESTEROS_GL_FRM_TRUNCATE
+  WESTEROS_GL_GLOBAL_ZOOM_ACTIVE
+  WESTEROS_GL_GRAPHICS_MAX_SIZE
+  WESTEROS_GL_MAX_MODE
+  WESTEROS_GL_MODE
+  WESTEROS_GL_NO_PLANES
+  WESTEROS_GL_NO_VBLANK
+  WESTEROS_GL_NO_VIDEOSERVER
+  WESTEROS_GL_OFFLOAD_PRIORITY
+  WESTEROS_GL_REFRESH_PRIORITY
+  WESTEROS_GL_USE_AMLOGIC_AVSYNC
+  WESTEROS_GL_USE_GBM_MODIFIERS
+  WESTEROS_GL_USE_GENERIC_AVSYNC
+  WESTEROS_GL_USE_BEST_MODE
+  WESTEROS_GL_USE_PREFERRED_MODE
+  WESTEROS_GL_USE_REFRESH_LOCK
+  WESTEROS_GL_USE_UEVENT_HOTPLUG
+  WESTEROS_GL_VSERVER_CONN_PRIORITY
+  WESTEROS_SECURE_GRAPHICS
+  WESTEROS_SINK_CLOCK
+  WESTEROS_SINK_DEBUG_FRAME
+  WESTEROS_SINK_USE_FREERUN
+  WESTEROS_SINK_USE_GFX
+  WESTEROS_SINK_USE_ESSRMGR
+  WESTEROS_SINK_LOW_MEM_MODE
+  WESTEROS_SINK_USE_NV21
+
+Raw
+  WESTEROS_SINK_DRM_NAME
+  WESTEROS_SINK_USE_ESSRMGR
+  WESTEROS_SINK_USE_FREERUN
+  WESTEROS_SINK_USE_GFX
+  WESTEROS_SINK_DEBUG_FRAME
+
+
+
+Common to all devices
+===============================================================================
+
+
+CLIENT_IDENTIFIER
+-------------------------------------------------------------------------------
+See ESSRMGR_APPID.
+
+If no ESSRMGR_APPID env var is set, but a CLIENT_IDENTIFIER env var is set,
+then the value of the CLIENT_IDENTIFIER will be used as the ESSRMGR_APPID.
+
+Last modified: Jan 17, 2023
+
+
+
+
+ESSOS_DEBUG
+-------------------------------------------------------------------------------
+Set Essos log level.
+
+The Essos code emits logs with the following levels:
+
+0 - FATAL, ERROR
+1 - WARNING
+2 - INFO
+3 - DEBUG
+4 - TRACE
+
+By default Essos uses the log level of 2.  To use a different level define:
+
+export ESSOS_DEBUG=<level>
+
+in the env of the application process, where <level> is an integer ranging from 0 to 4.
+
+Last modified: Feb 7, 2023
+
+
+
+
+ESSOS_NO_EVENT_LOOP_THROTTLE
+-------------------------------------------------------------------------------
+Disable event loop throttling.
+
+An Essos application must include an event loop that calls the API:
+
+EssContextRunEventLoopOnce
+
+In order to prevent excessive CPU usage, Essos will normally perform
+throttling to ensure that EssContextRunEventLoopOnce is called no more
+frequently than once every 16 ms.  If the application wishes to perform
+its own throttling, it can disable the default throttling by defining:
+
+export ESSOS_NO_EVENT_LOOP_THROTTLE=1
+
+in the env of the Essos application process.
+
+Last modified: Jan 17, 2023
+
+
+
+
+ESSOS_DIRECT_NO_EVENT_LOOP_THROTTLE
+-------------------------------------------------------------------------------
+Disable event loop throttling for direct-linux apps.
+
+The ESSOS_NO_EVENT_LOOP_THROTTLE env var will disable event loop throttling
+for any Essos application.  In contrast, the ESSOS_DIRECT_NO_EVENT_LOOP_THROTTLE
+var will only disable throttling for direct linux (non-wayland) appliations.
+
+(see ESSOS_NO_EVENT_LOOP_THROTTLE)
+
+Last modified: Jan 17, 2023
+
+
+
+
+ESSRMGR_APPID
+-------------------------------------------------------------------------------
+Set application identifier for ERM.
+
+This var is set by the system's application manager to identify the application
+process.  The ERM black-list mechanism will use the application id to determine
+if the application is currently authorized to request resources.  The id is
+set by defining:
+
+export ESSRMGR_APPED=<id>
+
+in the env of the applcation where <id> is some unique string value with a
+maximum length of 80 single-byte characters.
+
+(See also CLIENT_IDENTIFIER)
+
+Last modified: Jan 17, 2023
+
+
+
+
+ESSRMGR_CONFIG_FILE
+-------------------------------------------------------------------------------
+Specify ERM config file.
+
+By default, ERM expects its config file to be located at /etc/default/essrmgr.conf
+To use a different config file, define:
+
+export ESSRMGR_CONFIG_FILE=<file>
+
+in the env of the ERM daemon service process, where <file> is the fully 
+qualified path name of the config file.
+
+Last modified: Jan 30, 2023
+
+
+
+
+ESSRMGR_DEBUG
+-------------------------------------------------------------------------------
+Set ERM (Essos Resource Manager) log level.
+
+The ERM code emits logs with the following levels:
+
+0 - FATAL, ERROR
+1 - WARNING
+2 - INFO
+3 - DEBUG
+4 - TRACE1
+5 - TRACE2
+6 - TRACE3
+
+By default ERM uses the log level of 2.  To use a different level define:
+
+export ESSRMGR_DEBUG=<level>
+
+in the env of the ERM daemon process, where <level> is an integer ranging from 0 to 6.
+
+Last modified: Jan 17, 2023
+
+
+
+
+WAYLAND_DISPLAY
+-------------------------------------------------------------------------------
+Set the wayland display name.
+
+A wayland client and nested compositors need to be told the name of the wayland
+display to connect to.  This is done by defining
+
+export WAYLAND_DISPLAY=<display>
+
+in the env of the process of the client or nested compositor, where <display> is
+a string representing the display name.
+
+Last modified: Jan 18, 2023
+
+
+
+
+WESTEROS_CAPTURE_CLIENT_STDOUT
+-------------------------------------------------------------------------------
+Capture client stdout
+
+When a client connects to a Westeros compositor, information that the client
+writes to stdout can be captured in a file by defining
+
+export WESTEROS_CAPTURE_CLIENT_STDOUT=<file>
+
+in the env of the client process, where <file> is the name of the file
+where the client's stdout should be written.
+
+Last modified: Jan 18, 2023
+
+
+
+
+WESTEROS_DEBUG
+-------------------------------------------------------------------------------
+Set the Westeros compositor log level.
+
+The Westeros compositor emits logs with the following levels:
+
+0 - FATAL, ERROR
+1 - WARNING
+2 - INFO
+3 - DEBUG
+4 - TRACE1
+5 - TRACE2
+6 - TRACE3
+
+By default the log level of 3 is used.  To use a different level define:
+
+export WESTEROS_DEBUG=<level> in the env of the compositor process where
+<level> is an integer ranging from 0 to 6
+
+Last modified: Jan 17, 2023
+
+
+
+
+WESTEROS_SINK_STATS_LOG
+-------------------------------------------------------------------------------
+Enable periodic stats logging
+
+To enable periodic stats logging define:
+
+export WESTEROS_SINK_STATS_LOG=<interval>
+
+in the env of the process creating the gstreamer pipeline where <interval>
+is an integer giving the desired interval period in seconds.
+
+Last modified: Jan 31, 2023
+
+
+
+
+WESTEROSSINK_ENABLE_CAPTURE
+-------------------------------------------------------------------------------
+Enable stream capture.
+
+Media played in a gstreamer pipeline can be captured and saved in MPEG TS
+container by defineing:
+
+export WESTEROSSINK_ENABLE_CAPTURE=1
+
+in the env of the process creating the gstreamer pipeline.  The capture is
+performed using libmediacapture.so.0.0.0 (located in the Westeros repo under
+tools/mediacapture.  Capture can only be used for non-secure video.
+
+Last modified: Jan 31, 2023
+
+
+
+
+WESTEROS_FAST_RENDER
+-------------------------------------------------------------------------------
+Enable fast render delegation
+
+An embedded compositor can be configured to delegate render operations to a
+specified render module by defining:
+
+export WESTEROS_FAST_RENDER=<modulename>
+
+in the env of the compositor process where <modulename> is the filename of
+the loadable shared library file of the render module to use.  The specified
+module must implement the delegateUpdateScene entry point.  The embedded
+render module's updateScene method will invoke the fast render module's
+delegateUpdateScene method when the compositor has set the fast render hint.
+The compositor sets this hint when the active transform does not include
+rotation.
+
+Last modified: Jan 18, 2023
+
+
+
+
+WESTEROS_FAST_RENDER_BASE_ZORDER
+-------------------------------------------------------------------------------
+Set fast render base z order
+
+This can be used to adjust the zorder used for surfaces of a fast render
+module by defining
+
+export WESTEROS_FAST_RENDER_BASE_ZORDER=<value>
+
+in the env of the compositor process, where <value> is a string representing
+a floating point value from 0 to 1.0.
+
+Last modified: Jan 18, 2023
+
+
+
+
+WESTEROS_FORWARD_CLIENT_STDOUT
+-------------------------------------------------------------------------------
+Forward client stdout
+
+When a client connects to a Westeros compositor, information that the client
+writes to stdout can be forwarded and merged with the log output of the 
+compositor process by defining
+
+export WESTEROS_FORWARD_CLIENT_STDOUT=1
+
+in the env of the client process.
+
+Last modified: Jan 18, 2023
+
+
+
+
+WESTEROS_RENDER_EMBEDDED_FPS
+-------------------------------------------------------------------------------
+Emit rendering fps info
+
+An embedded compositor instance can be made to emit rendering fps info by
+defining
+
+export WESTEROS_RENDER_EMBEDDED_FPS=1
+
+in the env of the embedded compositor process.
+
+Last modified: Jan 18, 2023
+
+
+
+
+WESTEROS_RENDER_GL_FPS
+-------------------------------------------------------------------------------
+Emit rendering fps info
+
+A compositor instance using the gl render module can be made to emit rendering fps info by
+defining
+
+export WESTEROS_RENDER_GL_FPS=1
+
+in the env of the compositor process.
+
+Last modified: Jan 18, 2023
+
+
+
+
+WESTEROS_VPC_BRIDGE
+-------------------------------------------------------------------------------
+Specify VPC brige
+
+Used when an embedded compositor instance has a client connecting to its display
+and the client is playing video with westerossink, and that embedded
+compositor instance is nested inside another embedded compositor.  Defining
+
+export WESTEROS_VPC_BRIDGE=<display>
+
+in the env of the process of the nested embedded compositor, where <display>
+is the display name of the containing embedded compositor, will allow vpc
+messages resulting from size/position changes of the containing display to
+be passed on to the nested display so that its video is sized and positioned
+properly.
+
+Last modified: Jan 18, 2023
+
+
+
+
+XDG_RUNTIME_DIR
+-------------------------------------------------------------------------------
+Specify XDG runtime folder.
+
+Specifies the file system location used as the XDG runtime folder.  This needs
+to be defined in order for Wayland and/or ERM to be used.  Specify the location
+by defining:
+
+export XDG_RUNTIME_DIR=<path>
+
+in the env of app, compositor, sink, etc, processes where <path> is a string
+giving a fully qualified pathname of the folder to use.
+
+Last modified: Jan 31, 2023
+
+
+
+
+Amlogic SOC
+===============================================================================
+
+
+WESTEROS_SINK_AMLOGIC_DW_MODE
+-------------------------------------------------------------------------------
+Force a DW (double write) mode.
+
+To force a DW mode, define:
+
+export WESTEROS_SINK_AMLOGIC_DW_MODE=<mode>
+
+in the process creating the gstreamer pipeline, where mode is one of:
+
+0   : VDEC_DW_AFBC_ONLY
+1   : VDEC_DW_AFBC_1_1_DW
+2   : VDEC_DW_AFBC_1_4_DW
+3   : VDEC_DW_AFBC_x2_1_4_DW
+4   : VDEC_DW_AFBC_1_2_DW
+16  : VDEC_DW_NO_AFBC
+33  : VDEC_DW_MMU_1
+34  : VDEC_DW_MMU_1_4
+36  : VDEC_DW_MMU_1_2
+256 : VDEC_DW_AFBC_AUTO_1_2
+512 : VDEC_DW_AFBC_AUTO_1_4
+
+Last modified: Jan 30, 2023
+
+
+
+
+WESTEROS_SINK_AMLOGIC_USE_DMABUF
+-------------------------------------------------------------------------------
+Force use of dma-buf for video capture.
+
+To force the use of dma-buf for video capture define:
+
+export WESTEROS_SINK_AMLOGIC_USE_DMABUF=1
+
+in env of the process creating the gstreamer pipeline.
+
+Last modified: Jan 30, 2023
+
+
+
+
+WESTEROS_SINK_DRM_NAME
+-------------------------------------------------------------------------------
+Specify the DRM render node to use.
+
+By default the render node used will be /dev/dri/renderD128.  To specify a
+different node define:
+
+export WESTEROS_SINK_DRM_NAME=<node>
+
+in the env of the process creating the gstreamer pipeline, where <node> is the
+fully qualified path name of the desired render node.
+
+Last modified: Jan 30, 2023
+
+
+
+
+
+Broadcom SOC
+===============================================================================
+
+WESTEROS_GL_GRAPHICS_SD_USE_720
+-------------------------------------------------------------------------------
+Force graphics of 720x480 for SD output.
+
+By default, when the display mode is SD the graphics resolution used will be
+640x480.  If it is desired to use 720x480 graphics for SD modes then define:
+
+export WESTEROS_GL_GRAPHICS_SD_USE_720=1
+
+Last modified: Jan 17, 2023
+
+
+
+
+WESTEROS_SINK_USE_ESSRMGR
+-------------------------------------------------------------------------------
+Enable use of ERM (Essos Resource Manager).
+
+By default, westerossink will not use ERM and will assume it can access the
+resources needed to decode and display video.  If it is desired to manage
+resources using ERM then define:
+
+export WESTEROS_SINK_USE_ESSRMGR=1
+
+in the env of any processes using westerossink to play video.
+
+Last modified: Jan 17, 2023
+
+
+
+
+WESTEROS_SINK_USE_GFX
+-------------------------------------------------------------------------------
+Force the use of video-as-texture.
+
+To force video playback to use video-as-texture to present as graphics, define:
+
+export WESTEROS_SINK_USE_GFX=1
+
+in the env of the process creating the gstreamer pipeline.
+
+Last modified: Jan 31, 2021
+
+
+
+
+WESTEROS_SINK_USE_SW_DECODE
+-------------------------------------------------------------------------------
+Force the use of software decoding.
+
+Normally westerossink will use hardware acceleration for video decoding and
+rendering via Broadcom Nexus API's.  If the build has software decoding
+enabled then software is also an option.  Software decoding support is enabled
+at build time via "-DENABLE_SW_DECODE" and normally this is controlled using
+a Yocto distro feature:
+
+DISTRO_FEATURES_append = " westeros_sink_software_decode"
+
+If software decoding is enabled at build time it can be selected at
+runtime via ERM the res-usage property of westerossink, or it can be forced
+by defining:
+
+export WESTEROS_SINK_USE_SW_DECODE=1
+
+in the env of the process using westerossink to play video.
+
+Last modified: Jan 17, 2023
+
+
+
+
+WESTEROS_SECURE_GRAPHICS
+-------------------------------------------------------------------------------
+Enable to use of secure graphics.
+
+By default graphics operations do not use secure memory.  To enable secure
+graphics define:
+
+export WESTEROS_SECURE_GRAPHICS=1
+
+in the env of the compositor and of any processes using westerossink to
+play video if video-as-texture may ever be used.  Note that for secure graphics
+to be available, the Broadcom SDK for the device needs to be configured to
+support it.
+
+Last modified: Jan 17, 2023
+
+
+
+KMS
+===============================================================================
+
+
+AV_PROGRESSION
+-------------------------------------------------------------------------------
+Enable AV Progression logging in the westeros-soc-drm video server.
+
+To enable AV Progression logging in the video server define:
+
+export AV_PROGRESSION=<value>
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process, which is the process that will contain the video server.  <value> can
+be 1, or the full qualified file name to which the logs will be written.  When
+1 is used, the logs are emitted to stderr.
+
+Last modified: Jan 19, 2023
+
+
+
+
+WESTEROS_GL_ALLOW_4K_ZOOM
+-------------------------------------------------------------------------------
+Set the 4K zoom policy.
+
+To set the 4K zoom policy define:
+
+export WESTEROS_GL_ALLOW_4K_ZOOM=<value>
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process where <value> is one of "0" or "1".  When set to "0" the policy is
+disabled and zoom mode settings of zoom and 16:9 stretch will not be applied to
+content that is 4K or greater in resolution.  If set to "1" the polic is
+enabled and zoom and stretch modes will be allowed to apply to content that is
+4K or greater in resolution.
+
+Last modified: Jan 24, 2023
+
+
+
+
+WESTEROS_GL_DEBUG
+-------------------------------------------------------------------------------
+Set the westeros-soc-drm log level.
+
+The westeros-soc-drm component emits logs with the following levels:
+
+0 - FATAL, ERROR
+1 - WARNING
+2 - INFO
+3 - DEBUG
+4 - TRACE1
+5 - TRACE2
+6 - TRACE3
+
+By default the log level of 2 is used.  To use a different level define:
+
+export WESTEROS_GL_DEBUG=<level> in the env of the process acting as the DRM
+(Direct Rendering Manager) master, where <level> is an integer ranging from 0
+to 6
+
+Last modified: Jan 25, 2023
+
+
+
+
+WESTEROS_GL_DEBUG_FRAME
+-------------------------------------------------------------------------------
+Enable video frame debug logging.
+
+To enable verbose logging relating to the processing of video frames by the
+westeros-soc-drm video server, define:
+
+export WESTEROS_GL_DEBUG_FRAME=1
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process.
+
+Last modified: Jan 25, 2023
+
+
+
+
+WESTEROS_DRM_CARD
+-------------------------------------------------------------------------------
+Specify DRM card
+
+To specify the device name of the DRM card to use define:
+
+export WESTEROS_DRM_CARD=<card>
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process where <card> is the fully qualified path name of the card interface
+(/dev/dri/card0 for example).
+
+Last modified: Jan 24, 2023
+
+
+
+
+WESTEROS_GL_FPS
+-------------------------------------------------------------------------------
+Emit KMS fps info
+
+Regular logging of fps info can be enabled by defining:
+
+export WESTEROS_GL_FPS=1
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process.
+
+Last modified: Jan 24, 2023
+
+
+
+
+WESTEROS_GL_FRM_TRUNCATE
+-------------------------------------------------------------------------------
+Set FRM trucation policy.
+
+When auto FRM (Frame Rate Matching) is enabled the FRM truncation policy
+determines whether the active content rate, which is specified as the ratio
+of a numerator and denominator, is converted to an integer using truncation
+or with rounding.  To set the policy define:
+
+export WESTEROS_GL_FRM_TRUNCATE=<value>
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process.  When set to "0" the conversion will use rounding, when set to "1"
+the conversion will use truncation.  If the env var is not set, rounding is
+used by default.
+
+Last modified: Jan 25, 2023
+
+
+
+
+WESTEROS_GL_GLOBAL_ZOOM_ACTIVE
+-------------------------------------------------------------------------------
+Set the global zoom policy.
+
+To set the global zoom policy define:
+
+export WESTEROS_GL_GLOBAL_ZOOM_ACTIVE=<value>
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process where <value> is one of "0" or "1".  When set to "1" the policy is
+enabled and every westerossink instance will use the global zoom mode set
+in the video server unless the pipeline opts out by explicitly setting a
+mode via the sink's "zoom-mode" property.  When set to "0" the policy is
+disabled and westerossink instances will not use the global zoom unless
+the pipeline opts in by explicitly setting the value 6 (global) to the
+sink's "zoom-mode" property.
+
+Last modified: Jan 24, 2023
+
+
+
+
+WESTEROS_GL_GRAPHICS_MAX_SIZE
+-------------------------------------------------------------------------------
+Specify a maximum graphics resolution.
+
+It is possible for the graphics resolution to be differnt than the output display
+resolution.  For example, to save memory an bandwidth, it might be desired to
+have graphics at 1920x1080 when the output display resolution is 4k.  This can
+be accomplished by definig:
+
+export WESTEROS_GL_GRAPHICS_MAX_SIZE=<WxH>
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process, where <WxH> specifies the maximum graphics resolution.  For example
+"1920x1080".
+
+Last modified: Jan 19, 2023
+
+
+
+
+WESTEROS_GL_MAX_MODE
+-------------------------------------------------------------------------------
+Specify a maximum display mode
+
+It is possible to limit the maximum resolution of the display mode used by
+westeros-soc-drm.  To do so, define:
+
+export WESTEROS_GL_MAX_MODE=<WxH>
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process, where <WxH> specifies the maximum graphics resolution.  For example
+"1920x1080".
+
+Last modified: Jan 25, 2023
+
+
+
+
+WESTEROS_GL_MODE
+-------------------------------------------------------------------------------
+Specify the initial display mode.
+
+To specifiy the display mode to select on startup, define:
+
+export WESTEROS_GL_MODE=[<W>x]<H>[p|i][[x]<R>]
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process, where <W> is mode widh, <H> is mode height, and <R> is mode refresh
+rate.  For example, "720p", "1080i", "1920x1080x24".
+
+Last modified: Jan 25, 2023
+
+
+
+
+WESTEROS_GL_NO_PLANES
+-------------------------------------------------------------------------------
+Suppress use of universal planes.
+
+To suppress the use of DRM univeral planes and atomic commits on a system
+with those capabilities, define:
+
+export WESTEROS_GL_NO_PLANES=1
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process.
+
+Last modified: Jan 24, 2023
+
+
+
+
+WESTEROS_GL_NO_VBLANK
+-------------------------------------------------------------------------------
+Suppress use of drmWaitVBlank.
+
+To suppress the use of drmWaitVBlank define:
+
+export WESTEROS_GL_NO_VBLANK=1
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process.
+
+Last modified: Jan 24, 2023
+
+
+
+
+WESTEROS_GL_NO_VIDEOSERVER
+-------------------------------------------------------------------------------
+Suppress creation of video server.
+
+To suppress the creation of a video server in a system with universal planes and
+atomic commit support define:
+
+export WESTROS_GL_NO_VIDEOSERVER=1
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process.
+
+Last modified: Jan 24, 2023
+
+
+
+
+WESTEROS_GL_OFFLOAD_PRIORITY
+-------------------------------------------------------------------------------
+Set offload thread priority.
+
+To set the scheduling priority of the offload thread define:
+
+export WESTEROS_GL_OFFLOAD_PRIORITY=<policy>,<priority>
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process where <policy> is one of O (SCHED_OTHER), F (SCHED_FIFO), or R
+(SCHED_RR), and <priority> is an integer value.  For example F,2 or R,5.  By
+default the priority used is the equivalent of specifying O,0.
+
+Last modified: June 26, 2023
+
+
+
+
+WESTEROS_GL_REFRESH_PRIORITY
+-------------------------------------------------------------------------------
+Set refresh thread priority.
+
+To set the scheduling priority of the refresh thread define:
+
+export WESTEROS_GL_REFRESH_PRIORITY=<policy>,<priority>
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process where <policy> is one of O (SCHED_OTHER), F (SCHED_FIFO), or R
+(SCHED_RR), and <priority> is an integer value.  For example F,2 or R,5.  By
+default the priority used is the equivalent of specifying R,70.
+
+Last modified: June 26, 2023
+
+
+
+
+WESTEROS_GL_USE_AMLOGIC_AVSYNC
+-------------------------------------------------------------------------------
+Enable Amlogic AV sync module.
+
+To enable the use of the Amlogic AV sync module to control AV synchronization,
+define:
+
+export WESTEROS_GL_USE_AMLOGIC_AVSYNC=1
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process.
+
+Last modified: Jan 25, 2023
+
+
+
+
+WESTEROS_GL_USE_GBM_MODIFIERS
+-------------------------------------------------------------------------------
+Enable the use of gbm modifiers.
+
+To enable the use of gbm modifiers define:
+
+export WESTEROS_GL_USE_GBM_MODIFIERS=1
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process.  Note that use of modifies must also be enabled at build time by
+specifying "--enable-gbm-modifiers" with configure.
+
+Last modified: Jan 24, 2023
+
+
+
+
+WESTEROS_GL_USE_GENERIC_AVSYNC
+-------------------------------------------------------------------------------
+Enable generic AV sync
+
+For devices where the SOC vender does not provide an avsync module to integrate
+with westeros-soc-drm, a generic avsync mechanism is available.  This mechanism
+can provide basic AV synchronization but may not be suitable for product use.
+To enable, define:
+
+export WESTEROS_GL_USE_GENERIC_AVSYNC=1
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process.
+
+Last modified: Jan 25, 2023
+
+
+
+
+WESTEROS_GL_USE_BEST_MODE
+-------------------------------------------------------------------------------
+Select the best display mode.
+
+To hint that the best available display mode (most pixels, fastest refresh rate)
+should be used define:
+
+export WESTEROS_GL_USE_BEST_MODE=1
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process.
+
+Last modified: Jan 25, 2023
+
+
+
+
+WESTEROS_GL_USE_PREFERRED_MODE
+-------------------------------------------------------------------------------
+Select the device perferred display mode.
+
+The list of possible display modes supported by a device can include a mode
+that is flagged as the preferred mode.  To hint that the such a preferred
+mode should be used define:
+
+export WESTEROS_GL_USE_PREFERRED_MODE=1
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process.
+
+Last modified: Jan 25, 2023
+
+
+
+
+WESTEROS_GL_USE_REFRESH_LOCK
+-------------------------------------------------------------------------------
+Enable refresh lock
+
+Currently available on systems where the name field reported by drmGetVersion
+is "meson" or "vc4".  When enabled, EGL buffer swaps by the DRM master are
+synchronized with the display vertical interval and rate.  To enable define:
+
+export WESTEROS_GL_USE_REFRESH_LOCK=1
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process.
+
+Last modified: Jan 25, 2023
+
+
+
+
+WESTEROS_GL_USE_UEVENT_HOTPLUG
+-------------------------------------------------------------------------------
+Enable HDMI hotplug event handling
+
+To enable HDMI hotplug event handling for HDMI output define:
+
+export WESTEROS_GL_USE_UEVENT_HOTPLUG=1
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process.  This is only applicable for STB devices.
+
+Last modified: Jan 19, 2023
+
+
+
+
+WESTEROS_GL_VSERVER_CONN_PRIORITY
+-------------------------------------------------------------------------------
+Set video connection thread priority.
+
+To set the scheduling priority of video connection threads define:
+
+export WESTEROS_GL_VSERVER_CONN_PRIORITY=<policy>,<priority>
+
+in the env of the process acting as the DRM (Direct Rendering Manager) master
+process where <policy> is one of O (SCHED_OTHER), F (SCHED_FIFO), or R
+(SCHED_RR), and <priority> is an integer value.  For example F,2 or R,5.  By
+default the priority used is the equivalent of specifying O,0.
+
+Last modified: June 26, 2023
+
+
+
+
+WESTEROS_SECURE_GRAPHICS
+-------------------------------------------------------------------------------
+Enable to use of secure graphics.
+
+By default graphics operations do not use secure memory.  To enable secure
+graphics define:
+
+export WESTEROS_SECURE_GRAPHICS=1
+
+in the env of the process acting as the DRM (Direct Render Manager) master, and 
+of any processes using westerossink to play video if video-as-texture may ever be
+used.  Note that for secure graphics to be available, the SOC and EGL/GLES
+implementation must support it.
+
+Last modified: Jan 24, 2023
+
+
+
+
+WESTEROS_SINK_CLOCK
+-------------------------------------------------------------------------------
+Specify the name of the audio sink element
+
+Specify the name of the clock element that indicates that playback should use
+audio sync master.  Used only if an audio sink is not detected in the pipeline.
+Use of this env var is deprecated.  It can be defined with:
+
+export WESTEROS_SINK_CLOCK=<name>
+
+in the env of the process creating the gstreamer pipeline where <name> is
+a string.
+
+Last modified: Jan 31, 2023
+
+
+
+
+
+WESTEROS_SINK_DEBUG_FRAME
+-------------------------------------------------------------------------------
+Enable verbose video frame handling logs
+
+To enable verbose video frame handling logs, define:
+
+export WESTEROS_SINK_DEBUG_FRAME=1
+
+in the env of the process creating the gstreamer pipeline.
+
+Last modified: Jan 31, 2023
+
+
+
+
+WESTEROS_SINK_USE_FREERUN
+-------------------------------------------------------------------------------
+Enable freerun operation.
+
+When using v4l2+KMS, westerossink should operate freerunning.  This means that
+AV synchronization is not performed by gstreamer, but rather it is performed
+within westeros-soc-drm, usually with a SOC vendor provided AV sync module.  In
+freerun mode westerossink uses the v4l2 decoder to decode frames and pass them
+to the video server as fast as possible and the video server adds them to a
+display queue.  To enable freerun operation define:
+
+export WESTEROS_SINK_USE_FREERUN=1
+
+in the env of the process creating the gstreamer pipeline.
+
+Last modified: Jan 31, 2023
+
+
+
+
+WESTEROS_SINK_USE_GFX
+-------------------------------------------------------------------------------
+Force the use of video-as-texture.
+
+To force video playback to use video-as-texture to present as graphics, define:
+
+export WESTEROS_SINK_USE_GFX=1
+
+in the env of the process creating the gstreamer pipeline.
+
+Last modified: Jan 31, 2021
+
+
+
+
+
+WESTEROS_SINK_USE_ESSRMGR
+-------------------------------------------------------------------------------
+Enable use of ERM (Essos Resource Manager).
+
+By default, westerossink will not use ERM and will assume it can access the
+resources needed to decode and display video.  If it is desired to manage
+resources using ERM then define:
+
+export WESTEROS_SINK_USE_ESSRMGR=1
+
+in the env of any processes using westerossink to play video.
+
+Last modified: Jan 30, 2023
+
+
+
+
+WESTEROS_SINK_LOW_MEM_MODE
+-------------------------------------------------------------------------------
+Enable low memory mode
+
+Normally westerossink allocates input buffers of 4 MB.  When low memory mode
+is enabled input buffers of 1 MB are used.  With Amlogic SOC, this mode also
+precludes the use of video textures.  To enable, define:
+
+export WESTEROS_SINK_LOW_MEM_MODE=1
+
+in the env of the process creating the gstreamer pipeline.
+
+Last modified: Jan 31, 2023
+
+
+
+
+WESTEROS_SINK_USE_NV21
+-------------------------------------------------------------------------------
+Treat NV12 as NV21
+
+When passing NV12 surfaces via the wl_simplebuffer protocol, indicate the
+format is NV21.  This was used to correct color handling when it was
+mishandled by the EGL implementation.  To enable, define:
+
+export WESTEROS_SINK_USE_NV21=1
+
+in the env of the process creating the gstreamer pipeline.
+
+Last modified: Jan 31, 2023
+
+
