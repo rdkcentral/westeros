@@ -267,6 +267,8 @@ package_ipk:
 	$(MAKE) prefix=${abs_top_builddir}/staging_dir install
 	$(mkdir_p) $(IPK_GEN_STAGING_DIR)/usr/bin/
 	cp -af $(IPK_GEN_STAGING_DIR)/bin/* $(IPK_GEN_STAGING_DIR)/usr/bin/
+	$(mkdir_p) $(IPK_GEN_STAGING_DIR)/usr/include/
+	cp -af $(IPK_GEN_STAGING_DIR)/inlude/* $(IPK_GEN_STAGING_DIR)/usr/include/
 	tar -czvf $(IPK_GEN_PATH)/data.tar.gz -C $(IPK_GEN_STAGING_DIR) usr
 	tar -czvf $(IPK_GEN_PATH)/control.tar.gz -C $(IPK_GEN_PATH) control postinst prerm
 	cd $(IPK_GEN_PATH) && ar cr $(IPK_GEN_OUTPUT) $(IPK_GEN_INPUT) && cd -
