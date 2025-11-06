@@ -1,0 +1,26 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.62 Release Notes
+------------------------------
+
+Date: Oct 28, 2025
+Tag: Westeros-1.01.62
+Changes:
+
+* v4l2: Fix frame dropping boundary condition for seek accuracy
+* v4l2: fix compile error on platforms without V4L2_PIX_FMT_AV1 defined
+* v4l2:Fix thread race condition causing video decode crashes
+* brcm: Increase EOS "safety net" timeout.  Currently too short for I-frame only streams (like REW)
+* v4l2: update video decode error
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+

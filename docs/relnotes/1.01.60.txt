@@ -1,0 +1,25 @@
+Westeros Release Notes
+======================
+
+Westeros 1.01.60 Release Notes
+------------------------------
+
+Date: Sep 10, 2025
+Tag: Westeros-1.01.60
+Changes:
+
+* v4l2: Add low-latency-mode for Netflix DPI 7.0 support
+
+* brcm: Fix "NXCLIENT_BAD_SEQUENCE_NUMBER" error when leaving Netflix DolbyVision
+
+* brcm: Add check for stc_channel==0 to reduce error logging during gaming/low latency
+
+
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
