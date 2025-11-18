@@ -1,0 +1,272 @@
+name: Build Westeros
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+
+jobs:
+  build-ubuntu:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          pkg-config \
+          autoconf \
+          automake \
+          libtool \
+          git
+
+    - name: Install Wayland dependencies
+      run: |
+        sudo apt-get install -y \
+          libwayland-dev \
+          wayland-protocols \
+          libwayland-client0 \
+          libwayland-server0 \
+          libwayland-egl1
+
+    - name: Install GLib dependencies
+      run: |
+        sudo apt-get install -y \
+          libglib2.0-dev \
+          libgthread-2.0-0
+
+    - name: Install XKB dependencies
+      run: |
+        sudo apt-get install -y \
+          libxkbcommon-dev \
+          libxkbcommon-x11-dev
+
+    - name: Install EGL and OpenGL ES dependencies
+      run: |
+        sudo apt-get install -y \
+          libegl1-mesa-dev \
+          libgles2-mesa-dev \
+          mesa-common-dev \
+          libgl1-mesa-dev \
+          freeglut3-dev \
+          libglew-dev
+
+    - name: Install GStreamer dependencies
+      run: |
+        sudo apt-get install -y \
+          libgstreamer1.0-dev \
+          libgstreamer-plugins-base1.0-dev \
+          gstreamer1.0-plugins-base \
+          gstreamer1.0-plugins-good \
+          gstreamer1.0-plugins-bad \
+          gstreamer1.0-tools
+
+    - name: Install Google Test
+      run: |
+        sudo apt-get install -y \
+          libgtest-dev \
+          google-mock
+
+    - name: Install code coverage tools
+      run: |
+        sudo apt-get install -y \
+          lcov \
+          gcovr
+
+    - name: Build and install simpleshell
+      run: |
+        cd simpleshell
+        cd protocol
+        make SCANNER_TOOL=wayland-scanner
+        cd ..
+        autoreconf -fi
+        ./configure --prefix=/usr/local
+        make -j$(nproc)
+        sudo make install
+        sudo ldconfig
+
+    - name: Build and install simplebuffer (if exists)
+      run: |
+        if [ -d simplebuffer ] && [ -f simplebuffer/configure.ac ]; then
+          cd simplebuffer
+          if [ -d protocol ] && [ -f protocol/Makefile ]; then
+            cd protocol
+            make SCANNER_TOOL=wayland-scanner
+            cd ..
+          fi
+          autoreconf -fi
+          ./configure --prefix=/usr/local
+          make -j$(nproc)
+          sudo make install
+          sudo ldconfig
+        fi
+
+    - name: Generate protocol files for main
+      run: |
+        cd protocol
+        if [ -f Makefile ]; then
+          make SCANNER_TOOL=wayland-scanner
+        fi
+
+    - name: Configure main project with autotools
+      run: |
+        autoreconf -fi
+        ./configure --prefix=/usr/local --enable-app --enable-test --disable-embedded --enable-xdgstable
+
+    - name: Build main project
+      run: |
+        make -j$(nproc)
+
+    - name: Run tests
+      run: |
+        if [ -f Makefile ] && grep -q "check:" Makefile; then
+          make check
+        fi
+
+    - name: Generate coverage report (optional)
+      if: success()
+      run: |
+        if [ -f coverage.info ]; then
+          lcov --directory . --capture --output-file coverage.info
+          lcov --remove coverage.info '/usr/*' --output-file coverage.info
+          lcov --remove coverage.info '*/test/*' --output-file coverage.info
+          lcov --remove coverage.info '*/mocks/*' --output-file coverage.info
+          lcov --list coverage.info
+        fi
+
+    - name: Upload coverage reports
+      if: success()
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage.info
+        fail_ci_if_error: false
+        verbose: true
+
+  build-ubuntu-autotools:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          autoconf \
+          automake \
+          libtool \
+          pkg-config \
+          git
+
+    - name: Install Wayland dependencies
+      run: |
+        sudo apt-get install -y \
+          libwayland-dev \
+          wayland-protocols \
+          libwayland-client0 \
+          libwayland-server0 \
+          libwayland-egl1
+
+    - name: Install GLib dependencies
+      run: |
+        sudo apt-get install -y \
+          libglib2.0-dev \
+          libgthread-2.0-0
+
+    - name: Install XKB dependencies
+      run: |
+        sudo apt-get install -y \
+          libxkbcommon-dev \
+          libxkbcommon-x11-dev
+
+    - name: Install EGL and OpenGL ES dependencies
+      run: |
+        sudo apt-get install -y \
+          libegl1-mesa-dev \
+          libgles2-mesa-dev \
+          mesa-common-dev \
+          libgl1-mesa-dev \
+          freeglut3-dev \
+          libglew-dev
+
+    - name: Install GStreamer dependencies
+      run: |
+        sudo apt-get install -y \
+          libgstreamer1.0-dev \
+          libgstreamer-plugins-base1.0-dev \
+          gstreamer1.0-plugins-base \
+          gstreamer1.0-plugins-good \
+          gstreamer1.0-plugins-bad \
+          gstreamer1.0-tools
+
+    - name: Build and install simpleshell
+      run: |
+        cd simpleshell
+        cd protocol
+        make SCANNER_TOOL=wayland-scanner
+        cd ..
+        autoreconf -fi
+        ./configure --prefix=/usr/local
+        make -j$(nproc)
+        sudo make install
+        sudo ldconfig
+
+    - name: Build and install simplebuffer (if exists)
+      run: |
+        if [ -d simplebuffer ] && [ -f simplebuffer/configure.ac ]; then
+          cd simplebuffer
+          if [ -d protocol ] && [ -f protocol/Makefile ]; then
+            cd protocol
+            make SCANNER_TOOL=wayland-scanner
+            cd ..
+          fi
+          autoreconf -fi
+          ./configure --prefix=/usr/local
+          make -j$(nproc)
+          sudo make install
+          sudo ldconfig
+        fi
+
+    - name: Generate protocol files for main
+      run: |
+        cd protocol
+        if [ -f Makefile ]; then
+          make SCANNER_TOOL=wayland-scanner
+        fi
+
+    - name: Run autoconf/automake for main project
+      run: |
+        if [ -f configure.ac ]; then
+          ./autogen.sh || autoreconf -fi
+        fi
+
+    - name: Configure main project with autotools
+      run: |
+        if [ -f configure ]; then
+          ./configure --prefix=/usr/local --disable-embedded --enable-xdgstable
+        fi
+
+    - name: Build with make
+      run: |
+        if [ -f Makefile ]; then
+          make -j$(nproc)
+        fi
+
+    - name: Install
+      run: |
+        if [ -f Makefile ]; then
+          sudo make install
+        fi
