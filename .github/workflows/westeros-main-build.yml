@@ -19,98 +19,13 @@ jobs:
 
     - name: Install dependencies
       run: |
-        # Retry apt-get update up to 3 times to handle mirror sync issues
-        for i in 1 2 3; do
-          sudo apt-get update && break || {
-            echo "apt-get update failed, attempt $i/3"
-            [ $i -lt 3 ] && sleep 10 || exit 1
-          }
-        done
-        sudo apt-get install -y \
-          build-essential \
-          autoconf \
-          automake \
-          libtool \
-          pkg-config \
-          libwayland-dev \
-          wayland-protocols \
-          libglib2.0-dev \
-          libxkbcommon-dev \
-          libegl1-mesa-dev \
-          libgles2-mesa-dev \
-          libgl1-mesa-dev \
-          freeglut3-dev \
-          libglew-dev \
-          libdrm-dev \
-          libgstreamer1.0-dev \
-          libgstreamer-plugins-base1.0-dev
+        chmod +x scripts/install-dependencies.sh
+        ./scripts/install-dependencies.sh
 
-    - name: Build simpleshell
+    - name: Build all components
       run: |
-        cd simpleshell/protocol
-        make SCANNER_TOOL=wayland-scanner
-        cd ..
-        autoreconf -fi
-        ./configure --prefix=/usr/local
-        make -j$(nproc)
-        sudo make install
-        sudo ldconfig
-        # Ensure headers are accessible from main project
-        sudo mkdir -p /usr/local/include/simpleshell/protocol
-        sudo cp protocol/*.h /usr/local/include/simpleshell/protocol/ 2>/dev/null || true
-
-    - name: Build simplebuffer
-      run: |
-        cd simplebuffer/protocol
-        make SCANNER_TOOL=wayland-scanner
-        cd ..
-        autoreconf -fi
-        ./configure --prefix=/usr/local
-        make -j$(nproc)
-        sudo make install
-        sudo ldconfig
-
-    - name: Generate protocol files
-      run: |
-        cd linux-dmabuf/protocol && make SCANNER_TOOL=wayland-scanner && cd ../..
-        cd linux-expsync/protocol && make SCANNER_TOOL=wayland-scanner && cd ../..
-        cd protocol && make SCANNER_TOOL=wayland-scanner && cd ..
-
-    - name: Build and install linux-dmabuf library first
-      run: |
-        autoreconf -fi
-        ./configure \
-          --prefix=/usr/local \
-          --enable-ldbprotocol \
-          --disable-embedded \
-          --enable-xdgstable \
-          CXXFLAGS="-I/usr/include/libdrm"
-        # Build only the linux-dmabuf library target
-        make -j$(nproc) libwesteros_linux_dmabuf_server.la
-        # Install the library and its headers
-        sudo mkdir -p /usr/local/lib /usr/local/include
-        sudo cp .libs/libwesteros_linux_dmabuf_server.so* /usr/local/lib/ 2>/dev/null || true
-        sudo cp libwesteros_linux_dmabuf_server.la /usr/local/lib/
-        sudo cp linux-dmabuf/westeros-linux-dmabuf.h /usr/local/include/
-        sudo cp linux-dmabuf/protocol/linux-dmabuf-unstable-v1-server-protocol.h /usr/local/include/
-        sudo ldconfig
-
-    - name: Configure and build main project
-      run: |
-        ./configure \
-          --prefix=/usr/local \
-          --enable-app \
-          --enable-test \
-          --enable-player \
-          --enable-rendergl \
-          --enable-ldbprotocol \
-          --enable-lexpsyncprotocol \
-          --disable-embedded \
-          --enable-xdgstable \
-          CXXFLAGS="-I/usr/include/libdrm"
-        make -j$(nproc)
-        sudo make install
-        sudo ldconfig
+        chmod +x scripts/build-components.sh
+        ./scripts/build-components.sh
 
     - name: Generate build artifacts list
       if: always()
@@ -146,6 +61,7 @@ jobs:
 
     - name: Install dependencies
       run: |
+        chmod +x scripts/install-dependencies.sh
         # Retry apt-get update up to 3 times to handle mirror sync issues
         for i in 1 2 3; do
           sudo apt-get update && break || {
@@ -153,96 +69,14 @@ jobs:
             [ $i -lt 3 ] && sleep 10 || exit 1
           }
         done
-        sudo apt-get install -y \
-          build-essential \
-          autoconf \
-          automake \
-          libtool \
-          pkg-config \
-          libwayland-dev \
-          wayland-protocols \
-          libglib2.0-dev \
-          libxkbcommon-dev \
-          libegl1-mesa-dev \
-          libgles2-mesa-dev \
-          libgl1-mesa-dev \
-          freeglut3-dev \
-          libglew-dev \
-          libdrm-dev \
-          libgstreamer1.0-dev \
-          libgstreamer-plugins-base1.0-dev \
-          curl \
-          wget
+        # Install extra packages needed for coverity
+        sudo apt-get install -y curl wget
+        ./scripts/install-dependencies.sh
 
-    - name: Build simpleshell
+    - name: Build all components
       run: |
-        cd simpleshell/protocol
-        make SCANNER_TOOL=wayland-scanner
-        cd ..
-        autoreconf -fi
-        ./configure --prefix=/usr/local
-        make -j$(nproc)
-        sudo make install
-        sudo ldconfig
-        # Ensure headers are accessible from main project
-        sudo mkdir -p /usr/local/include/simpleshell/protocol
-        sudo cp protocol/*.h /usr/local/include/simpleshell/protocol/ 2>/dev/null || true
-
-    - name: Build simplebuffer
-      run: |
-        cd simplebuffer/protocol
-        make SCANNER_TOOL=wayland-scanner
-        cd ..
-        autoreconf -fi
-        ./configure --prefix=/usr/local
-        make -j$(nproc)
-        sudo make install
-        sudo ldconfig
-
-    - name: Generate protocol files
-      run: |
-        cd linux-dmabuf/protocol && make SCANNER_TOOL=wayland-scanner && cd ../..
-        cd linux-expsync/protocol && make SCANNER_TOOL=wayland-scanner && cd ../..
-        cd protocol && make SCANNER_TOOL=wayland-scanner && cd ..
-
-    - name: Build and install linux-dmabuf library first
-      run: |
-        autoreconf -fi
-        ./configure \
-          --prefix=/usr/local \
-          --enable-ldbprotocol \
-          --disable-embedded \
-          --enable-xdgstable \
-          CXXFLAGS="-I/usr/include/libdrm"
-        # Build only the linux-dmabuf library target
-        make -j$(nproc) libwesteros_linux_dmabuf_server.la
-        # Install the library and its headers
-        sudo mkdir -p /usr/local/lib /usr/local/include
-        sudo cp .libs/libwesteros_linux_dmabuf_server.so* /usr/local/lib/ 2>/dev/null || true
-        sudo cp libwesteros_linux_dmabuf_server.la /usr/local/lib/
-        sudo cp linux-dmabuf/westeros-linux-dmabuf.h /usr/local/include/
-        sudo cp linux-dmabuf/protocol/linux-dmabuf-unstable-v1-server-protocol.h /usr/local/include/
-        sudo ldconfig
-
-    - name: Configure main project
-      run: |
-        ./configure \
-          --prefix=/usr/local \
-          --enable-app \
-          --enable-test \
-          --enable-player \
-          --enable-rendergl \
-          --enable-ldbprotocol \
-          --enable-lexpsyncprotocol \
-          --disable-embedded \
-          --enable-xdgstable \
-          CXXFLAGS="-I/usr/include/libdrm"
-
-    - name: Build main project
-      run: |
-        make -j$(nproc)
-        sudo make install
-        sudo ldconfig
+        chmod +x scripts/build-components.sh
+        ./scripts/build-components.sh
 
     - name: Verify Build Success
       if: success() && !env.ACT
@@ -306,95 +140,11 @@ jobs:
 
     - name: Install dependencies
       run: |
-        # Retry apt-get update up to 3 times to handle mirror sync issues
-        for i in 1 2 3; do
-          sudo apt-get update && break || {
-            echo "apt-get update failed, attempt $i/3"
-            [ $i -lt 3 ] && sleep 10 || exit 1
-          }
-        done
-        sudo apt-get install -y \
-          build-essential \
-          autoconf \
-          automake \
-          libtool \
-          pkg-config \
-          libwayland-dev \
-          wayland-protocols \
-          libglib2.0-dev \
-          libxkbcommon-dev \
-          libegl1-mesa-dev \
-          libgles2-mesa-dev \
-          libgl1-mesa-dev \
-          freeglut3-dev \
-          libglew-dev \
-          libdrm-dev \
-          libgstreamer1.0-dev \
-          libgstreamer-plugins-base1.0-dev
+        chmod +x scripts/install-dependencies.sh
+        ./scripts/install-dependencies.sh
 
-    - name: Build simpleshell
+    - name: Build all components
       run: |
-        cd simpleshell/protocol
-        make SCANNER_TOOL=wayland-scanner
-        cd ..
-        autoreconf -fi
-        ./configure --prefix=/usr/local
-        make -j$(nproc)
-        sudo make install
-        sudo ldconfig
-        # Ensure headers are accessible from main project
-        sudo mkdir -p /usr/local/include/simpleshell/protocol
-        sudo cp protocol/*.h /usr/local/include/simpleshell/protocol/ 2>/dev/null || true
+        chmod +x scripts/build-components.sh
+        ./scripts/build-components.sh
 
-    - name: Build simplebuffer
-      run: |
-        cd simplebuffer/protocol
-        make SCANNER_TOOL=wayland-scanner
-        cd ..
-        autoreconf -fi
-        ./configure --prefix=/usr/local
-        make -j$(nproc)
-        sudo make install
-        sudo ldconfig
-
-    - name: Generate protocol files
-      run: |
-        cd linux-dmabuf/protocol && make SCANNER_TOOL=wayland-scanner && cd ../..
-        cd linux-expsync/protocol && make SCANNER_TOOL=wayland-scanner && cd ../..
-        cd protocol && make SCANNER_TOOL=wayland-scanner && cd ..
-
-    - name: Build and install linux-dmabuf library first
-      run: |
-        autoreconf -fi
-        ./configure \
-          --prefix=/usr/local \
-          --enable-ldbprotocol \
-          --disable-embedded \
-          --enable-xdgstable \
-          CXXFLAGS="-I/usr/include/libdrm"
-        # Build only the linux-dmabuf library target
-        make -j$(nproc) libwesteros_linux_dmabuf_server.la
-        # Install the library and its headers
-        sudo mkdir -p /usr/local/lib /usr/local/include
-        sudo cp .libs/libwesteros_linux_dmabuf_server.so* /usr/local/lib/ 2>/dev/null || true
-        sudo cp libwesteros_linux_dmabuf_server.la /usr/local/lib/
-        sudo cp linux-dmabuf/westeros-linux-dmabuf.h /usr/local/include/
-        sudo cp linux-dmabuf/protocol/linux-dmabuf-unstable-v1-server-protocol.h /usr/local/include/
-        sudo ldconfig
-
-    - name: Configure and build main project
-      run: |
-        ./configure \
-          --prefix=/usr/local \
-          --enable-app \
-          --enable-test \
-          --enable-player \
-          --enable-rendergl \
-          --enable-ldbprotocol \
-          --enable-lexpsyncprotocol \
-          --disable-embedded \
-          --enable-xdgstable \
-          CXXFLAGS="-I/usr/include/libdrm"
-        make -j$(nproc)
-        sudo make install
-        sudo ldconfig
