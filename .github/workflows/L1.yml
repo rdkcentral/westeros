@@ -39,10 +39,18 @@ jobs:
           libgles2-mesa-dev \
           libgbm-dev \
           libdrm-dev \
+          libxkbcommon-dev \
           libgtest-dev \
           libgmock-dev \
           lcov \
           gcovr
+    
+    - name: Verify Dependencies
+      run: |
+        echo "Verifying installed dependencies..."
+        pkg-config --exists xkbcommon && echo "✓ xkbcommon found" || echo "✗ xkbcommon NOT found"
+        find /usr/include -name "xkbcommon.h" 2>/dev/null || echo "✗ xkbcommon.h NOT found"
+        dpkg -l | grep xkbcommon || echo "✗ libxkbcommon package NOT found"
     
     - name: Display Build Configuration
       run: |
