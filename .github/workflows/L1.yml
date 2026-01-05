@@ -40,17 +40,28 @@ jobs:
           libgbm-dev \
           libdrm-dev \
           libxkbcommon-dev \
+          libxkbcommon-x11-dev \
           libgtest-dev \
           libgmock-dev \
           lcov \
           gcovr
-    
-    - name: Verify Dependencies
-      run: |
-        echo "Verifying installed dependencies..."
-        pkg-config --exists xkbcommon && echo "✓ xkbcommon found" || echo "✗ xkbcommon NOT found"
-        find /usr/include -name "xkbcommon.h" 2>/dev/null || echo "✗ xkbcommon.h NOT found"
-        dpkg -l | grep xkbcommon || echo "✗ libxkbcommon package NOT found"
+        
+        # Verify critical dependencies
+        echo "Verifying xkbcommon installation..."
+        if ! pkg-config --exists xkbcommon; then
+          echo "ERROR: xkbcommon not found via pkg-config"
+          exit 1
+        fi
+        if ! find /usr/include -name "xkbcommon.h" 2>/dev/null | grep -q .; then
+          echo "ERROR: xkbcommon.h header not found"
+          exit 1
+        fi
+        echo "✓ xkbcommon verified"
+        
+        # Display package info
+        pkg-config --modversion xkbcommon
+        pkg-config --cflags xkbcommon
+        pkg-config --libs xkbcommon
     
     - name: Display Build Configuration
       run: |
@@ -80,7 +91,14 @@ jobs:
         ls -la
     
     - name: Build Using build.sh
+      env:
+        PKG_CONFIG_PATH: /usr/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
       run: |
+        # Verify xkbcommon is accessible
+        echo "Checking xkbcommon accessibility..."
+        pkg-config --exists xkbcommon || (echo "ERROR: xkbcommon not found during build" && exit 1)
+        
+        # Run build
         if [ "${{ matrix.coverage }}" = "ON" ]; then
           ./build.sh --coverage --jobs $(nproc)
         else
