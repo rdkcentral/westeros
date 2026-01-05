@@ -170,6 +170,16 @@ CMAKE_ARGS=(
     "-DENABLE_COVERAGE=$ENABLE_COVERAGE"
     "-DWESTEROS_MAIN_SRC_ROOT=$WESTEROS_MAIN_ABSOLUTE"
 )
+
+# Add CMAKE flags if set (for suppressing warnings)
+if [ -n "$CMAKE_CXX_FLAGS" ]; then
+    CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=$CMAKE_CXX_FLAGS")
+fi
+
+if [ -n "$CMAKE_C_FLAGS" ]; then
+    CMAKE_ARGS+=("-DCMAKE_C_FLAGS=$CMAKE_C_FLAGS")
+fi
+
 # Add optional component paths
 if [ -d "$SIMPLESHELL_SRC" ]; then
     SIMPLESHELL_ABSOLUTE=$(cd "$SIMPLESHELL_SRC" && pwd)
