@@ -24,6 +24,52 @@ if(NOT EXISTS "${WESTEROS_MAIN_SRC_ROOT}/simpleshell/westeros-simpleshell.cpp")
     message(FATAL_ERROR "SimpleShell source file not found: ${WESTEROS_MAIN_SRC_ROOT}/simpleshell/westeros-simpleshell.cpp")
 endif()
 
+# Generate protocol files from XML
+find_program(WAYLAND_SCANNER wayland-scanner)
+if(WAYLAND_SCANNER)
+    set(SIMPLESHELL_PROTOCOL_DIR "${WESTEROS_MAIN_SRC_ROOT}/simpleshell/protocol")
+    set(SIMPLESHELL_PROTOCOL_XML "${SIMPLESHELL_PROTOCOL_DIR}/simpleshell.xml")
+    set(SIMPLESHELL_PROTOCOL_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/protocol")
+    
+    file(MAKE_DIRECTORY ${SIMPLESHELL_PROTOCOL_GEN_DIR})
+    
+    # Generate server header
+    add_custom_command(
+        OUTPUT ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-server-protocol.h
+        COMMAND ${WAYLAND_SCANNER} server-header ${SIMPLESHELL_PROTOCOL_XML} ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-server-protocol.h
+        DEPENDS ${SIMPLESHELL_PROTOCOL_XML}
+        COMMENT "Generating simpleshell server protocol header"
+    )
+    
+    # Generate client header
+    add_custom_command(
+        OUTPUT ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-client-protocol.h
+        COMMAND ${WAYLAND_SCANNER} client-header ${SIMPLESHELL_PROTOCOL_XML} ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-client-protocol.h
+        DEPENDS ${SIMPLESHELL_PROTOCOL_XML}
+        COMMENT "Generating simpleshell client protocol header"
+    )
+    
+    # Generate protocol code
+    add_custom_command(
+        OUTPUT ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-protocol.c
+        COMMAND ${WAYLAND_SCANNER} private-code ${SIMPLESHELL_PROTOCOL_XML} ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-protocol.c
+        DEPENDS ${SIMPLESHELL_PROTOCOL_XML}
+        COMMENT "Generating simpleshell protocol code"
+    )
+    
+    set(SIMPLESHELL_PROTOCOL_SOURCES
+        ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-protocol.c
+        ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-server-protocol.h
+        ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-client-protocol.h
+    )
+    
+    message(STATUS "  ✓ Wayland scanner found: ${WAYLAND_SCANNER}")
+    message(STATUS "  ✓ Protocol generation configured")
+else()
+    message(WARNING "  ✗ wayland-scanner not found - protocol files may be missing")
+    set(SIMPLESHELL_PROTOCOL_SOURCES "")
+endif()
+
 # Test files - from local repository
 set(SIMPLESHELL_TEST_SOURCES
     ${SIMPLESHELL_TEST_DIR}/westeros_simpleshell_test.cpp
@@ -41,11 +87,13 @@ if(GTest_Found OR TARGET GTest::gtest)
         ${SIMPLESHELL_TEST_SOURCES}
         ${SIMPLESHELL_SOURCES}
         ${SIMPLESHELL_MOCK_SOURCES}
+        ${SIMPLESHELL_PROTOCOL_SOURCES}
     )
     
     target_include_directories(test_simpleshell_l1 PRIVATE
         ${WESTEROS_MAIN_SRC_ROOT}/simpleshell        # Source directory from local repo
         ${WESTEROS_MAIN_SRC_ROOT}/simpleshell/protocol  # Protocol XML directory
+        ${SIMPLESHELL_PROTOCOL_GEN_DIR}              # Generated protocol headers
         ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer       # SimpleBuffer headers from local repo
         ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer/protocol  # SimpleBuffer protocol
         ${SIMPLESHELL_MOCK_DIR}                      # Mock headers from local repo
