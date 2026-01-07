@@ -62,10 +62,11 @@ option(ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
 # Note: Warning suppressions must come AFTER -Wall/-Wextra to take effect
 # GCC processes flags left-to-right, so order matters
 # Comprehensive warning suppressions for test builds to prevent compilation errors
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-missing-field-initializers -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Wno-type-limits -Wno-format")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
-set(CMAKE_C_FLAGS_DEBUG "-g -O0 -Wall -Wno-unused-parameter -Wno-missing-field-initializers -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Wno-type-limits -Wno-format")
-set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
+# Force-include cmath to fix missing sqrt() declaration in source code
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -include cmath -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-missing-field-initializers -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Wno-type-limits -Wno-format -Wno-unused-result")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -include cmath")
+set(CMAKE_C_FLAGS_DEBUG "-g -O0 -include math.h -Wall -Wno-unused-parameter -Wno-missing-field-initializers -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -Wno-type-limits -Wno-format -Wno-unused-result")
+set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG -include math.h")
 
 # Coverage flags
 if(ENABLE_COVERAGE)
