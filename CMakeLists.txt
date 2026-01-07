@@ -59,8 +59,12 @@ option(ENABLE_COVERAGE "Enable code coverage" OFF)
 option(ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
 
 # Compiler flags
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra -Wpedantic")
+# Note: Warning suppressions must come AFTER -Wall/-Wextra to take effect
+# GCC processes flags left-to-right, so order matters
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-missing-field-initializers -Wno-unused-function")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+set(CMAKE_C_FLAGS_DEBUG "-g -O0 -Wall -Wno-unused-parameter -Wno-missing-field-initializers -Wno-unused-function")
+set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
 
 # Coverage flags
 if(ENABLE_COVERAGE)
@@ -81,6 +85,19 @@ message(STATUS "========================================")
 message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Coverage: ${ENABLE_COVERAGE}")
+message(STATUS "")
+message(STATUS "Compiler Flags:")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message(STATUS "  CMAKE_CXX_FLAGS_DEBUG: ${CMAKE_CXX_FLAGS_DEBUG}")
+    message(STATUS "  CMAKE_C_FLAGS_DEBUG: ${CMAKE_C_FLAGS_DEBUG}")
+else()
+    message(STATUS "  CMAKE_CXX_FLAGS_RELEASE: ${CMAKE_CXX_FLAGS_RELEASE}")
+    message(STATUS "  CMAKE_C_FLAGS_RELEASE: ${CMAKE_C_FLAGS_RELEASE}")
+endif()
+if(ENABLE_COVERAGE)
+    message(STATUS "  CMAKE_CXX_FLAGS (coverage): ${CMAKE_CXX_FLAGS}")
+    message(STATUS "  CMAKE_C_FLAGS (coverage): ${CMAKE_C_FLAGS}")
+endif()
 message(STATUS "========================================")
 message(STATUS "")
 
