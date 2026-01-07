@@ -99,20 +99,15 @@ jobs:
         ls -la
     
     - name: Build Using build.sh
-      env:
-        PKG_CONFIG_PATH: /usr/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
-        CMAKE_CXX_FLAGS: "-Wno-unused-parameter -Wno-missing-field-initializers"
-        CMAKE_C_FLAGS: "-Wno-unused-parameter -Wno-missing-field-initializers"
       run: |
         # Verify xkbcommon is accessible
         echo "Checking xkbcommon accessibility..."
         pkg-config --exists xkbcommon || (echo "ERROR: xkbcommon not found during build" && exit 1)
         
-        # Export CMAKE flags to ensure they're picked up
-        export CMAKE_CXX_FLAGS="$CMAKE_CXX_FLAGS"
-        export CMAKE_C_FLAGS="$CMAKE_C_FLAGS"
+        # Set PKG_CONFIG_PATH for dependency discovery
+        export PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
         
-        # Run build
+        # Run build (warning suppressions are configured in CMakeLists.txt)
         if [ "${{ matrix.coverage }}" = "ON" ]; then
           ./build.sh --coverage --jobs $(nproc)
         else
