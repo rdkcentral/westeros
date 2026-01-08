@@ -59,9 +59,7 @@ if(GTest_Found OR TARGET GTest::gtest)
     target_include_directories(test_simpleshell_l1 PRIVATE
         ${WESTEROS_MAIN_SRC_ROOT}/simpleshell        # Source directory FIRST (for westeros-simpleshell.h)
         ${SIMPLESHELL_PROTOCOL_DIR}                  # Protocol headers (for simpleshell-server-protocol.h)
-        ${WESTEROS_MAIN_SRC_ROOT}                    # Root directory
-        ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer       # SimpleBuffer headers from local repo
-        ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer/protocol  # SimpleBuffer protocol
+        ${WESTEROS_MAIN_SRC_ROOT}                    # Root directory (for simplebuffer/protocol/... in mock)
         ${SIMPLESHELL_MOCK_DIR}                      # Mock headers from local repo
     )
     
