@@ -29,6 +29,7 @@
 
 // Extern declarations for STATIC_TEST functions (visible in UNIT_TEST builds)
 #ifdef UNIT_TEST
+extern "C" {
 extern void wstISimpleBufferDestroy(struct wl_client *client, struct wl_resource *resource);
 extern void wstISBCreateBuffer(struct wl_client *client, struct wl_resource *resource,
                                 uint32_t id, uint32_t native_handle, int32_t width, int32_t height,
@@ -57,6 +58,7 @@ extern void wstSBDestroyBuffer(struct wl_resource *resource);
 extern void wstSBBind(struct wl_client *client, void *data, uint32_t version, uint32_t id);
 extern const struct wl_buffer_interface bufferInterface;
 extern const struct wl_sb_interface sb_interface;
+}
 #endif
 
 using ::testing::_;
