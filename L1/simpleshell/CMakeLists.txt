@@ -19,6 +19,11 @@ set(SIMPLESHELL_SOURCES
     ${WESTEROS_MAIN_SRC_ROOT}/simpleshell/westeros-simpleshell.cpp
 )
 
+# Header files to ensure they're visible
+set(SIMPLESHELL_HEADERS
+    ${WESTEROS_MAIN_SRC_ROOT}/simpleshell/westeros-simpleshell.h
+)
+
 # Verify source file exists
 if(NOT EXISTS "${WESTEROS_MAIN_SRC_ROOT}/simpleshell/westeros-simpleshell.cpp")
     message(FATAL_ERROR "SimpleShell source file not found: ${WESTEROS_MAIN_SRC_ROOT}/simpleshell/westeros-simpleshell.cpp")
@@ -30,10 +35,10 @@ if(WAYLAND_SCANNER)
     set(SIMPLESHELL_PROTOCOL_DIR "${WESTEROS_MAIN_SRC_ROOT}/simpleshell/protocol")
     set(SIMPLESHELL_PROTOCOL_XML "${SIMPLESHELL_PROTOCOL_DIR}/simpleshell.xml")
     set(SIMPLESHELL_PROTOCOL_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/protocol")
-    set(SIMPLESHELL_PROTOCOL_GEN_SUBDIR "${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell/protocol")
+    set(SIMPLESHELL_PROTOCOL_GEN_NESTED "${CMAKE_CURRENT_BINARY_DIR}/simpleshell/protocol")
     
     file(MAKE_DIRECTORY ${SIMPLESHELL_PROTOCOL_GEN_DIR})
-    file(MAKE_DIRECTORY ${SIMPLESHELL_PROTOCOL_GEN_SUBDIR})
+    file(MAKE_DIRECTORY ${SIMPLESHELL_PROTOCOL_GEN_NESTED})
     
     # Generate server header in both locations
     add_custom_command(
@@ -44,10 +49,10 @@ if(WAYLAND_SCANNER)
     )
     
     add_custom_command(
-        OUTPUT ${SIMPLESHELL_PROTOCOL_GEN_SUBDIR}/simpleshell-server-protocol.h
-        COMMAND ${WAYLAND_SCANNER} server-header ${SIMPLESHELL_PROTOCOL_XML} ${SIMPLESHELL_PROTOCOL_GEN_SUBDIR}/simpleshell-server-protocol.h
+        OUTPUT ${SIMPLESHELL_PROTOCOL_GEN_NESTED}/simpleshell-server-protocol.h
+        COMMAND ${WAYLAND_SCANNER} server-header ${SIMPLESHELL_PROTOCOL_XML} ${SIMPLESHELL_PROTOCOL_GEN_NESTED}/simpleshell-server-protocol.h
         DEPENDS ${SIMPLESHELL_PROTOCOL_XML}
-        COMMENT "Generating simpleshell server protocol header (subdir)"
+        COMMENT "Generating simpleshell server protocol header (nested)"
     )
     
     # Generate client header
@@ -69,7 +74,7 @@ if(WAYLAND_SCANNER)
     set(SIMPLESHELL_PROTOCOL_SOURCES
         ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-protocol.c
         ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-server-protocol.h
-        ${SIMPLESHELL_PROTOCOL_GEN_SUBDIR}/simpleshell-server-protocol.h
+        ${SIMPLESHELL_PROTOCOL_GEN_NESTED}/simpleshell-server-protocol.h
         ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-client-protocol.h
     )
     
@@ -96,16 +101,17 @@ if(GTest_Found OR TARGET GTest::gtest)
     add_executable(test_simpleshell_l1
         ${SIMPLESHELL_TEST_SOURCES}
         ${SIMPLESHELL_SOURCES}
+        ${SIMPLESHELL_HEADERS}
         ${SIMPLESHELL_MOCK_SOURCES}
         ${SIMPLESHELL_PROTOCOL_SOURCES}
     )
     
     target_include_directories(test_simpleshell_l1 PRIVATE
-        ${WESTEROS_MAIN_SRC_ROOT}                    # Root for westeros-simpleshell.h
-        ${WESTEROS_MAIN_SRC_ROOT}/simpleshell        # Source directory from local repo
+        ${SIMPLESHELL_PROTOCOL_GEN_DIR}              # Generated protocol headers FIRST (root level)
+        ${CMAKE_CURRENT_BINARY_DIR}                  # For nested protocol includes SECOND
+        ${WESTEROS_MAIN_SRC_ROOT}/simpleshell        # Source directory (for westeros-simpleshell.h)
+        ${WESTEROS_MAIN_SRC_ROOT}                    # Root directory
         ${WESTEROS_MAIN_SRC_ROOT}/simpleshell/protocol  # Protocol XML directory
-        ${SIMPLESHELL_PROTOCOL_GEN_DIR}              # Generated protocol headers (root level)
-        ${CMAKE_CURRENT_BINARY_DIR}                  # For nested protocol includes
         ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer       # SimpleBuffer headers from local repo
         ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer/protocol  # SimpleBuffer protocol
         ${SIMPLESHELL_MOCK_DIR}                      # Mock headers from local repo
