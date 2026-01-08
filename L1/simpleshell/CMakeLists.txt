@@ -30,15 +30,24 @@ if(WAYLAND_SCANNER)
     set(SIMPLESHELL_PROTOCOL_DIR "${WESTEROS_MAIN_SRC_ROOT}/simpleshell/protocol")
     set(SIMPLESHELL_PROTOCOL_XML "${SIMPLESHELL_PROTOCOL_DIR}/simpleshell.xml")
     set(SIMPLESHELL_PROTOCOL_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/protocol")
+    set(SIMPLESHELL_PROTOCOL_GEN_SUBDIR "${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell/protocol")
     
     file(MAKE_DIRECTORY ${SIMPLESHELL_PROTOCOL_GEN_DIR})
+    file(MAKE_DIRECTORY ${SIMPLESHELL_PROTOCOL_GEN_SUBDIR})
     
-    # Generate server header
+    # Generate server header in both locations
     add_custom_command(
         OUTPUT ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-server-protocol.h
         COMMAND ${WAYLAND_SCANNER} server-header ${SIMPLESHELL_PROTOCOL_XML} ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-server-protocol.h
         DEPENDS ${SIMPLESHELL_PROTOCOL_XML}
-        COMMENT "Generating simpleshell server protocol header"
+        COMMENT "Generating simpleshell server protocol header (root)"
+    )
+    
+    add_custom_command(
+        OUTPUT ${SIMPLESHELL_PROTOCOL_GEN_SUBDIR}/simpleshell-server-protocol.h
+        COMMAND ${WAYLAND_SCANNER} server-header ${SIMPLESHELL_PROTOCOL_XML} ${SIMPLESHELL_PROTOCOL_GEN_SUBDIR}/simpleshell-server-protocol.h
+        DEPENDS ${SIMPLESHELL_PROTOCOL_XML}
+        COMMENT "Generating simpleshell server protocol header (subdir)"
     )
     
     # Generate client header
@@ -60,6 +69,7 @@ if(WAYLAND_SCANNER)
     set(SIMPLESHELL_PROTOCOL_SOURCES
         ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-protocol.c
         ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-server-protocol.h
+        ${SIMPLESHELL_PROTOCOL_GEN_SUBDIR}/simpleshell-server-protocol.h
         ${SIMPLESHELL_PROTOCOL_GEN_DIR}/simpleshell-client-protocol.h
     )
     
@@ -91,13 +101,14 @@ if(GTest_Found OR TARGET GTest::gtest)
     )
     
     target_include_directories(test_simpleshell_l1 PRIVATE
+        ${WESTEROS_MAIN_SRC_ROOT}                    # Root for westeros-simpleshell.h
         ${WESTEROS_MAIN_SRC_ROOT}/simpleshell        # Source directory from local repo
         ${WESTEROS_MAIN_SRC_ROOT}/simpleshell/protocol  # Protocol XML directory
-        ${SIMPLESHELL_PROTOCOL_GEN_DIR}              # Generated protocol headers
+        ${SIMPLESHELL_PROTOCOL_GEN_DIR}              # Generated protocol headers (root level)
+        ${CMAKE_CURRENT_BINARY_DIR}                  # For nested protocol includes
         ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer       # SimpleBuffer headers from local repo
         ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer/protocol  # SimpleBuffer protocol
         ${SIMPLESHELL_MOCK_DIR}                      # Mock headers from local repo
-        ${WESTEROS_MAIN_SRC_ROOT}                    # For any westeros-compositor.h dependencies
     )
     
     target_link_libraries(test_simpleshell_l1
