@@ -19,6 +19,11 @@ set(SIMPLEBUFFER_SOURCES
     ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer/westeros-simplebuffer.cpp
 )
 
+# Header files to ensure they're visible
+set(SIMPLEBUFFER_HEADERS
+    ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer/westeros-simplebuffer.h
+)
+
 # Verify source file exists
 if(NOT EXISTS "${WESTEROS_MAIN_SRC_ROOT}/simplebuffer/westeros-simplebuffer.cpp")
     message(FATAL_ERROR "SimpleBuffer source file not found: ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer/westeros-simplebuffer.cpp")
@@ -30,10 +35,10 @@ if(WAYLAND_SCANNER)
     set(SIMPLEBUFFER_PROTOCOL_DIR "${WESTEROS_MAIN_SRC_ROOT}/simplebuffer/protocol")
     set(SIMPLEBUFFER_PROTOCOL_XML "${SIMPLEBUFFER_PROTOCOL_DIR}/simple-buffer.xml")
     set(SIMPLEBUFFER_PROTOCOL_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/protocol")
-    set(SIMPLEBUFFER_PROTOCOL_GEN_SUBDIR "${SIMPLEBUFFER_PROTOCOL_GEN_DIR}/simplebuffer/protocol")
+    set(SIMPLEBUFFER_PROTOCOL_GEN_NESTED "${CMAKE_CURRENT_BINARY_DIR}/simplebuffer/protocol")
     
     file(MAKE_DIRECTORY ${SIMPLEBUFFER_PROTOCOL_GEN_DIR})
-    file(MAKE_DIRECTORY ${SIMPLEBUFFER_PROTOCOL_GEN_SUBDIR})
+    file(MAKE_DIRECTORY ${SIMPLEBUFFER_PROTOCOL_GEN_NESTED})
     
     # Generate server header in both locations
     add_custom_command(
@@ -44,10 +49,10 @@ if(WAYLAND_SCANNER)
     )
     
     add_custom_command(
-        OUTPUT ${SIMPLEBUFFER_PROTOCOL_GEN_SUBDIR}/simplebuffer-server-protocol.h
-        COMMAND ${WAYLAND_SCANNER} server-header ${SIMPLEBUFFER_PROTOCOL_XML} ${SIMPLEBUFFER_PROTOCOL_GEN_SUBDIR}/simplebuffer-server-protocol.h
+        OUTPUT ${SIMPLEBUFFER_PROTOCOL_GEN_NESTED}/simplebuffer-server-protocol.h
+        COMMAND ${WAYLAND_SCANNER} server-header ${SIMPLEBUFFER_PROTOCOL_XML} ${SIMPLEBUFFER_PROTOCOL_GEN_NESTED}/simplebuffer-server-protocol.h
         DEPENDS ${SIMPLEBUFFER_PROTOCOL_XML}
-        COMMENT "Generating simplebuffer server protocol header (subdir)"
+        COMMENT "Generating simplebuffer server protocol header (nested)"
     )
     
     # Generate client header
@@ -69,7 +74,7 @@ if(WAYLAND_SCANNER)
     set(SIMPLEBUFFER_PROTOCOL_SOURCES
         ${SIMPLEBUFFER_PROTOCOL_GEN_DIR}/simplebuffer-protocol.c
         ${SIMPLEBUFFER_PROTOCOL_GEN_DIR}/simplebuffer-server-protocol.h
-        ${SIMPLEBUFFER_PROTOCOL_GEN_SUBDIR}/simplebuffer-server-protocol.h
+        ${SIMPLEBUFFER_PROTOCOL_GEN_NESTED}/simplebuffer-server-protocol.h
         ${SIMPLEBUFFER_PROTOCOL_GEN_DIR}/simplebuffer-client-protocol.h
     )
     
@@ -96,16 +101,17 @@ if(GTest_Found OR TARGET GTest::gtest)
     add_executable(test_simplebuffer_l1
         ${SIMPLEBUFFER_TEST_SOURCES}
         ${SIMPLEBUFFER_SOURCES}
+        ${SIMPLEBUFFER_HEADERS}
         ${SIMPLEBUFFER_MOCK_SOURCES}
         ${SIMPLEBUFFER_PROTOCOL_SOURCES}
     )
     
     target_include_directories(test_simplebuffer_l1 PRIVATE
-        ${WESTEROS_MAIN_SRC_ROOT}                    # Root for westeros-simplebuffer.h
-        ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer       # Source directory from local repo
+        ${SIMPLEBUFFER_PROTOCOL_GEN_DIR}             # Generated protocol headers FIRST
+        ${CMAKE_CURRENT_BINARY_DIR}                  # For nested protocol includes SECOND
+        ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer       # Source directory (for westeros-simplebuffer.h)
+        ${WESTEROS_MAIN_SRC_ROOT}                    # Root directory
         ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer/protocol  # Protocol XML directory
-        ${SIMPLEBUFFER_PROTOCOL_GEN_DIR}             # Generated protocol headers (root level)
-        ${CMAKE_CURRENT_BINARY_DIR}                  # For nested protocol includes
         ${SIMPLEBUFFER_MOCK_DIR}                     # Mock headers from local repo
     )
     
