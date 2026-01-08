@@ -43,8 +43,8 @@ if(GTest_FOUND OR TARGET GTest::gtest)
     
     target_include_directories(test_linux_expsync_l1 PRIVATE
         ${WESTEROS_MAIN_SRC_ROOT}/linux-expsync      # Source directory from local repo
-        ${EXPSYNC_MOCK_DIR}                          # Mock headers from local repo
         ${WESTEROS_MAIN_SRC_ROOT}                    # For westeros-compositor.h and westeros-render.h
+        ${EXPSYNC_MOCK_DIR}                          # Mock headers from local repo - MUST be last to avoid conflicts
     )
     
     target_link_libraries(test_linux_expsync_l1
