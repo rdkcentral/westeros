@@ -43,6 +43,10 @@ struct wl_sb
    struct wayland_sb_callbacks *callbacks;
 };
 
+#ifdef UNIT_TEST
+extern "C" {
+#endif
+
 UNIT_TEST_STATIC void wstISimpleBufferDestroy(struct wl_client *client, struct wl_resource *resource);
 UNIT_TEST_STATIC void wstISBCreateBuffer(struct wl_client *client, struct wl_resource *resource,
                                uint32_t id, uint32_t native_handle, int32_t width, int32_t height,
@@ -290,6 +294,10 @@ UNIT_TEST_STATIC void wstSBCreateBuffer(struct wl_client *client, struct wl_reso
                                  (void (**)(void)) &bufferInterface,
                                  buff, wstSBDestroyBuffer);
 }
+
+#ifdef UNIT_TEST
+}
+#endif
 
 wl_sb* WstSBInit( struct wl_display *display, struct wayland_sb_callbacks *callbacks, void *userData )
 {
