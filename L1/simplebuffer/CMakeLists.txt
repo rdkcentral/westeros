@@ -107,10 +107,10 @@ if(GTest_Found OR TARGET GTest::gtest)
     )
     
     target_include_directories(test_simplebuffer_l1 PRIVATE
-        ${SIMPLEBUFFER_PROTOCOL_GEN_DIR}             # Generated protocol headers FIRST
-        ${CMAKE_CURRENT_BINARY_DIR}                  # For nested protocol includes SECOND
-        ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer       # Source directory (for westeros-simplebuffer.h)
-        ${WESTEROS_MAIN_SRC_ROOT}                    # Root directory
+        ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer       # Source directory FIRST (for westeros-simplebuffer.h)
+        ${WESTEROS_MAIN_SRC_ROOT}                    # Root directory SECOND
+        ${SIMPLEBUFFER_PROTOCOL_GEN_DIR}             # Generated protocol headers (root level)
+        ${CMAKE_CURRENT_BINARY_DIR}                  # For nested protocol includes (simplebuffer/protocol/...)
         ${WESTEROS_MAIN_SRC_ROOT}/simplebuffer/protocol  # Protocol XML directory
         ${SIMPLEBUFFER_MOCK_DIR}                     # Mock headers from local repo
     )
