@@ -1,7 +1,8 @@
 #ifndef WAYLAND_STUBS_H
 #define WAYLAND_STUBS_H
 
-#ifdef UNIT_TEST
+/* Only use these stubs when building tests, not when building actual source files */
+#if defined(UNIT_TEST) && !defined(WAYLAND_SERVER_H)
 
 #ifdef __cplusplus
 extern "C" {
@@ -166,6 +167,6 @@ int close(int fd);
 }
 #endif
 
-#endif /* UNIT_TEST */
+#endif /* UNIT_TEST && !WAYLAND_SERVER_H */
 
 #endif /* WAYLAND_STUBS_H */
