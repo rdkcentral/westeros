@@ -209,7 +209,7 @@ if(ENABLE_COVERAGE)
                 '*/gmock/*'
                 '*gtest*'
                 '*gmock*'
-                --output-file coverage.info --rc lcov_branch_coverage=1
+                --output-file coverage.info --rc lcov_branch_coverage=1 --ignore-errors unused
             
             # Generate HTML report for all components
             COMMAND ${GENHTML_PATH} -o coverage_html coverage.info 
@@ -357,3 +357,4 @@ if(BUILD_LINUX_EXPSYNC_TESTS)
 endif()
 message(STATUS "========================================")
 message(STATUS "")
+
