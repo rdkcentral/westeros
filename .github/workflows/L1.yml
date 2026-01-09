@@ -2,9 +2,9 @@ name: Build and Test with Coverage
 
 on:
   push:
-    branches: [ main, master, develop ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master, develop ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -209,3 +209,4 @@ jobs:
         echo "Coverage Enabled: ${{ matrix.coverage }}"
         echo "Status: ${{ job.status }}"
         echo "=========================================="
+
