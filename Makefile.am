@@ -141,6 +141,7 @@ westeros_player_LDFLAGS= \
 
 ## --- Compositor -------
 lib_LTLIBRARIES = libwesteros_simpleshell_server.la \
+                  libwesteros_simpleshell_client.la \
                   libwesteros_simplebuffer_server.la \
                   libwesteros_compositor.la \
                   libwesteros_render_embedded.la
@@ -175,6 +176,13 @@ libwesteros_simpleshell_server_la_CXXFLAGS = $(AM_CXXFLAGS) \
 libwesteros_simpleshell_server_la_LDFLAGS = \
    $(AM_LDFLAGS) \
    $(WAYLAND_SERVER_LIBS)
+
+libwesteros_simpleshell_client_la_SOURCES = simpleshell/protocol/simpleshell-protocol.c
+libwesteros_simpleshell_client_la_CXXFLAGS = $(AM_CXXFLAGS) \
+   -I$(srcdir)/simpleshell/protocol
+libwesteros_simpleshell_client_la_LDFLAGS = \
+   $(AM_LDFLAGS) \
+   $(WAYLAND_CLIENT_LIBS)
 
 ## --- Simplebuffer Protocol Library -------
 # Generate protocol files before building
