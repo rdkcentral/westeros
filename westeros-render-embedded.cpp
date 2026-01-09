@@ -1345,6 +1345,7 @@ static void wstRendererEMBCommitSB( WstRendererEMB *renderer, WstRenderSurface *
       deviceBuffer= WstSBBufferGetBuffer( sbBuffer );
       if ( deviceBuffer )
       {
+#if defined (WESTEROS_PLATFORM_EMBEDDED)
          if ( surface->nativePixmap )
          {
             eglPixmap = (EGLNativePixmapType) WstGLGetEGLNativePixmap(renderer->glCtx, surface->nativePixmap);
@@ -1374,6 +1375,7 @@ static void wstRendererEMBCommitSB( WstRendererEMB *renderer, WstRenderSurface *
                }
                eglPixmap = (EGLNativePixmapType) WstGLGetEGLNativePixmap(renderer->glCtx, surface->nativePixmap);
             }
+#endif
             if ( !surface->eglImage[0] )
             {
                eglImage= renderer->eglCreateImageKHR( renderer->eglDisplay,
