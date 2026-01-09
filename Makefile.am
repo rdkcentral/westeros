@@ -162,8 +162,7 @@ libwesteros_compositor_la_include_HEADERS = \
    westeros-version.h \
    westeros-render.h \
    protocol/vpc-client-protocol.h
-libwesteros_compositor_la_DEPENDENCIES = \
-   $(top_builddir)/simpleshell/libwesteros_simpleshell_server.la
+libwesteros_compositor_la_DEPENDENCIES =
 libwesteros_compositor_la_includedir = $(includedir)
 libwesteros_compositor_la_CXXFLAGS = $(AM_CXXFLAGS) \
    -I$(srcdir)/protocol \
@@ -183,10 +182,11 @@ libwesteros_compositor_la_LDFLAGS= \
    $(XKBCOMMON_LIBS) \
    $(WESTEROS_COMPOSITOR_EXTRA_LIBS) \
    -lxkbcommon \
+   -L$(top_builddir)/simpleshell/.libs \
    -lpthread \
    -ldl
 libwesteros_compositor_la_LIBADD = \
-   $(top_builddir)/simpleshell/libwesteros_simpleshell_server.la
+   -lwesteros_simpleshell_server
 if ENABLE_WESTEROS_LEXPSYNCPROTOCOL
 # Generate protocol files before building
 BUILT_SOURCES += \
@@ -219,8 +219,8 @@ libwesteros_compositor_la_SOURCES += protocol/stable/xdg-shell-protocol.c
 endif
 
 if ENABLE_WESTEROS_SBPROTOCOL
-libwesteros_compositor_la_DEPENDENCIES += $(top_builddir)/simplebuffer/libwesteros_simplebuffer_server.la
-libwesteros_compositor_la_LIBADD += $(top_builddir)/simplebuffer/libwesteros_simplebuffer_server.la
+libwesteros_compositor_la_LDFLAGS += -L$(top_builddir)/simplebuffer/.libs
+libwesteros_compositor_la_LIBADD += -lwesteros_simplebuffer_server
 endif
 
 if ENABLE_WESTEROS_LDBPROTOCOL
@@ -241,8 +241,8 @@ else
 libwesteros_render_gl_la_LDFLAGS= $(WSTEGL_LIBS) -lEGL -lwesteros_gl $(WESTEROS_PLATFORM_LIBS) $(WAYLAND_SERVER_LIBS)
 endif
 if ENABLE_WESTEROS_SBPROTOCOL
-libwesteros_render_gl_la_DEPENDENCIES += $(top_builddir)/simplebuffer/libwesteros_simplebuffer_server.la
-libwesteros_render_gl_la_LIBADD = $(top_builddir)/simplebuffer/libwesteros_simplebuffer_server.la
+libwesteros_render_gl_la_LDFLAGS += -L$(top_builddir)/simplebuffer/.libs
+libwesteros_render_gl_la_LIBADD = -lwesteros_simplebuffer_server
 endif
 if ENABLE_WESTEROS_LDBPROTOCOL
 libwesteros_render_gl_la_DEPENDENCIES += libwesteros_linux_dmabuf_server.la
@@ -261,8 +261,8 @@ else
 libwesteros_render_embedded_la_LDFLAGS= $(WSTEGL_LIBS) -lEGL -lwesteros_gl $(WESTEROS_PLATFORM_LIBS) $(WAYLAND_SERVER_LIBS)
 endif
 if ENABLE_WESTEROS_SBPROTOCOL
-libwesteros_render_embedded_la_DEPENDENCIES += $(top_builddir)/simplebuffer/libwesteros_simplebuffer_server.la
-libwesteros_render_embedded_la_LIBADD = $(top_builddir)/simplebuffer/libwesteros_simplebuffer_server.la
+libwesteros_render_embedded_la_LDFLAGS += -L$(top_builddir)/simplebuffer/.libs
+libwesteros_render_embedded_la_LIBADD = -lwesteros_simplebuffer_server
 endif
 if ENABLE_WESTEROS_LDBPROTOCOL
 libwesteros_render_embedded_la_DEPENDENCIES += libwesteros_linux_dmabuf_server.la
