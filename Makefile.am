@@ -182,7 +182,6 @@ libwesteros_compositor_la_LDFLAGS= \
    $(XKBCOMMON_LIBS) \
    $(WESTEROS_COMPOSITOR_EXTRA_LIBS) \
    -lxkbcommon \
-   -L$(top_builddir)/simpleshell/.libs \
    -lpthread \
    -ldl
 libwesteros_compositor_la_LIBADD = \
@@ -219,7 +218,6 @@ libwesteros_compositor_la_SOURCES += protocol/stable/xdg-shell-protocol.c
 endif
 
 if ENABLE_WESTEROS_SBPROTOCOL
-libwesteros_compositor_la_LDFLAGS += -L$(top_builddir)/simplebuffer/.libs
 libwesteros_compositor_la_LIBADD += -lwesteros_simplebuffer_server
 endif
 
@@ -241,7 +239,6 @@ else
 libwesteros_render_gl_la_LDFLAGS= $(WSTEGL_LIBS) -lEGL -lwesteros_gl $(WESTEROS_PLATFORM_LIBS) $(WAYLAND_SERVER_LIBS)
 endif
 if ENABLE_WESTEROS_SBPROTOCOL
-libwesteros_render_gl_la_LDFLAGS += -L$(top_builddir)/simplebuffer/.libs
 libwesteros_render_gl_la_LIBADD = -lwesteros_simplebuffer_server
 endif
 if ENABLE_WESTEROS_LDBPROTOCOL
@@ -261,7 +258,6 @@ else
 libwesteros_render_embedded_la_LDFLAGS= $(WSTEGL_LIBS) -lEGL -lwesteros_gl $(WESTEROS_PLATFORM_LIBS) $(WAYLAND_SERVER_LIBS)
 endif
 if ENABLE_WESTEROS_SBPROTOCOL
-libwesteros_render_embedded_la_LDFLAGS += -L$(top_builddir)/simplebuffer/.libs
 libwesteros_render_embedded_la_LIBADD = -lwesteros_simplebuffer_server
 endif
 if ENABLE_WESTEROS_LDBPROTOCOL
