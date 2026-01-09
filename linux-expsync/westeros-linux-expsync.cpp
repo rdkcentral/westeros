@@ -31,8 +31,13 @@
 
 #include "westeros-linux-expsync.h"
 
-// Include Wayland headers
+#ifdef UNIT_TEST
+// For unit tests, use mock headers
+#include "wayland-stubs.h"
+#else
+// For production build, use real Wayland headers
 #include <wayland-server.h>
+#endif
 
 // Mock sync_file types (instead of linux/sync_file.h)
 #ifndef SYNC_IOC_FILE_INFO
@@ -50,36 +55,17 @@ struct sync_file_info {
 // Include protocol after wayland
 #include "linux-explicit-synchronization-unstable-v1-server-protocol.h"
 
-// ioctl is available from system headers and mock stubs
-// Do NOT declare it explicitly to allow linker wrapping to work
+// ioctl is available from system headers
 #ifndef _WIN32
 #include <sys/ioctl.h>
 #endif
 
-// Complete type definitions for WstSurface and WstContext
-// Note: WstExplicitSync and WstExplicitSyncBufferRelease are already defined in westeros-linux-expsync.h
-typedef struct _WstContext {
-    struct wl_display *display;
-    void *lexpsync;  /* pointer to wl_lexpsync */
-    int initialized;
-} WstContext;
-
-typedef struct _WstSurface {
-    struct wl_resource *resource;
-    struct wl_resource *syncRes;
-    WstExplicitSync createdBufferSync;
-    WstExplicitSync attachedBufferSync;
-    WstExplicitSync detachedBufferSync;
-    int surfaceId;
-    int destroyed;
-} WstSurface;
-
-// Helper for wl_client_post_no_memory
-STATIC_TEST inline void wl_client_post_no_memory(struct wl_client *client)
-{
-    // Mock implementation - in real code this posts an error
-    fprintf(stderr, "Mock: wl_client_post_no_memory\n");
-}
+// Forward declarations for WstContext and WstSurface
+// Actual definitions are in westeros-compositor.cpp (production) or mocks (unit tests)
+struct _WstContext;
+struct _WstSurface;
+typedef struct _WstContext WstContext;
+typedef struct _WstSurface WstSurface;
 
 struct wl_lexpsync
 {
@@ -254,8 +240,8 @@ STATIC_TEST void wstILExpSyncGetSynchronization(struct wl_client *client,
    if (surface->syncRes)
    {
       wl_resource_post_error( resource,
-                              ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_DUPLICATE_SYNCHRONIZATION,
-                              "wl_surface@%"PRIu32" already has a synchronization object",
+                              ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_SYNCHRONIZATION_EXISTS,
+                              "wl_surface@%" PRIu32 " already has a synchronization object",
                               wl_resource_get_id(surface_resource));
        return;
    }
