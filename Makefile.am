@@ -166,9 +166,14 @@ libwesteros_compositor_la_DEPENDENCIES =
 libwesteros_compositor_la_includedir = $(includedir)
 libwesteros_compositor_la_CXXFLAGS = $(AM_CXXFLAGS) \
    -I$(srcdir)/protocol \
+   -I$(srcdir)/simpleshell \
    -I$(srcdir)/simpleshell/protocol \
    -I$(srcdir)/simplebuffer \
-   -I$(srcdir)/linux-dmabuf/protocol
+   -I$(srcdir)/simplebuffer/protocol \
+   -I$(srcdir)/linux-dmabuf \
+   -I$(srcdir)/linux-dmabuf/protocol \
+   -I$(srcdir)/linux-expsync \
+   -I$(srcdir)/linux-expsync/protocol
 libwesteros_compositor_la_LDFLAGS= \
    $(AM_LDFLAGS) \
    $(WAYLAND_SERVER_LIBS) \
