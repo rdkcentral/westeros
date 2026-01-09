@@ -293,6 +293,7 @@ libwesteros_render_gl_la_CXXFLAGS = $(AM_CXXFLAGS) \
    -I$(srcdir)/simplebuffer \
    -I$(srcdir)/linux-dmabuf
 libwesteros_render_gl_la_DEPENDENCIES =
+libwesteros_render_gl_la_LIBADD =
 if !ENABLE_PLATFORM_EMBEDDED
 libwesteros_render_gl_la_LDFLAGS= $(WSTEGL_LIBS) -lEGL -lGL -lGLEW $(WAYLAND_SERVER_LIBS)
 else
@@ -300,7 +301,7 @@ libwesteros_render_gl_la_LDFLAGS= $(WSTEGL_LIBS) -lEGL -lwesteros_gl $(WESTEROS_
 endif
 if ENABLE_WESTEROS_SBPROTOCOL
 libwesteros_render_gl_la_DEPENDENCIES += libwesteros_simplebuffer_server.la
-libwesteros_render_gl_la_LIBADD = libwesteros_simplebuffer_server.la
+libwesteros_render_gl_la_LIBADD += libwesteros_simplebuffer_server.la
 endif
 if ENABLE_WESTEROS_LDBPROTOCOL
 libwesteros_render_gl_la_DEPENDENCIES += libwesteros_linux_dmabuf_server.la
@@ -310,6 +311,7 @@ endif
 ## --- Renderer: Embedded -------
 libwesteros_render_embedded_la_SOURCES = westeros-render-embedded.cpp
 libwesteros_render_embedded_la_DEPENDENCIES =
+libwesteros_render_embedded_la_LIBADD =
 libwesteros_render_embedded_la_includedir = $(includedir)
 libwesteros_render_embedded_la_CXXFLAGS = $(AM_CXXFLAGS) \
    -I$(srcdir)/simplebuffer
@@ -320,7 +322,7 @@ libwesteros_render_embedded_la_LDFLAGS= $(WSTEGL_LIBS) -lEGL -lwesteros_gl $(WES
 endif
 if ENABLE_WESTEROS_SBPROTOCOL
 libwesteros_render_embedded_la_DEPENDENCIES += libwesteros_simplebuffer_server.la
-libwesteros_render_embedded_la_LIBADD = libwesteros_simplebuffer_server.la
+libwesteros_render_embedded_la_LIBADD += libwesteros_simplebuffer_server.la
 endif
 if ENABLE_WESTEROS_LDBPROTOCOL
 libwesteros_render_embedded_la_DEPENDENCIES += libwesteros_linux_dmabuf_server.la
