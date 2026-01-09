@@ -117,6 +117,8 @@ endif
 
 ## --- Sample client -------
 westeros_test_SOURCES = westeros-test.cpp
+westeros_test_CXXFLAGS = $(AM_CXXFLAGS) \
+   -I$(srcdir)/simpleshell/protocol
 westeros_test_LDFLAGS= \
    $(AM_LDFLAGS) \
    $(WAYLAND_CLIENT_LIBS) \
