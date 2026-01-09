@@ -257,10 +257,17 @@ STATIC_TEST void wstILExpSyncGetSynchronization(struct wl_client *client,
 
    if (surface->syncRes)
    {
+#ifdef UNIT_TEST
+      wl_resource_post_error( resource,
+                              ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_DUPLICATE_SYNCHRONIZATION,
+                              "wl_surface@%" PRIu32 " already has a synchronization object",
+                              wl_resource_get_id(surface_resource));
+#else
       wl_resource_post_error( resource,
                               ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_SYNCHRONIZATION_EXISTS,
                               "wl_surface@%" PRIu32 " already has a synchronization object",
                               wl_resource_get_id(surface_resource));
+#endif
        return;
    }
 
