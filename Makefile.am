@@ -183,13 +183,13 @@ BUILT_SOURCES += \
     simplebuffer/protocol/simplebuffer-client-protocol.h \
     simplebuffer/protocol/simplebuffer-protocol.c
 
-simplebuffer/protocol/simplebuffer-server-protocol.h: simplebuffer/protocol/simplebuffer.xml
+simplebuffer/protocol/simplebuffer-server-protocol.h: simplebuffer/protocol/simple-buffer.xml
 	wayland-scanner server-header < $< > $@
 
-simplebuffer/protocol/simplebuffer-client-protocol.h: simplebuffer/protocol/simplebuffer.xml
+simplebuffer/protocol/simplebuffer-client-protocol.h: simplebuffer/protocol/simple-buffer.xml
 	wayland-scanner client-header < $< > $@
 
-simplebuffer/protocol/simplebuffer-protocol.c: simplebuffer/protocol/simplebuffer.xml
+simplebuffer/protocol/simplebuffer-protocol.c: simplebuffer/protocol/simple-buffer.xml
 	wayland-scanner code < $< > $@
 
 libwesteros_simplebuffer_server_la_SOURCES = simplebuffer/westeros-simplebuffer.cpp simplebuffer/protocol/simplebuffer-protocol.c
