@@ -31,8 +31,8 @@
 
 #include "westeros-linux-expsync.h"
 
-// Use mock headers instead of system headers
-#include "wayland-stubs.h"
+// Include Wayland headers
+#include <wayland-server.h>
 
 // Mock sync_file types (instead of linux/sync_file.h)
 #ifndef SYNC_IOC_FILE_INFO
