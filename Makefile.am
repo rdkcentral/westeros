@@ -19,7 +19,7 @@
 
 AUTOMAKE_OPTIONS = subdir-objects
 
-SUBDIRS =
+SUBDIRS = simpleshell simplebuffer
 BUILT_SOURCES =
 AM_CXXFLAGS= \
 	-I$(top_srcdir)/include \
@@ -164,7 +164,11 @@ libwesteros_compositor_la_include_HEADERS = \
    protocol/vpc-client-protocol.h
 libwesteros_compositor_la_DEPENDENCIES =
 libwesteros_compositor_la_includedir = $(includedir)
-libwesteros_compositor_la_CXXFLAGS = $(AM_CXXFLAGS) -I$(srcdir)/protocol
+libwesteros_compositor_la_CXXFLAGS = $(AM_CXXFLAGS) \
+   -I$(srcdir)/protocol \
+   -I$(srcdir)/simpleshell/protocol \
+   -I$(srcdir)/simplebuffer \
+   -I$(srcdir)/linux-dmabuf/protocol
 libwesteros_compositor_la_LDFLAGS= \
    $(AM_LDFLAGS) \
    $(WAYLAND_SERVER_LIBS) \
