@@ -177,6 +177,17 @@ libwesteros_compositor_la_LDFLAGS= \
    -lpthread \
    -ldl
 if ENABLE_WESTEROS_LEXPSYNCPROTOCOL
+# Generate protocol files before building
+BUILT_SOURCES += \
+    linux-expsync/protocol/linux-explicit-synchronization-unstable-v1-server-protocol.h \
+    linux-expsync/protocol/linux-explicit-synchronization-unstable-v1-protocol.c
+
+linux-expsync/protocol/linux-explicit-synchronization-unstable-v1-server-protocol.h: linux-expsync/protocol/linux-explicit-synchronization-unstable-v1.xml
+	wayland-scanner server-header < $< > $@
+
+linux-expsync/protocol/linux-explicit-synchronization-unstable-v1-protocol.c: linux-expsync/protocol/linux-explicit-synchronization-unstable-v1.xml
+	wayland-scanner code < $< > $@
+
 libwesteros_compositor_la_SOURCES += linux-expsync/protocol/linux-explicit-synchronization-unstable-v1-protocol.c
 libwesteros_compositor_la_include_HEADERS += linux-expsync/protocol/linux-explicit-synchronization-unstable-v1-server-protocol.h
 libwesteros_compositor_la_expsyncdir = $(includedir)/linux-expsync
@@ -241,6 +252,17 @@ endif
 
 if ENABLE_WESTEROS_LDBPROTOCOL
 ## --- Linux dmabuf -------
+# Generate protocol files before building
+BUILT_SOURCES += \
+    linux-dmabuf/protocol/linux-dmabuf-unstable-v1-server-protocol.h \
+    linux-dmabuf/protocol/linux-dmabuf-unstable-v1-protocol.c
+
+linux-dmabuf/protocol/linux-dmabuf-unstable-v1-server-protocol.h: linux-dmabuf/protocol/linux-dmabuf-unstable-v1.xml
+	wayland-scanner server-header < $< > $@
+
+linux-dmabuf/protocol/linux-dmabuf-unstable-v1-protocol.c: linux-dmabuf/protocol/linux-dmabuf-unstable-v1.xml
+	wayland-scanner code < $< > $@
+
 libwesteros_linux_dmabuf_server_la_SOURCES = linux-dmabuf/westeros-linux-dmabuf.cpp linux-dmabuf/protocol/linux-dmabuf-unstable-v1-protocol.c
 libwesteros_linux_dmabuf_server_la_include_HEADERS = linux-dmabuf/westeros-linux-dmabuf.h linux-dmabuf/protocol/linux-dmabuf-unstable-v1-server-protocol.h
 libwesteros_linux_dmabuf_server_la_includedir = $(includedir)
