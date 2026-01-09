@@ -246,6 +246,8 @@ endif
 libwesteros_render_embedded_la_SOURCES = westeros-render-embedded.cpp
 libwesteros_render_embedded_la_DEPENDENCIES =
 libwesteros_render_embedded_la_includedir = $(includedir)
+libwesteros_render_embedded_la_CXXFLAGS = $(AM_CXXFLAGS) \
+   -I$(srcdir)/simplebuffer
 if !ENABLE_PLATFORM_EMBEDDED
 libwesteros_render_embedded_la_LDFLAGS= -lEGL -lglut -lGL -lGLEW $(WAYLAND_SERVER_LIBS)
 else
