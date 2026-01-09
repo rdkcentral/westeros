@@ -58,10 +58,6 @@ struct wl_ldb
    WstRenderer *renderer;
 };
 
-#ifdef UNIT_TEST
-extern "C" {
-#endif
-
 UNIT_TEST_STATIC void wstLDBBufferDestroy(struct wl_ldb_buffer *buffer)
 {
    int i;
@@ -456,10 +452,6 @@ UNIT_TEST_STATIC void wstLDBBind(struct wl_client *client, void *data, uint32_t 
 
    printf("westeros-ldb: wstLDBBind: exit: client %p id %d\n", (void*)client, id);
 }
-
-#ifdef UNIT_TEST
-}
-#endif
 
 wl_ldb* WstLDBInit( struct wl_display *display, struct wayland_ldb_callbacks *callbacks, void *userData )
 {
