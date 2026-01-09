@@ -26,7 +26,7 @@
 #include "westeros-simpleshell.h"
 
 #include "wayland-server.h"
-#include "simpleshell/protocol/simpleshell-server-protocol.h"
+#include "protocol/simpleshell-server-protocol.h"
 
 #define WST_UNUSED( n ) ((void)n)
 
