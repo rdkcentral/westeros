@@ -144,16 +144,17 @@ westeros_player_LDFLAGS= \
 ## --- Compositor -------
 lib_LTLIBRARIES = libwesteros_simpleshell_server.la \
                   libwesteros_simpleshell_client.la \
-                  libwesteros_simplebuffer_server.la \
-                  libwesteros_compositor.la \
-                  libwesteros_render_embedded.la
-
-if ENABLE_WESTEROS_RENDERERGL
-lib_LTLIBRARIES += libwesteros_render_gl.la
-endif
+                  libwesteros_simplebuffer_server.la
 
 if ENABLE_WESTEROS_LDBPROTOCOL
 lib_LTLIBRARIES += libwesteros_linux_dmabuf_server.la
+endif
+
+lib_LTLIBRARIES += libwesteros_compositor.la \
+                   libwesteros_render_embedded.la
+
+if ENABLE_WESTEROS_RENDERERGL
+lib_LTLIBRARIES += libwesteros_render_gl.la
 endif
 
 ## --- Simpleshell Protocol Library -------
