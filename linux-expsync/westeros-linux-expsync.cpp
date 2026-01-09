@@ -60,12 +60,30 @@ struct sync_file_info {
 #include <sys/ioctl.h>
 #endif
 
-// Forward declarations for WstContext and WstSurface
-// Actual definitions are in westeros-compositor.cpp (production) or mocks (unit tests)
+#ifdef UNIT_TEST
+// Unit test build: define types here (not available from compositor during test compilation)
+typedef struct _WstContext {
+    struct wl_display *display;
+    void *lexpsync;
+    int initialized;
+} WstContext;
+
+typedef struct _WstSurface {
+    struct wl_resource *resource;
+    struct wl_resource *syncRes;
+    WstExplicitSync createdBufferSync;
+    WstExplicitSync attachedBufferSync;
+    WstExplicitSync detachedBufferSync;
+    int surfaceId;
+    int destroyed;
+} WstSurface;
+#else
+// Production autotools build: use forward declarations (types defined in westeros-compositor.cpp)
 struct _WstContext;
 struct _WstSurface;
 typedef struct _WstContext WstContext;
 typedef struct _WstSurface WstSurface;
+#endif
 
 struct wl_lexpsync
 {
@@ -240,7 +258,7 @@ STATIC_TEST void wstILExpSyncGetSynchronization(struct wl_client *client,
    if (surface->syncRes)
    {
       wl_resource_post_error( resource,
-                              ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_SYNCHRONIZATION_EXISTS,
+                              ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_DUPLICATE_SYNCHRONIZATION,
                               "wl_surface@%" PRIu32 " already has a synchronization object",
                               wl_resource_get_id(surface_resource));
        return;
