@@ -39,10 +39,37 @@ jobs:
           libgles2-mesa-dev \
           libgbm-dev \
           libdrm-dev \
+          libxkbcommon-dev \
+          libxkbcommon-x11-dev \
           libgtest-dev \
           libgmock-dev \
           lcov \
-          gcovr
+          gcovr \
+          ninja-build
+        
+        # Verify critical dependencies
+        echo "Verifying xkbcommon installation..."
+        if ! pkg-config --exists xkbcommon; then
+          echo "ERROR: xkbcommon not found via pkg-config"
+          exit 1
+        fi
+        if ! find /usr/include -name "xkbcommon.h" 2>/dev/null | grep -q .; then
+          echo "ERROR: xkbcommon.h header not found"
+          exit 1
+        fi
+        echo "✓ xkbcommon verified"
+        
+        # Verify GTest/GMock
+        echo "Verifying GTest/GMock..."
+        if [ ! -d "/usr/src/googletest" ] && [ ! -f "/usr/lib/x86_64-linux-gnu/libgtest.a" ]; then
+          echo "WARNING: GTest may need manual build"
+        fi
+        echo "✓ GTest/GMock checked"
+        
+        # Display package info
+        pkg-config --modversion xkbcommon
+        pkg-config --cflags xkbcommon
+        pkg-config --libs xkbcommon
     
     - name: Display Build Configuration
       run: |
@@ -209,5 +236,6 @@ jobs:
         echo "Coverage Enabled: ${{ matrix.coverage }}"
         echo "Status: ${{ job.status }}"
         echo "=========================================="
+
 
 
