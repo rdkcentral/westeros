@@ -21,16 +21,29 @@
 #include <memory.h>
 #include <unistd.h>
 #include <assert.h>
+#include <inttypes.h>
 
 #include "westeros-linux-expsync.h"
 
+#ifndef UNIT_TEST
 #include "wayland-server.h"
+#else
+#include "linux-explicit-synchronization-unstable-v1-server-protocol.h"
+#endif
 
 #include <linux/ioctl.h>
 #include <linux/types.h>
 #include <linux/sync_file.h>
 #include <sys/ioctl.h>
-#include "linux-explicit-synchronization-unstable-v1-server-protocol.h"
+
+/* Forward declarations for compositor types */
+typedef struct _WstContext WstContext;
+typedef struct _WstSurface {
+   struct wl_resource *syncRes;
+   WstExplicitSync createdBufferSync;
+   WstExplicitSync attachedBufferSync;
+   WstExplicitSync detachedBufferSync;
+} WstSurface;
 
 struct wl_lexpsync
 {
@@ -38,7 +51,13 @@ struct wl_lexpsync
    struct wl_global *wl_lexpsync_global;
 };
 
-static bool wstLExpSyncFileIsValid(int fd)
+#ifdef UNIT_TEST
+#define UNIT_TEST_STATIC
+#else
+#define UNIT_TEST_STATIC static
+#endif
+
+UNIT_TEST_STATIC bool wstLExpSyncFileIsValid(int fd)
 {
    bool result;
    struct sync_file_info fInfo= { { 0 } };
@@ -55,7 +74,7 @@ static bool wstLExpSyncFileIsValid(int fd)
    return result;
 }
 
-static void wstLExpSyncBufferRelease(struct wl_resource *resource)
+UNIT_TEST_STATIC void wstLExpSyncBufferRelease(struct wl_resource *resource)
 {
    WstExplicitSyncBufferRelease *bufferRelease= (WstExplicitSyncBufferRelease*)wl_resource_get_user_data(resource);
 
@@ -63,7 +82,7 @@ static void wstLExpSyncBufferRelease(struct wl_resource *resource)
    free(bufferRelease);
 }
 
-static void wstLExpSyncDestroySync(struct wl_resource *resource)
+UNIT_TEST_STATIC void wstLExpSyncDestroySync(struct wl_resource *resource)
 {
    WstSurface *surface= (WstSurface*)wl_resource_get_user_data(resource);
 
@@ -81,13 +100,13 @@ static void wstLExpSyncDestroySync(struct wl_resource *resource)
  * Copyright (C) 2018 Collabora, Ltd.
  * Licensed under the MIT License
  */
-static void wstILExpSyncSurfaceSyncDestroy(struct wl_client *client,
+UNIT_TEST_STATIC void wstILExpSyncSurfaceSyncDestroy(struct wl_client *client,
                                            struct wl_resource *resource)
 {
    wl_resource_destroy(resource);
 }
 
-static void wstILExpSyncSurfaceSyncSetAcquireFence(struct wl_client *client,
+UNIT_TEST_STATIC void wstILExpSyncSurfaceSyncSetAcquireFence(struct wl_client *client,
                                                    struct wl_resource *resource,
                                                    int32_t fd)
 {
@@ -128,7 +147,7 @@ exit:
    }
 }
 
-static void wstILExpSyncSurfaceSyncGetRelease(struct wl_client *client,
+UNIT_TEST_STATIC void wstILExpSyncSurfaceSyncGetRelease(struct wl_client *client,
                                               struct wl_resource *resource,
                                               uint32_t id)
 {
@@ -181,19 +200,25 @@ err_alloc:
    wl_client_post_no_memory(client);
 }
 
+#ifdef UNIT_TEST
+extern
+#else
+static
+#endif
 const struct zwp_linux_surface_synchronization_v1_interface linux_surface_synchronization_implementation = {
    wstILExpSyncSurfaceSyncDestroy,
    wstILExpSyncSurfaceSyncSetAcquireFence,
    wstILExpSyncSurfaceSyncGetRelease
 };
 
-static void wstILExpSyncDestroy(struct wl_client *client,
+UNIT_TEST_STATIC void wstILExpSyncDestroy(struct wl_client *client,
                                 struct wl_resource *resource)
 {
+   (void)client;
    wl_resource_destroy(resource);
 }
 
-static void wstILExpSyncGetSynchronization(struct wl_client *client,
+UNIT_TEST_STATIC void wstILExpSyncGetSynchronization(struct wl_client *client,
                                            struct wl_resource *resource,
                                            uint32_t id,
                                            struct wl_resource *surface_resource)
@@ -203,8 +228,8 @@ static void wstILExpSyncGetSynchronization(struct wl_client *client,
    if (surface->syncRes)
    {
       wl_resource_post_error( resource,
-                              ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_SYNCHRONIZATION_EXISTS,
-                              "wl_surface@%"PRIu32" already has a synchronization object",
+                              ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_DUPLICATE_SYNCHRONIZATION,
+                              "wl_surface@%" PRIu32 " already has a synchronization object",
                               wl_resource_get_id(surface_resource));
        return;
    }
@@ -224,17 +249,22 @@ static void wstILExpSyncGetSynchronization(struct wl_client *client,
                       wstLExpSyncDestroySync);
 }
 
-static const struct zwp_linux_explicit_synchronization_v1_interface linux_explicit_synchronization_implementation = {
+#ifdef UNIT_TEST
+extern
+#else
+static
+#endif
+const struct zwp_linux_explicit_synchronization_v1_interface linux_explicit_synchronization_implementation = {
    wstILExpSyncDestroy,
    wstILExpSyncGetSynchronization
 };
 
-static void wstExplicitSyncBind( struct wl_client *client, void *data, uint32_t version, uint32_t id )
+UNIT_TEST_STATIC void wstExplicitSyncBind( struct wl_client *client, void *data, uint32_t version, uint32_t id )
 {
    WstContext *ctx= (WstContext*)data;
    struct wl_resource *resource;
 
-   printf("wstExplicitSyncBind: client %p data %p version %d id %d", client, data, version, id );
+   printf("wstExplicitSyncBind: client %p data %p version %d id %d", (void*)client, data, version, id );
 
    resource= wl_resource_create(client,
                                 &zwp_linux_explicit_synchronization_v1_interface,
@@ -270,6 +300,12 @@ void WstLExpSyncFireRelease( WstExplicitSync *bufferSync )
       return;
    }
 
+   // Additional validation to ensure bufferRelease is properly initialized
+   if (bufferSync->bufferRelease->resource == NULL)
+   {
+      return;
+   }
+
    resource= bufferSync->bufferRelease->resource;
 
    // render fence would have inserted by gl-render
@@ -296,6 +332,14 @@ wl_lexpsync* WstLExpSyncInit( struct wl_display *display, void *userData )
    WstContext *ctx= (WstContext*)userData;
 
    printf("westeros-lexpsync: WstLExpSyncInit: enter: display %p\n", display);
+   
+   // Validate required parameter
+   if ( !display )
+   {
+      printf("westeros-lexpsync: WstLExpSyncInit: error: null display\n");
+      goto exit;
+   }
+   
    lexpsync= (struct wl_lexpsync*)calloc( 1, sizeof(struct wl_lexpsync) );
    if ( !lexpsync )
    {
