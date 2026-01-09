@@ -1375,7 +1375,6 @@ static void wstRendererEMBCommitSB( WstRendererEMB *renderer, WstRenderSurface *
                }
                eglPixmap = (EGLNativePixmapType) WstGLGetEGLNativePixmap(renderer->glCtx, surface->nativePixmap);
             }
-#endif
             if ( !surface->eglImage[0] )
             {
                eglImage= renderer->eglCreateImageKHR( renderer->eglDisplay,
@@ -1399,6 +1398,7 @@ static void wstRendererEMBCommitSB( WstRendererEMB *renderer, WstRenderSurface *
                }
             }
          }
+#endif
       }
       #ifdef EGL_LINUX_DMA_BUF_EXT
       else if ( renderer->haveDmaBufImport )
