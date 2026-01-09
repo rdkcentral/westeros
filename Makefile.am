@@ -283,7 +283,7 @@ endif
 
 if ENABLE_WESTEROS_LDBPROTOCOL
 libwesteros_compositor_la_DEPENDENCIES += libwesteros_linux_dmabuf_server.la
-libwesteros_compositor_la_LDFLAGS += -lwesteros_linux_dmabuf_server
+libwesteros_compositor_la_LIBADD += libwesteros_linux_dmabuf_server.la
 endif
 
 ## --- Renderer: OpenGL -------
@@ -304,7 +304,7 @@ libwesteros_render_gl_la_LIBADD = libwesteros_simplebuffer_server.la
 endif
 if ENABLE_WESTEROS_LDBPROTOCOL
 libwesteros_render_gl_la_DEPENDENCIES += libwesteros_linux_dmabuf_server.la
-libwesteros_render_gl_la_LDFLAGS += -lwesteros_linux_dmabuf_server
+libwesteros_render_gl_la_LIBADD += libwesteros_linux_dmabuf_server.la
 endif
 
 ## --- Renderer: Embedded -------
@@ -324,7 +324,7 @@ libwesteros_render_embedded_la_LIBADD = libwesteros_simplebuffer_server.la
 endif
 if ENABLE_WESTEROS_LDBPROTOCOL
 libwesteros_render_embedded_la_DEPENDENCIES += libwesteros_linux_dmabuf_server.la
-libwesteros_render_embedded_la_LDFLAGS += -lwesteros_linux_dmabuf_server
+libwesteros_render_embedded_la_LIBADD += libwesteros_linux_dmabuf_server.la
 endif
 
 if ENABLE_WESTEROS_LDBPROTOCOL
