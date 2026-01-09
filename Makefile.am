@@ -228,6 +228,9 @@ endif
 ## --- Renderer: OpenGL -------
 libwesteros_render_gl_la_SOURCES = westeros-render-gl.cpp
 libwesteros_render_gl_la_includedir = $(includedir)
+libwesteros_render_gl_la_CXXFLAGS = $(AM_CXXFLAGS) \
+   -I$(srcdir)/simplebuffer \
+   -I$(srcdir)/linux-dmabuf
 libwesteros_render_gl_la_DEPENDENCIES =
 if !ENABLE_PLATFORM_EMBEDDED
 libwesteros_render_gl_la_LDFLAGS= $(WSTEGL_LIBS) -lEGL -lGL -lGLEW $(WAYLAND_SERVER_LIBS)
