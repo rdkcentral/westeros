@@ -1,0 +1,3 @@
+-P ubuntu-latest=catthehacker/ubuntu:full-latest
+--artifact-server-path /tmp/artifacts
+--insecure-secrets

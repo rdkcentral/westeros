@@ -1,0 +1,65 @@
+# Build artifacts
+build/
+build-*/
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+*.exe
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+*.cmake
+
+# Coverage
+coverage/
+coverage_html/
+coverage_html-*/
+*.gcda
+*.gcno
+*.gcov
+*.info
+*.info.cleaned
+
+# IDE
+.vscode/
+.vs/
+*.swp
+*.swo
+*~
+.idea/
+*.user
+*.suo
+*.ncb
+*.aps
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test outputs
+Testing/
+test_detail.xml
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Documentation build
+docs/_build/
+docs/html/
+docs/latex/
+
+# Package files
+*.deb
+*.rpm
+*.tar.gz
+*.zip

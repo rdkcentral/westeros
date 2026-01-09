@@ -1,0 +1,90 @@
+﻿Migration Report
+Generated: 2026-01-09 12:35:38
+
+Source Repository: d:\Westeros\New folder\L1-TestSuiteWesteros\L1-TestSuiteWesteros
+Base Repository: d:\Westeros\New folder\westeros-main\westeros-main
+Migration Folder: d:\Westeros\New folder\migration
+
+STATISTICS:
+- Total files compared: 239
+- Modified files: 14
+- New files: 58
+- Total files in migration: 72
+
+MODIFIED FILES:
+  - README.md
+  - westeros-compositor.cpp
+  - westeros-nested.cpp
+  - westeros-nested.h
+  - westeros-render.cpp
+  - westeros-version.h
+  - linux-dmabuf\westeros-linux-dmabuf.cpp
+  - linux-dmabuf\westeros-linux-dmabuf.h
+  - linux-expsync\westeros-linux-expsync.cpp
+  - linux-expsync\westeros-linux-expsync.h
+  - simplebuffer\westeros-simplebuffer.cpp
+  - simplebuffer\westeros-simplebuffer.h
+  - simpleshell\westeros-simpleshell.cpp
+  - simpleshell\westeros-simpleshell.h
+
+
+NEW FILES:
+  - .actrc
+  - .gitignore
+  - build.ps1
+  - build.sh
+  - CMakeLists.txt
+  - COVERAGE_GUIDE.md
+  - QUICK_START.md
+  - setup.sh
+  - .github\workflows\L1.yml
+  - common\CMakeLists.txt
+  - L1\linux-dmabuf\CMakeLists.txt
+  - L1\linux-dmabuf\tests\L1\test_linux_dmabuf_l1.cpp
+  - L1\linux-dmabuf\tests\mocks\drm_fourcc.h
+  - L1\linux-dmabuf\tests\mocks\linux-dmabuf-unstable-v1-server-protocol.h
+  - L1\linux-dmabuf\tests\mocks\wayland-server-mock.cpp
+  - L1\linux-dmabuf\tests\mocks\wayland-server.h
+  - L1\linux-dmabuf\tests\mocks\westeros-render-mock.cpp
+  - L1\linux-dmabuf\tests\mocks\westeros-render.h
+  - L1\linux-explicit-sync\CMakeLists.txt
+  - L1\linux-explicit-sync\tests\L1\test_linux_expsync_l1.cpp
+  - L1\linux-explicit-sync\tests\mocks\linux-explicit-synchronization-protocol.c
+  - L1\linux-explicit-sync\tests\mocks\linux-explicit-synchronization-unstable-v1-server-protocol.h
+  - L1\linux-explicit-sync\tests\mocks\sync-file-stubs.c
+  - L1\linux-explicit-sync\tests\mocks\wayland-stubs.c
+  - L1\linux-explicit-sync\tests\mocks\wayland-stubs.h
+  - L1\linux-explicit-sync\tests\mocks\westeros-context-mock.c
+  - L1\linux-explicit-sync\tests\mocks\westeros-context-mock.h
+  - L1\simplebuffer\CMakeLists.txt
+  - L1\simplebuffer\tests\L1\westeros_simplebuffer_test.cpp
+  - L1\simplebuffer\tests\mocks\wayland-server.h
+  - L1\simplebuffer\tests\mocks\wayland_mock.cpp
+  - L1\simpleshell\CMakeLists.txt
+  - L1\simpleshell\tests\L1\westeros_simpleshell_test.cpp
+  - L1\simpleshell\tests\mocks\wayland-server.h
+  - L1\simpleshell\tests\mocks\wayland_mock.cpp
+  - L1\westeros-main\CMakeLists.txt
+  - L1\westeros-main\tests\L1\westeros_main_test.cpp
+  - L1\westeros-main\tests\L1\westeros_nested_test.cpp
+  - L1\westeros-main\tests\mocks\egl-mock.cpp
+  - L1\westeros-main\tests\mocks\gstreamer-mock.cpp
+  - L1\westeros-main\tests\mocks\simplebuffer-client-protocol.h
+  - L1\westeros-main\tests\mocks\simpleshell-client-protocol.h
+  - L1\westeros-main\tests\mocks\simpleshell-mock.cpp
+  - L1\westeros-main\tests\mocks\vpc-client-protocol.h
+  - L1\westeros-main\tests\mocks\vpc-server-protocol.h
+  - L1\westeros-main\tests\mocks\wayland-client-mock.cpp
+  - L1\westeros-main\tests\mocks\wayland-client.h
+  - L1\westeros-main\tests\mocks\wayland-server-mock.cpp
+  - L1\westeros-main\tests\mocks\wayland-server.h
+  - L1\westeros-main\tests\mocks\westeros-nested-mock.cpp
+  - L1\westeros-main\tests\mocks\xdg-shell-server-protocol.h
+  - L1\westeros-main\tests\mocks\xkbcommon-mock.cpp
+  - L1\westeros-main\tests\mocks\GL\freeglut.h
+  - L1\westeros-main\tests\mocks\GL\glew.h
+  - L1\westeros-main\tests\mocks\GL\glut.h
+  - L1\westeros-main\tests\mocks\gst\gst.h
+  - simplebuffer\protocol\simplebuffer-server-protocol.h
+  - simpleshell\protocol\simpleshell-server-protocol.h
+
