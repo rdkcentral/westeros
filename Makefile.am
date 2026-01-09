@@ -199,7 +199,8 @@ libwesteros_simplebuffer_server_la_LDFLAGS = \
    $(AM_LDFLAGS) \
    $(WAYLAND_SERVER_LIBS)
 
-## --- Compositor Library -------libwesteros_compositor_la_SOURCES = \
+## --- Compositor Library -------
+libwesteros_compositor_la_SOURCES = \
    westeros-compositor.cpp \
    westeros-nested.cpp \
    westeros-render.cpp \
