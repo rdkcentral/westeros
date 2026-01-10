@@ -1,0 +1,26 @@
+Westeros Release Notes
+======================
+ 
+Westeros 1.01.63 Release Notes
+------------------------------
+ 
+Date: 10 January 2026
+Tag: Westeros-1.01.63
+Changes:
+ 
+From this release onwards, Westeros is separated into different repos as per [CPESP-8255](https://ccp.sys.comcast.net/browse/CPESP-8255)
+
+The changes : 
+* Westeros-sink reporting pre-seek position after seek, causing playback position jumps on video-only playback
+* fix westeros-sink timeCodeFound function
+* westeros-soc-brcm: Ignore playback rate 0.25-2.0 when audio is passthrough
+ 
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
