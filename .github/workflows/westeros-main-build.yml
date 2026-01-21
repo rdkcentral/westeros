@@ -2,7 +2,7 @@ name: Build Westeros
 
 on:
   push:
-    branches: [ main, master, develop ]  # Run on main branches only
+    branches: [ * ]  # Run on main branches only
   pull_request:
     branches: [ main, master, develop ]
   workflow_dispatch:  # Allow manual trigger from GitHub UI
