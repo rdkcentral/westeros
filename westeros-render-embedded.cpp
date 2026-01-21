@@ -1345,6 +1345,7 @@ static void wstRendererEMBCommitSB( WstRendererEMB *renderer, WstRenderSurface *
       deviceBuffer= WstSBBufferGetBuffer( sbBuffer );
       if ( deviceBuffer )
       {
+#if defined (WESTEROS_PLATFORM_EMBEDDED)
          if ( surface->nativePixmap )
          {
             eglPixmap = (EGLNativePixmapType) WstGLGetEGLNativePixmap(renderer->glCtx, surface->nativePixmap);
@@ -1397,6 +1398,7 @@ static void wstRendererEMBCommitSB( WstRendererEMB *renderer, WstRenderSurface *
                }
             }
          }
+#endif
       }
       #ifdef EGL_LINUX_DMA_BUF_EXT
       else if ( renderer->haveDmaBufImport )

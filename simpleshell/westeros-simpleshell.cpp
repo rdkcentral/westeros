@@ -26,7 +26,7 @@
 #include "westeros-simpleshell.h"
 
 #include "wayland-server.h"
-#include "simpleshell-server-protocol.h"
+#include "simpleshell/protocol/simpleshell-server-protocol.h"
 
 #define WST_UNUSED( n ) ((void)n)
 
@@ -90,8 +90,16 @@ static void wstISimpleShellSetFocus(struct wl_client *client, struct wl_resource
                                      uint32_t surfaceId);
 static void wstISimpleShellSetScale(struct wl_client *client, struct wl_resource *resource,
                                      uint32_t surfaceId, wl_fixed_t scaleX, wl_fixed_t scaleY);
+static void wstSimpleShellBind_internal(struct wl_client *client, void *data, uint32_t version, uint32_t id);
 
-const static struct wl_simple_shell_interface simple_shell_interface = {
+#ifdef UNIT_TEST
+// For tests, use extern to ensure external linkage (const alone has internal linkage in C++)
+extern
+#else
+// For production, keep it static (internal linkage)
+static
+#endif
+const struct wl_simple_shell_interface simple_shell_interface = {
    wstISimpleShellSetName,
    wstISimpleShellSetVisible,
    wstISimpleShellSetGeometry,
@@ -102,6 +110,56 @@ const static struct wl_simple_shell_interface simple_shell_interface = {
    wstISimpleShellSetFocus,
    wstISimpleShellSetScale
 };
+
+#ifdef UNIT_TEST
+// Expose internal functions for unit testing
+void wstSimpleShellSetName(struct wl_client *client, struct wl_resource *resource, 
+                            uint32_t surfaceId, const char *name) {
+    wstISimpleShellSetName(client, resource, surfaceId, name);
+}
+
+void wstSimpleShellSetVisible(struct wl_client *client, struct wl_resource *resource, 
+                               uint32_t surfaceId, uint32_t visible) {
+    wstISimpleShellSetVisible(client, resource, surfaceId, visible);
+}
+
+void wstSimpleShellSetGeometry(struct wl_client *client, struct wl_resource *resource,
+                                uint32_t surfaceId, int32_t x, int32_t y, int32_t width, int32_t height) {
+    wstISimpleShellSetGeometry(client, resource, surfaceId, x, y, width, height);
+}
+
+void wstSimpleShellSetOpacity(struct wl_client *client, struct wl_resource *resource, 
+                               uint32_t surfaceId, wl_fixed_t opacity) {
+    wstISimpleShellSetOpacity(client, resource, surfaceId, opacity);
+}
+
+void wstSimpleShellSetZorder(struct wl_client *client, struct wl_resource *resource, 
+                              uint32_t surfaceId, wl_fixed_t zorder) {
+    wstISimpleShellSetZOrder(client, resource, surfaceId, zorder);
+}
+
+void wstSimpleShellGetStatus(struct wl_client *client, struct wl_resource *resource, uint32_t surfaceId) {
+    wstISimpleShellGetStatus(client, resource, surfaceId);
+}
+
+void wstSimpleShellGetSurfaces(struct wl_client *client, struct wl_resource *resource) {
+    wstISimpleShellGetSurfaces(client, resource);
+}
+
+void wstSimpleShellSetFocus(struct wl_client *client, struct wl_resource *resource,
+                             uint32_t surfaceId) {
+    wstISimpleShellSetFocus(client, resource, surfaceId);
+}
+
+void wstSimpleShellSetScale(struct wl_client *client, struct wl_resource *resource,
+                             uint32_t surfaceId, wl_fixed_t scaleX, wl_fixed_t scaleY) {
+    wstISimpleShellSetScale(client, resource, surfaceId, scaleX, scaleY);
+}
+
+void wstSimpleShellBind(struct wl_client *client, void *data, uint32_t version, uint32_t id) {
+    wstSimpleShellBind_internal(client, data, version, id);
+}
+#endif
 
 static void wstSimpleShellBroadcastSurfaceUpdate(struct wl_client *client, struct wl_simple_shell *shell, uint32_t surfaceId )
 {
@@ -318,7 +376,7 @@ static void destroy_shell(struct wl_resource *resource)
    }
 }
 
-static void wstSimpleShellBind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+static void wstSimpleShellBind_internal(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 {
    struct wl_simple_shell *shell= (struct wl_simple_shell*)data;
    if ( shell )
@@ -418,6 +476,13 @@ wl_simple_shell* WstSimpleShellInit( struct wl_display *display,
    struct wl_event_loop *loop= 0;
    
    printf("westeros-simpleshell: WstSimpleShellInit: enter: display %p\n", display );
+   
+   if ( !callbacks )
+   {
+      printf("westeros-simpleshell: WstSimpleShellInit: error: null callbacks\n");
+      goto exit;
+   }
+   
    shell= (struct wl_simple_shell*)calloc( 1, sizeof(struct wl_simple_shell) );
    if ( !shell )
    {
@@ -444,7 +509,7 @@ wl_simple_shell* WstSimpleShellInit( struct wl_display *display,
       goto exit;
    }
   
-   shell->wl_simple_shell_global= wl_global_create(display, &wl_simple_shell_interface, 1, shell, wstSimpleShellBind );
+   shell->wl_simple_shell_global= wl_global_create(display, &wl_simple_shell_interface, 1, shell, wstSimpleShellBind_internal );
 
 exit:
    printf("westeros-simpleshell: WstSimpleShellInit: exit: display %p shell %p\n", display, shell);
@@ -546,6 +611,33 @@ void WstSimpleShellNotifySurfaceDestroyed( wl_simple_shell *shell, struct wl_cli
          shell->surfaces.erase(it);
          break;
       }
+   }
+}
+
+void WstSimpleShellNotifySurfaceStatus( wl_simple_shell *shell, uint32_t surfaceId, const char *name,
+                                        bool visible, int32_t x, int32_t y, int32_t width, int32_t height,
+                                        float opacity, float zorder )
+{
+   if ( !shell )
+   {
+      return;
+   }
+
+   wl_fixed_t fixedOpacity= wl_fixed_from_double( (double)opacity );
+   wl_fixed_t fixedZOrder= wl_fixed_from_double( (double)zorder );
+
+   const char *surfaceName = name ? name : DEFAULT_NAME;
+
+   // Broadcast the surface status to all clients
+   for( std::vector<ShellInfo>::iterator it= shell->shells.begin(); 
+        it != shell->shells.end();
+        ++it )
+   {
+      struct wl_resource *shell_resource= (*it).resource;
+      
+      wl_simple_shell_send_surface_status( shell_resource, surfaceId,
+                                           surfaceName, (visible ? 1 : 0),
+                                           x, y, width, height, fixedOpacity, fixedZOrder );
    }
 }
 

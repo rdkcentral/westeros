@@ -20,6 +20,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stddef.h>
 #include <string.h>
 #include <limits.h>
 #include <memory.h>
@@ -35,11 +36,36 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <cmath>
 
 #include <map>
 #include <vector>
 
 #include <xkbcommon/xkbcommon.h>
+
+// Define wl_container_of macro BEFORE including wayland headers
+// to prevent any broken definitions in system headers
+#ifndef wl_container_of
+#define wl_container_of(ptr, sample, member) \
+    (__typeof__(sample))((char *)(ptr) - offsetof(__typeof__(*(sample)), member))
+#endif
+
+// Define wl_list helper macros if not already defined
+#ifndef wl_list_for_each
+#define wl_list_for_each(pos, head, member)                         \
+    for (pos = wl_container_of((head)->next, pos, member);          \
+         &pos->member != (head);                                    \
+         pos = wl_container_of(pos->member.next, pos, member))
+#endif
+
+#ifndef wl_list_for_each_safe
+#define wl_list_for_each_safe(pos, tmp, head, member)               \
+    for (pos = wl_container_of((head)->next, pos, member),          \
+         tmp = wl_container_of((pos)->member.next, tmp, member);    \
+         &pos->member != (head);                                    \
+         pos = tmp,                                                 \
+         tmp = wl_container_of(pos->member.next, tmp, member))
+#endif
 
 #if defined (WESTEROS_HAVE_WAYLAND_EGL)
 #include <EGL/egl.h>
@@ -1172,6 +1198,10 @@ const char *WstCompositorGetLastErrorDetail( WstCompositor *wctx )
       
       pthread_mutex_unlock( &ctx->mutex );
    }
+   else
+   {
+      detail= "Invalid compositor context";
+   }
    
    return detail;
 }
@@ -1205,7 +1235,14 @@ bool WstCompositorSetDisplayName( WstCompositor *wctx, const char *displayName )
          free( (void*)ctx->displayName );
       }
       
-      ctx->displayName= strdup( displayName );
+      if ( displayName )
+      {
+         ctx->displayName= strdup( displayName );
+      }
+      else
+      {
+         ctx->displayName= NULL;
+      }
 
       pthread_mutex_unlock( &ctx->mutex );
       
@@ -1309,6 +1346,13 @@ bool WstCompositorSetRendererModule( WstCompositor *wctx, const char *rendererMo
       {
          sprintf( wctx->lastErrorDetail,
                   "Bad state.  Cannot set renderer module while compositor is running" );
+         goto exit;
+      }
+      
+      if ( !rendererModule )
+      {
+         sprintf( wctx->lastErrorDetail,
+                  "Invalid argument.  Renderer module name cannot be NULL" );
          goto exit;
       }
                
@@ -1833,11 +1877,20 @@ bool WstCompositorAddModule( WstCompositor *wctx, const char *moduleName )
          goto exit;
       }
 
-      moduleNew->moduleName= strdup(moduleName);
-      if ( !moduleNew->moduleName )
+      if ( moduleName )
+      {
+         moduleNew->moduleName= strdup(moduleName);
+         if ( !moduleNew->moduleName )
+         {
+            sprintf( wctx->lastErrorDetail,
+                     "Error.  Unable to allocate memory for new module name" );
+            goto exit;
+         }
+      }
+      else
       {
          sprintf( wctx->lastErrorDetail,
-                  "Error.  Unable to allocate memory for new module name" );
+                  "Error.  Module name is NULL" );
          goto exit;
       }
 
@@ -2984,6 +3037,11 @@ void WstCompositorPointerButtonEvent( WstCompositor *wctx, unsigned int button, 
 
 void WstCompositorTouchEvent( WstCompositor *wctx, WstTouchSet *touchSet )
 {
+   if ( !touchSet )
+   {
+      return;
+   }
+   
    if ( wctx && wctx->ctx )
    {
       WstContext *ctx= wctx->ctx;

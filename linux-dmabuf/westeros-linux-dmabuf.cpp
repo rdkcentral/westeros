@@ -29,6 +29,12 @@
 
 #define MIN(x,y) (((x) < (y)) ? (x) : (y))
 
+#ifdef UNIT_TEST
+#define UNIT_TEST_STATIC
+#else
+#define UNIT_TEST_STATIC static
+#endif
+
 static const uint32_t gLDBFormats[]= {
    DRM_FORMAT_XRGB8888,
    DRM_FORMAT_XBGR8888,
@@ -52,7 +58,7 @@ struct wl_ldb
    WstRenderer *renderer;
 };
 
-static void wstLDBBufferDestroy(struct wl_ldb_buffer *buffer)
+UNIT_TEST_STATIC void wstLDBBufferDestroy(struct wl_ldb_buffer *buffer)
 {
    int i;
 
@@ -69,17 +75,22 @@ static void wstLDBBufferDestroy(struct wl_ldb_buffer *buffer)
    free(buffer);
 }
 
-static void wstILDBBufferDestroy(struct wl_client *client,
+UNIT_TEST_STATIC void wstILDBBufferDestroy(struct wl_client *client,
                                  struct wl_resource *resource)
 {
    wl_resource_destroy(resource);
 }
 
-static const struct wl_buffer_interface linux_dmabuf_buffer_interface = {
+#ifdef UNIT_TEST
+extern
+#else
+static
+#endif
+const struct wl_buffer_interface linux_dmabuf_buffer_interface = {
    wstILDBBufferDestroy
 };
 
-static void wstLDBDestroyBuffer(struct wl_resource *resource)
+UNIT_TEST_STATIC void wstLDBDestroyBuffer(struct wl_resource *resource)
 {
    struct wl_ldb_buffer *buffer;
 
@@ -90,12 +101,12 @@ static void wstLDBDestroyBuffer(struct wl_resource *resource)
    }
 }
 
-static void wstILDBParamsDestroy(struct wl_client *client, struct wl_resource *resource)
+UNIT_TEST_STATIC void wstILDBParamsDestroy(struct wl_client *client, struct wl_resource *resource)
 {
    wl_resource_destroy(resource);
 }
 
-static void wstILDBParamsAdd(struct wl_client *client,
+UNIT_TEST_STATIC void wstILDBParamsAdd(struct wl_client *client,
                             struct wl_resource *resourceParams,
                             int32_t name_fd,
                             uint32_t plane_idx,
@@ -165,7 +176,7 @@ static void wstILDBParamsAdd(struct wl_client *client,
    buffer->info.planeCount++;
 }
 
-static void wstLDBParamsCreate(struct wl_client *client,
+UNIT_TEST_STATIC void wstLDBParamsCreate(struct wl_client *client,
                                struct wl_resource *resourceParams,
                                uint32_t buffer_id,
                                int32_t width,
@@ -258,7 +269,7 @@ static void wstLDBParamsCreate(struct wl_client *client,
    return;
 }
 
-static void wstILDBParamsCreate(struct wl_client *client,
+UNIT_TEST_STATIC void wstILDBParamsCreate(struct wl_client *client,
                                struct wl_resource *resourceParams,
                                int32_t width, 
                                int32_t height,
@@ -268,7 +279,7 @@ static void wstILDBParamsCreate(struct wl_client *client,
    wstLDBParamsCreate(client, resourceParams, 0, width, height, format, flags);
 }
 
-static void  wstILDBParamsCreateImmed(struct wl_client *client,
+UNIT_TEST_STATIC void  wstILDBParamsCreateImmed(struct wl_client *client,
                                      struct wl_resource *resourceParams,
                                      uint32_t buffer_id,
                                      int32_t width,
@@ -279,14 +290,19 @@ static void  wstILDBParamsCreateImmed(struct wl_client *client,
    wstLDBParamsCreate(client, resourceParams, buffer_id, width, height, format, flags);
 }
 
-static const struct zwp_linux_buffer_params_v1_interface zwp_linux_buffer_params_interface = {
+#ifdef UNIT_TEST
+extern
+#else
+static
+#endif
+const struct zwp_linux_buffer_params_v1_interface zwp_linux_buffer_params_interface = {
    wstILDBParamsDestroy,
    wstILDBParamsAdd,
    wstILDBParamsCreate,
    wstILDBParamsCreateImmed
 };
 
-static void wstLDBDestroyParams(struct wl_resource *resourceParams)
+UNIT_TEST_STATIC void wstLDBDestroyParams(struct wl_resource *resourceParams)
 {
    struct wl_ldb_buffer *buffer;
 
@@ -297,12 +313,12 @@ static void wstLDBDestroyParams(struct wl_resource *resourceParams)
    }
 }
 
-static void wstILDBDestroy(struct wl_client *client, struct wl_resource *resource)
+UNIT_TEST_STATIC void wstILDBDestroy(struct wl_client *client, struct wl_resource *resource)
 {
    wl_resource_destroy(resource);
 }
 
-static void wstILDBCreateParams(struct wl_client *client,
+UNIT_TEST_STATIC void wstILDBCreateParams(struct wl_client *client,
                                 struct wl_resource *linux_dmabuf_resource,
                                 uint32_t params_id)
 {
@@ -347,19 +363,24 @@ static void wstILDBCreateParams(struct wl_client *client,
    return;
 }
 
-static const struct zwp_linux_dmabuf_v1_interface linux_dmabuf_interface = {
+#ifdef UNIT_TEST
+extern
+#else
+static
+#endif
+const struct zwp_linux_dmabuf_v1_interface linux_dmabuf_interface = {
    wstILDBDestroy,
    wstILDBCreateParams
 };
 
-static void wstLDBBind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+UNIT_TEST_STATIC void wstLDBBind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 {
    struct wl_ldb *ldb= (struct wl_ldb*)data;
    struct wl_resource *resource;
    int i;
    bool formatsSent= false;
 
-   printf("westeros-ldb: wstLDBind: enter: client %p data %p version %d id %d\n", client, data, version, id);
+   printf("westeros-ldb: wstLDBind: enter: client %p data %p version %d id %d\n", (void*)client, data, version, id);
 
    resource= wl_resource_create(client, &zwp_linux_dmabuf_v1_interface, MIN(version, 3), id);
    if (!resource)
@@ -429,7 +450,7 @@ static void wstLDBBind(struct wl_client *client, void *data, uint32_t version, u
       }
    }
 
-   printf("westeros-ldb: wstLDBBind: exit: client %p id %d\n", client, id);
+   printf("westeros-ldb: wstLDBBind: exit: client %p id %d\n", (void*)client, id);
 }
 
 wl_ldb* WstLDBInit( struct wl_display *display, struct wayland_ldb_callbacks *callbacks, void *userData )
@@ -437,6 +458,14 @@ wl_ldb* WstLDBInit( struct wl_display *display, struct wayland_ldb_callbacks *ca
    struct wl_ldb *ldb= 0;
 
    printf("westeros-ldb: WstLDBInit: enter: display %p\n", display);
+   
+   // Validate required parameters
+   if ( display == NULL || callbacks == NULL )
+   {
+      printf("westeros-ldb: WstLDBInit: error: null display or callbacks\n");
+      goto exit;
+   }
+   
    ldb= (struct wl_ldb*)calloc( 1, sizeof(struct wl_ldb) );
    if ( !ldb )
    {
@@ -491,41 +520,84 @@ struct wl_ldb_buffer *WstLDBBufferGet( struct wl_resource *resource )
 
 uint32_t WstLDBBufferGetFormat(struct wl_ldb_buffer *buffer)
 {
+   if ( buffer == NULL )
+   {
+      return 0;
+   }
    return buffer->info.format;
 }
 
 int32_t WstLDBBufferGetWidth(struct wl_ldb_buffer *buffer)
 {
+   if ( buffer == NULL )
+   {
+      return 0;
+   }
    return buffer->info.width;
 }
 
 int32_t WstLDBBufferGetHeight(struct wl_ldb_buffer *buffer)
 {
+   if ( buffer == NULL )
+   {
+      return 0;
+   }
    return buffer->info.height;
 }
 
 int32_t WstLDBBufferGetStride(struct wl_ldb_buffer *buffer)
 {
+   if ( buffer == NULL )
+   {
+      return 0;
+   }
    return buffer->info.stride[0];
 }
 
 void WstLDBBufferGetPlaneOffsetAndStride(struct wl_ldb_buffer *buffer, int plane, int32_t *offset, int32_t *stride )
 {
+   if ( buffer == NULL )
+   {
+      return;
+   }
    if ( (plane >= 0 ) && (plane < WST_LDB_MAX_PLANES) )
    {
-      *offset= buffer->info.offset[plane];
-      *stride= buffer->info.stride[plane];
+      if ( offset != NULL )
+      {
+         *offset= buffer->info.offset[plane];
+      }
+      if ( stride != NULL )
+      {
+         *stride= buffer->info.stride[plane];
+      }
    }
+}
+
+void *WstLDBBufferGetBuffer(struct wl_ldb_buffer *buffer)
+{
+   if ( buffer == NULL )
+   {
+      return NULL;
+   }
+   return (void*)buffer;
 }
 
 int WstLDBBufferGetFd(struct wl_ldb_buffer *buffer)
 {
+   if ( buffer == NULL )
+   {
+      return -1;
+   }
    return buffer->info.fd[0];
 }
 
 int WstLDBBufferGetPlaneFd(struct wl_ldb_buffer *buffer, int plane)
 {
    int fd= -1;
+   if ( buffer == NULL )
+   {
+      return fd;
+   }
    if ( (plane >= 0 ) && (plane < WST_LDB_MAX_PLANES) )
    {
       fd= buffer->info.fd[plane];
@@ -536,6 +608,10 @@ int WstLDBBufferGetPlaneFd(struct wl_ldb_buffer *buffer, int plane)
 uint64_t WstLDBBufferGetPlaneModifier(struct wl_ldb_buffer *buffer, int plane)
 {
    uint64_t modifier= DRM_FORMAT_MOD_INVALID;
+   if ( buffer == NULL )
+   {
+      return modifier;
+   }
    if ( (plane >= 0) && (plane < WST_LDB_MAX_PLANES) )
    {
       modifier= buffer->info.modifier[plane];

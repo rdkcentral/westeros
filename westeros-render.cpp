@@ -32,6 +32,127 @@
 
 #define WESTEROS_UNUSED(x) ((void)(x))
 
+#ifdef UNIT_TEST
+// Render surface structure for unit testing
+struct _WstRenderSurface {
+    int x, y, width, height;
+    float opacity;
+    float zorder;
+    bool visible;
+    void *nativePixmap;
+};
+
+// Complete stub renderer functions for unit testing
+static void stub_updateScene( WstRenderer *renderer ) {
+   WESTEROS_UNUSED(renderer);
+}
+
+static WstRenderSurface* stub_surfaceCreate( WstRenderer *renderer ) {
+   WESTEROS_UNUSED(renderer);
+   WstRenderSurface *surface = (WstRenderSurface*)calloc(1, sizeof(WstRenderSurface));
+   if (surface) {
+      surface->opacity = 1.0f;
+      surface->zorder = 0.0f;
+      surface->visible = true;
+      surface->x = 0;
+      surface->y = 0;
+      surface->width = 1280;
+      surface->height = 720;
+   }
+   return surface;
+}
+
+static void stub_surfaceDestroy( WstRenderer *renderer, WstRenderSurface *surface ) {
+   WESTEROS_UNUSED(renderer);
+   if (surface) {
+      free(surface);
+   }
+}
+
+static void stub_surfaceCommit( WstRenderer *renderer, WstRenderSurface *surface, struct wl_resource *resource ) {
+   WESTEROS_UNUSED(renderer);
+   WESTEROS_UNUSED(surface);
+   WESTEROS_UNUSED(resource);
+}
+
+static void stub_surfaceSetVisible( WstRenderer *renderer, WstRenderSurface *surface, bool visible ) {
+   WESTEROS_UNUSED(renderer);
+   if (surface) {
+      surface->visible = visible;
+   }
+}
+
+static bool stub_surfaceGetVisible( WstRenderer *renderer, WstRenderSurface *surface, bool *visible ) {
+   WESTEROS_UNUSED(renderer);
+   if (surface) {
+      if (visible) {
+         *visible = surface->visible;
+      }
+      return true;
+   }
+   return false;
+}
+
+static void stub_surfaceSetGeometry( WstRenderer *renderer, WstRenderSurface *surface, int x, int y, int width, int height ) {
+   WESTEROS_UNUSED(renderer);
+   if (surface) {
+      surface->x = x;
+      surface->y = y;
+      surface->width = width;
+      surface->height = height;
+   }
+}
+
+static void stub_surfaceGetGeometry( WstRenderer *renderer, WstRenderSurface *surface, int *x, int *y, int *width, int *height ) {
+   WESTEROS_UNUSED(renderer);
+   if (surface) {
+      if (x) *x = surface->x;
+      if (y) *y = surface->y;
+      if (width) *width = surface->width;
+      if (height) *height = surface->height;
+   }
+}
+
+static void stub_surfaceSetOpacity( WstRenderer *renderer, WstRenderSurface *surface, float opacity ) {
+   WESTEROS_UNUSED(renderer);
+   if (surface) {
+      surface->opacity = opacity;
+   }
+}
+
+static float stub_surfaceGetOpacity( WstRenderer *renderer, WstRenderSurface *surface, float *opacity ) {
+   WESTEROS_UNUSED(renderer);
+   if (surface) {
+      if (opacity) {
+         *opacity = surface->opacity;
+      }
+      return surface->opacity;
+   }
+   return 0.0f;
+}
+
+static void stub_surfaceSetZOrder( WstRenderer *renderer, WstRenderSurface *surface, float z ) {
+   WESTEROS_UNUSED(renderer);
+   if (surface) {
+      surface->zorder = z;
+   }
+}
+
+static float stub_surfaceGetZOrder( WstRenderer *renderer, WstRenderSurface *surface, float *z ) {
+   WESTEROS_UNUSED(renderer);
+   if (surface) {
+      if (z) {
+         *z = surface->zorder;
+      }
+      return surface->zorder;
+   }
+   return 0.0f;
+}
+
+static void stub_renderTerm( WstRenderer *renderer ) {
+   WESTEROS_UNUSED(renderer);
+}
+#endif
 
 WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, struct wl_display *display, WstNestedConnection *nc )
 {
@@ -99,7 +220,29 @@ WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, s
          renderer->displayNested= WstNestedConnectionGetDisplay( nc );
          renderer->surfaceNested= WstNestedConnectionGetCompositionSurface( nc );
       }
-            
+
+#ifdef UNIT_TEST
+      // In unit test mode, use stub renderer functions instead of loading a module
+      renderer->outputWidth= width;
+      renderer->outputHeight= height;
+      renderer->nativeWindow= nativeWindow;
+      renderer->renderer= (void*)1;  // Non-NULL to indicate initialized
+      renderer->updateScene= stub_updateScene;
+      renderer->surfaceCreate= stub_surfaceCreate;
+      renderer->surfaceDestroy= stub_surfaceDestroy;
+      renderer->surfaceCommit= stub_surfaceCommit;
+      renderer->surfaceSetVisible= stub_surfaceSetVisible;
+      renderer->surfaceGetVisible= stub_surfaceGetVisible;
+      renderer->surfaceSetGeometry= stub_surfaceSetGeometry;
+      renderer->surfaceGetGeometry= stub_surfaceGetGeometry;
+      renderer->surfaceSetOpacity= stub_surfaceSetOpacity;
+      renderer->surfaceGetOpacity= stub_surfaceGetOpacity;
+      renderer->surfaceSetZOrder= stub_surfaceSetZOrder;
+      renderer->surfaceGetZOrder= stub_surfaceGetZOrder;
+      renderer->renderTerm= stub_renderTerm;
+      printf("WstRendererCreate: stub renderer initialized for unit tests\n");
+      WESTEROS_UNUSED(moduleName);
+#else      
       module= dlopen( moduleName, RTLD_NOW );
       if ( !module )
       {
@@ -131,6 +274,7 @@ WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, s
       }
       
       printf("WstRendererCreate: module (%s) loaded and intialized\n", moduleName );
+#endif
    }
    
 exit:
@@ -140,6 +284,7 @@ exit:
       if ( renderer )
       {
          WstRendererDestroy( renderer );
+         renderer= NULL;  // Prevent double-free in caller
       }
       if ( module )
       {
@@ -165,17 +310,27 @@ void WstRendererDestroy( WstRenderer *renderer )
 
 void WstRendererUpdateScene( WstRenderer *renderer )
 {
-   renderer->updateScene( renderer );
+   if (renderer && renderer->updateScene)
+   {
+      renderer->updateScene( renderer );
+   }
 }
 
 WstRenderSurface* WstRendererSurfaceCreate( WstRenderer *renderer )
 {
-   return renderer->surfaceCreate( renderer );
+   if (renderer && renderer->surfaceCreate)
+   {
+      return renderer->surfaceCreate( renderer );
+   }
+   return NULL;
 }
 
 void WstRendererSurfaceDestroy( WstRenderer *renderer, WstRenderSurface *surface )
 {
-   renderer->surfaceDestroy( renderer, surface );
+   if (renderer && renderer->surfaceDestroy)
+   {
+      renderer->surfaceDestroy( renderer, surface );
+   }
 }
 
 #ifdef ENABLE_LEXPSYNCPROTOCOL
@@ -190,47 +345,77 @@ void WstRendererSurfaceImportSync( WstRenderer *renderer, WstRenderSurface *surf
 
 void WstRendererSurfaceCommit( WstRenderer *renderer, WstRenderSurface *surface, struct wl_resource *resource )
 {
-   renderer->surfaceCommit( renderer, surface, resource );
+   if (renderer && renderer->surfaceCommit)
+   {
+      renderer->surfaceCommit( renderer, surface, resource );
+   }
 }
 
 void WstRendererSurfaceSetVisible( WstRenderer *renderer, WstRenderSurface *surface, bool visible )
 {
-   renderer->surfaceSetVisible( renderer, surface, visible );
+   if (renderer && renderer->surfaceSetVisible)
+   {
+      renderer->surfaceSetVisible( renderer, surface, visible );
+   }
 }
 
 bool WstRendererSurfaceGetVisible( WstRenderer *renderer, WstRenderSurface *surface, bool *visible )
 {
-   return renderer->surfaceGetVisible( renderer, surface, visible );
+   if (renderer && renderer->surfaceGetVisible)
+   {
+      return renderer->surfaceGetVisible( renderer, surface, visible );
+   }
+   return false;
 }
 
 void WstRendererSurfaceSetGeometry( WstRenderer *renderer, WstRenderSurface *surface, int x, int y, int width, int height )
 {
-   renderer->surfaceSetGeometry( renderer, surface, x, y, width, height );
+   if (renderer && renderer->surfaceSetGeometry)
+   {
+      renderer->surfaceSetGeometry( renderer, surface, x, y, width, height );
+   }
 }
 
 void WstRendererSurfaceGetGeometry( WstRenderer *renderer, WstRenderSurface *surface, int *x, int *y, int *width, int *height )
 {
-   renderer->surfaceGetGeometry( renderer, surface, x, y, width, height );
+   if (renderer && renderer->surfaceGetGeometry)
+   {
+      renderer->surfaceGetGeometry( renderer, surface, x, y, width, height );
+   }
 }
 
 void WstRendererSurfaceSetOpacity( WstRenderer *renderer, WstRenderSurface *surface, float opacity )
 {
-   renderer->surfaceSetOpacity( renderer, surface, opacity );
+   if (renderer && renderer->surfaceSetOpacity)
+   {
+      renderer->surfaceSetOpacity( renderer, surface, opacity );
+   }
 }
 
 float WstRendererSurfaceGetOpacity( WstRenderer *renderer, WstRenderSurface *surface, float *opacity )
 {
-   return renderer->surfaceGetOpacity( renderer, surface, opacity );
+   if (renderer && renderer->surfaceGetOpacity)
+   {
+      return renderer->surfaceGetOpacity( renderer, surface, opacity );
+   }
+   return 0.0f;
 }
 
 void WstRendererSurfaceSetZOrder( WstRenderer *renderer, WstRenderSurface *surface, float z )
 {
-   renderer->surfaceSetZOrder( renderer, surface, z );
+   if (renderer && renderer->surfaceSetZOrder)
+   {
+      renderer->surfaceSetZOrder( renderer, surface, z );
+   }
 }
 
 float WstRendererSurfaceGetZOrder( WstRenderer *renderer, WstRenderSurface *surface, float *z )
 {
-   return renderer->surfaceGetZOrder( renderer, surface, z );
+   if (renderer && renderer->surfaceGetZOrder)
+   {
+      return renderer->surfaceGetZOrder( renderer, surface, z );
+   }
+   return 0.0f;
 }
 
 void WstRendererSurfaceSetCrop( WstRenderer *renderer, WstRenderSurface *surface, float x, float y, float width, float height )

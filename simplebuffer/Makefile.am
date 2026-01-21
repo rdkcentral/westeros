@@ -26,6 +26,21 @@ AM_CXXFLAGS += $(WAYLAND_CLIENT_CFLAGS) $(WAYLAND_SERVER_CFLAGS)
 AM_LDFLAGS=$(WAYLANDLIB)
 AM_CFLAGS = $(AM_CXXFLAGS)
 
+# Generate protocol files before building
+BUILT_SOURCES = \
+    protocol/simplebuffer-server-protocol.h \
+    protocol/simplebuffer-client-protocol.h \
+    protocol/simplebuffer-protocol.c
+
+protocol/simplebuffer-server-protocol.h: protocol/simplebuffer.xml
+	wayland-scanner server-header < $< > $@
+
+protocol/simplebuffer-client-protocol.h: protocol/simplebuffer.xml
+	wayland-scanner client-header < $< > $@
+
+protocol/simplebuffer-protocol.c: protocol/simplebuffer.xml
+	wayland-scanner code < $< > $@
+
 lib_LTLIBRARIES = libwesteros_simplebuffer_server.la libwesteros_simplebuffer_client.la
 
 libwesteros_simplebuffer_server_la_SOURCES = westeros-simplebuffer.cpp ${srcdir}/protocol/simplebuffer-protocol.c

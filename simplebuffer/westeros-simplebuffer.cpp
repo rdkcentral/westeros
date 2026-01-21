@@ -24,9 +24,15 @@
 #include "westeros-simplebuffer.h"
 
 #include "wayland-server.h"
-#include "simplebuffer-server-protocol.h"
+#include "simplebuffer/protocol/simplebuffer-server-protocol.h"
 
 #define MIN(x,y) (((x) < (y)) ? (x) : (y))
+
+#ifdef UNIT_TEST
+#define UNIT_TEST_STATIC
+#else
+#define UNIT_TEST_STATIC static
+#endif
 
 struct wl_sb 
 {
@@ -37,44 +43,50 @@ struct wl_sb
    struct wayland_sb_callbacks *callbacks;
 };
 
-static void wstISimpleBufferDestroy(struct wl_client *client, struct wl_resource *resource);
-
-const static struct wl_buffer_interface bufferInterface = {
-   wstISimpleBufferDestroy
-};
-
-static void wstISBCreateBuffer(struct wl_client *client, struct wl_resource *resource,
+UNIT_TEST_STATIC void wstISimpleBufferDestroy(struct wl_client *client, struct wl_resource *resource);
+UNIT_TEST_STATIC void wstISBCreateBuffer(struct wl_client *client, struct wl_resource *resource,
                                uint32_t id, uint32_t native_handle, int32_t width, int32_t height,
                                uint32_t stride, uint32_t format);
-static void wstISBCreatePlanarBuffer(struct wl_client *client,
+UNIT_TEST_STATIC void wstISBCreatePlanarBuffer(struct wl_client *client,
                                      struct wl_resource *resource,
                                      uint32_t id, uint32_t native_handle,
                                      int32_t width, int32_t height, uint32_t format,
                                      int32_t offset0, int32_t offset1, int32_t offset2, 
                                      int32_t stride0, int32_t stride1, int32_t stride2);
-static void wstISBCreatePlanarBufferFd(struct wl_client *client,
+UNIT_TEST_STATIC void wstISBCreatePlanarBufferFd(struct wl_client *client,
                                        struct wl_resource *resource,
                                        uint32_t id, int32_t fd,
                                        int32_t width, int32_t height, uint32_t format,
                                        int32_t offset0, int32_t offset1, int32_t offset2,
                                        int32_t stride0, int32_t stride1, int32_t stride2);
-static void wstISBCreatePlanarBufferFd2(struct wl_client *client,
+UNIT_TEST_STATIC void wstISBCreatePlanarBufferFd2(struct wl_client *client,
                                        struct wl_resource *resource,
                                        uint32_t id, int32_t fd0, int32_t fd1, int32_t fd2,
                                        int32_t width, int32_t height, uint32_t format,
                                        int32_t offset0, int32_t offset1, int32_t offset2,
                                        int32_t stride0, int32_t stride1, int32_t stride2);
-static void wstSBCreateBuffer(struct wl_client *client, struct wl_resource *resource,
+UNIT_TEST_STATIC void wstSBCreateBuffer(struct wl_client *client, struct wl_resource *resource,
                               uint32_t id, uint32_t native_handle, int32_t fd0, int32_t fd1, int32_t fd2, int32_t w, int32_t h,
                               uint32_t fmt, int32_t off0, int32_t off1, int32_t off2,
                               int32_t strd0, int32_t strd1, int32_t strd2);
+UNIT_TEST_STATIC void wstSBDestroyBuffer(struct wl_resource *resource);
+UNIT_TEST_STATIC void wstSBBind(struct wl_client *client, void *data, uint32_t version, uint32_t id);
 
-static void wstISimpleBufferDestroy(struct wl_client *client, struct wl_resource *resource)
+#ifdef UNIT_TEST
+extern
+#else
+static
+#endif
+const struct wl_buffer_interface bufferInterface = {
+   wstISimpleBufferDestroy
+};
+
+UNIT_TEST_STATIC void wstISimpleBufferDestroy(struct wl_client *client, struct wl_resource *resource)
 {
    wl_resource_destroy(resource);
 }
 
-static void wstSBDestroyBuffer(struct wl_resource *resource)
+UNIT_TEST_STATIC void wstSBDestroyBuffer(struct wl_resource *resource)
 {
    struct wl_sb_buffer *buffer = (struct wl_sb_buffer*)resource->data;
    struct wl_sb *sb = buffer->sb;
@@ -91,19 +103,24 @@ static void wstSBDestroyBuffer(struct wl_resource *resource)
    free(buffer);
 }
 
-const static struct wl_sb_interface sb_interface = {
+#ifdef UNIT_TEST
+extern
+#else
+static
+#endif
+const struct wl_sb_interface sb_interface = {
    wstISBCreateBuffer,
    wstISBCreatePlanarBuffer,
    wstISBCreatePlanarBufferFd,
    wstISBCreatePlanarBufferFd2
 };
 
-static void wstSBBind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+UNIT_TEST_STATIC void wstSBBind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 {
 	struct wl_sb *sb= (struct wl_sb*)data;
    struct wl_resource *resource;
 	
-	printf("westeros-sb: wstSBBind: enter: client %p data %p version %d id %d\n", client, data, version, id);
+	printf("westeros-sb: wstSBBind: enter: client %p data %p version %d id %d\n", (void*)client, data, version, id);
 
    resource= wl_resource_create(client, &wl_sb_interface, MIN(version, 3), id);
    if (!resource) 
@@ -118,10 +135,10 @@ static void wstSBBind(struct wl_client *client, void *data, uint32_t version, ui
 
    wl_resource_post_event(resource, WL_SB_FORMAT, WL_SB_FORMAT_ARGB8888);
 	
-	printf("westeros-sb: wstSBBind: exit: client %p id %d\n", client, id);
+	printf("westeros-sb: wstSBBind: exit: client %p id %d\n", (void*)client, id);
 }
 
-static void wstISBCreateBuffer(struct wl_client *client, struct wl_resource *resource,
+UNIT_TEST_STATIC void wstISBCreateBuffer(struct wl_client *client, struct wl_resource *resource,
                                 uint32_t id, uint32_t native_handle, int32_t width, int32_t height,
                                 uint32_t stride, uint32_t format)
 {
@@ -141,7 +158,7 @@ static void wstISBCreateBuffer(struct wl_client *client, struct wl_resource *res
                      format, 0, 0, 0, stride, 0, 0);
 }
 
-static void wstISBCreatePlanarBuffer(struct wl_client *client,
+UNIT_TEST_STATIC void wstISBCreatePlanarBuffer(struct wl_client *client,
                                      struct wl_resource *resource,
                                      uint32_t id, uint32_t native_handle,
                                      int32_t width, int32_t height, uint32_t format,
@@ -167,7 +184,7 @@ static void wstISBCreatePlanarBuffer(struct wl_client *client,
                      format, offset0, offset1, offset2, stride0, stride1, stride2);
 }
 
-static void wstISBCreatePlanarBufferFd(struct wl_client *client,
+UNIT_TEST_STATIC void wstISBCreatePlanarBufferFd(struct wl_client *client,
                                      struct wl_resource *resource,
                                      uint32_t id, int32_t fd,
                                      int32_t width, int32_t height, uint32_t format,
@@ -197,7 +214,7 @@ static void wstISBCreatePlanarBufferFd(struct wl_client *client,
                      format, offset0, offset1, offset2, stride0, stride1, stride2);
 }
 
-static void wstISBCreatePlanarBufferFd2(struct wl_client *client,
+UNIT_TEST_STATIC void wstISBCreatePlanarBufferFd2(struct wl_client *client,
                                        struct wl_resource *resource,
                                        uint32_t id, int32_t fd0, int32_t fd1, int32_t fd2,
                                        int32_t width, int32_t height, uint32_t format,
@@ -229,7 +246,7 @@ static void wstISBCreatePlanarBufferFd2(struct wl_client *client,
                      format, offset0, offset1, offset2, stride0, stride1, stride2);
 }
 
-static void wstSBCreateBuffer(struct wl_client *client, struct wl_resource *resource,
+UNIT_TEST_STATIC void wstSBCreateBuffer(struct wl_client *client, struct wl_resource *resource,
                               uint32_t id, uint32_t native_handle, int fd0, int fd1, int fd2, int32_t width, int32_t height,
                               uint32_t fmt, int32_t off0, int32_t off1, int32_t off2,
                               int32_t strd0, int32_t strd1, int32_t strd2)
@@ -279,6 +296,14 @@ wl_sb* WstSBInit( struct wl_display *display, struct wayland_sb_callbacks *callb
    struct wl_sb *sb= 0;
    
 	printf("westeros-sb: WstSBInit: enter: display %p\n", display);
+   
+   // Validate required parameters
+   if ( !display || !callbacks )
+   {
+      printf("westeros-sb: WstSBInit: error: null display or callbacks\n");
+      goto exit;
+   }
+   
    sb= (struct wl_sb*)calloc( 1, sizeof(struct wl_sb) );
    if ( !sb )
    {
@@ -320,46 +345,84 @@ struct wl_sb_buffer *WstSBBufferGet( struct wl_resource *resource )
 
 uint32_t WstSBBufferGetFormat(struct wl_sb_buffer *buffer)
 {
+   if ( buffer == NULL )
+   {
+      return 0;
+   }
    return buffer->format;
 }
 
 int32_t WstSBBufferGetWidth(struct wl_sb_buffer *buffer)
 {
+   if ( buffer == NULL )
+   {
+      return 0;
+   }
    return buffer->width;
 }
 
 int32_t WstSBBufferGetHeight(struct wl_sb_buffer *buffer)
 {
+   if ( buffer == NULL )
+   {
+      return 0;
+   }
    return buffer->height;
 }
 
 int32_t WstSBBufferGetStride(struct wl_sb_buffer *buffer)
 {
+   if ( buffer == NULL )
+   {
+      return 0;
+   }
    return buffer->stride[0];
 }
 
 void WstSBBufferGetPlaneOffsetAndStride(struct wl_sb_buffer *buffer, int plane, int32_t *offset, int32_t *stride )
 {
+   if ( buffer == NULL )
+   {
+      return;
+   }
    if ( (plane >=0 ) && (plane <= 2) )
    {
-      *offset= buffer->offset[plane];
-      *stride= buffer->stride[plane];
+      if ( offset != NULL )
+      {
+         *offset= buffer->offset[plane];
+      }
+      if ( stride != NULL )
+      {
+         *stride= buffer->stride[plane];
+      }
    }
 }
 
 void *WstSBBufferGetBuffer(struct wl_sb_buffer *buffer)
 {
+   if ( buffer == NULL )
+   {
+      return NULL;
+   }
    return buffer->driverBuffer;
 }
 
 int WstSBBufferGetFd(struct wl_sb_buffer *buffer)
 {
+   if ( buffer == NULL )
+   {
+      return -1;
+   }
    return buffer->fd[0];
 }
 
 int WstSBBufferGetPlaneFd(struct wl_sb_buffer *buffer, int plane)
 {
    int fd= -1;
+   if ( buffer == NULL )
+   {
+      return fd;
+   }
    if ( (plane >=0 ) && (plane <= 2) )
    {
       fd= buffer->fd[plane];
