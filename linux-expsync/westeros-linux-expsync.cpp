@@ -65,10 +65,15 @@ struct sync_file_info {
 
 #ifdef UNIT_TEST
 // Unit test build: define types here (not available from compositor during test compilation)
+typedef struct _WstCompositor {
+    struct _WstContext *ctx;
+} WstCompositor;
+
 typedef struct _WstContext {
     struct wl_display *display;
     void *lexpsync;
     int initialized;
+    pthread_mutex_t mutex;
 } WstContext;
 
 typedef struct _WstSurface {
@@ -79,6 +84,7 @@ typedef struct _WstSurface {
     WstExplicitSync detachedBufferSync;
     int surfaceId;
     int destroyed;
+    WstCompositor *compositor;
 } WstSurface;
 #else
 // Production autotools build: use forward declarations (types defined in westeros-compositor.cpp)
