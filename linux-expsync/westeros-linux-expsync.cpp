@@ -133,13 +133,18 @@ STATIC_TEST void wstLExpSyncDestroySync(struct wl_resource *resource)
 
    if (surface)
    {
+#ifndef UNIT_TEST
+      // In production, protect with mutex
       WstContext *ctx= surface->compositor->ctx;
       pthread_mutex_lock( &ctx->mutex );
+#endif
       WstLExpSyncFdClear(&surface->createdBufferSync.acquireFenceFd);
       WstLExpSyncFdClear(&surface->attachedBufferSync.acquireFenceFd);
       WstLExpSyncFdClear(&surface->detachedBufferSync.acquireFenceFd);
       surface->syncRes= NULL;
+#ifndef UNIT_TEST
       pthread_mutex_unlock( &ctx->mutex );
+#endif
    }
 }
 
@@ -159,7 +164,9 @@ STATIC_TEST void wstILExpSyncSurfaceSyncSetAcquireFence(struct wl_client *client
                                                    int32_t fd)
 {
    WstSurface *surface= (WstSurface*)wl_resource_get_user_data(resource);
+#ifndef UNIT_TEST
    WstContext *ctx= NULL;
+#endif
 
    if (!surface)
    {
@@ -169,7 +176,9 @@ STATIC_TEST void wstILExpSyncSurfaceSyncSetAcquireFence(struct wl_client *client
       goto exit;
    }
 
+#ifndef UNIT_TEST
    ctx= surface->compositor->ctx;
+#endif
 
    if ( !wstLExpSyncFileIsValid(fd) )
    {
@@ -179,10 +188,14 @@ STATIC_TEST void wstILExpSyncSurfaceSyncSetAcquireFence(struct wl_client *client
       goto exit;
    }
 
+#ifndef UNIT_TEST
    pthread_mutex_lock( &ctx->mutex );
+#endif
    if (surface->createdBufferSync.acquireFenceFd != -1)
    {
+#ifndef UNIT_TEST
       pthread_mutex_unlock( &ctx->mutex );
+#endif
       wl_resource_post_error( resource,
                               ZWP_LINUX_SURFACE_SYNCHRONIZATION_V1_ERROR_DUPLICATE_FENCE,
                               "already have a fence fd");
@@ -190,7 +203,9 @@ STATIC_TEST void wstILExpSyncSurfaceSyncSetAcquireFence(struct wl_client *client
    }
 
    WstLExpSyncFdUpdate(&surface->createdBufferSync.acquireFenceFd, fd);
+#ifndef UNIT_TEST
    pthread_mutex_unlock( &ctx->mutex );
+#endif
 
    fd= -1;
 
@@ -207,7 +222,9 @@ STATIC_TEST void wstILExpSyncSurfaceSyncGetRelease(struct wl_client *client,
 {
    WstSurface *surface= (WstSurface*)wl_resource_get_user_data(resource);
    WstExplicitSyncBufferRelease *bufferRelease;
+#ifndef UNIT_TEST
    WstContext *ctx;
+#endif
 
    if (!surface)
    {
@@ -217,18 +234,24 @@ STATIC_TEST void wstILExpSyncSurfaceSyncGetRelease(struct wl_client *client,
       return;
    }
 
+#ifndef UNIT_TEST
    ctx= surface->compositor->ctx;
    
    pthread_mutex_lock( &ctx->mutex );
+#endif
    if (surface->createdBufferSync.bufferRelease)
    {
+#ifndef UNIT_TEST
       pthread_mutex_unlock( &ctx->mutex );
+#endif
       wl_resource_post_error( resource,
                               ZWP_LINUX_SURFACE_SYNCHRONIZATION_V1_ERROR_DUPLICATE_RELEASE,
                               "already has a buffer release");
       return;
    }
+#ifndef UNIT_TEST
    pthread_mutex_unlock( &ctx->mutex );
+#endif
 
    bufferRelease= (WstExplicitSyncBufferRelease*)calloc(1, sizeof(*bufferRelease));
    if (bufferRelease == NULL)
@@ -250,9 +273,13 @@ STATIC_TEST void wstILExpSyncSurfaceSyncGetRelease(struct wl_client *client,
                                   bufferRelease,
                                   wstLExpSyncBufferRelease);
 
+#ifndef UNIT_TEST
    pthread_mutex_lock( &ctx->mutex );
+#endif
    surface->createdBufferSync.bufferRelease= bufferRelease;
+#ifndef UNIT_TEST
    pthread_mutex_unlock( &ctx->mutex );
+#endif
    return;
 
 err_create:
