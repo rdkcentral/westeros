@@ -1509,51 +1509,51 @@ static void wstRendererEMBPrepareResourceLDB( WstRendererEMB *renderer, WstRende
 
                if ( ldbBuffer->info.planeCount > 1 )
                {
-                  attr[i++]= EGL_DMA_BUF_PLANE0_FD_EXT;
+                  attr[i++]= EGL_DMA_BUF_PLANE1_FD_EXT;
                   attr[i++]= fd[1];
-                  attr[i++]= EGL_DMA_BUF_PLANE0_OFFSET_EXT;
+                  attr[i++]= EGL_DMA_BUF_PLANE1_OFFSET_EXT;
                   attr[i++]= offset[1];
-                  attr[i++]= EGL_DMA_BUF_PLANE0_PITCH_EXT;
+                  attr[i++]= EGL_DMA_BUF_PLANE1_PITCH_EXT;
                   attr[i++]= stride[1];
                   if ( useModifiers )
                   {
-                     attr[i++]= EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
+                     attr[i++]= EGL_DMA_BUF_PLANE1_MODIFIER_LO_EXT;
                      attr[i++]= (modifier[1] & 0xFFFFFFFFUL);
-                     attr[i++]= EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
+                     attr[i++]= EGL_DMA_BUF_PLANE1_MODIFIER_HI_EXT;
                      attr[i++]= ((modifier[1] >> 32) & 0xFFFFFFFFUL);
                   }
                }
 
                if ( ldbBuffer->info.planeCount > 2 )
                {
-                  attr[i++]= EGL_DMA_BUF_PLANE0_FD_EXT;
+                  attr[i++]= EGL_DMA_BUF_PLANE2_FD_EXT;
                   attr[i++]= fd[2];
-                  attr[i++]= EGL_DMA_BUF_PLANE0_OFFSET_EXT;
+                  attr[i++]= EGL_DMA_BUF_PLANE2_OFFSET_EXT;
                   attr[i++]= offset[2];
-                  attr[i++]= EGL_DMA_BUF_PLANE0_PITCH_EXT;
+                  attr[i++]= EGL_DMA_BUF_PLANE2_PITCH_EXT;
                   attr[i++]= stride[2];
                   if ( useModifiers )
                   {
-                     attr[i++]= EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
+                     attr[i++]= EGL_DMA_BUF_PLANE2_MODIFIER_LO_EXT;
                      attr[i++]= (modifier[2] & 0xFFFFFFFFUL);
-                     attr[i++]= EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
+                     attr[i++]= EGL_DMA_BUF_PLANE2_MODIFIER_HI_EXT;
                      attr[i++]= ((modifier[2] >> 32) & 0xFFFFFFFFUL);
                   }
                }
 
                if ( ldbBuffer->info.planeCount > 3 )
                {
-                  attr[i++]= EGL_DMA_BUF_PLANE0_FD_EXT;
+                  attr[i++]= EGL_DMA_BUF_PLANE3_FD_EXT;
                   attr[i++]= fd[3];
-                  attr[i++]= EGL_DMA_BUF_PLANE0_OFFSET_EXT;
+                  attr[i++]= EGL_DMA_BUF_PLANE3_OFFSET_EXT;
                   attr[i++]= offset[3];
-                  attr[i++]= EGL_DMA_BUF_PLANE0_PITCH_EXT;
+                  attr[i++]= EGL_DMA_BUF_PLANE3_PITCH_EXT;
                   attr[i++]= stride[3];
                   if ( useModifiers )
                   {
-                     attr[i++]= EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;
+                     attr[i++]= EGL_DMA_BUF_PLANE3_MODIFIER_LO_EXT;
                      attr[i++]= (modifier[3] & 0xFFFFFFFFUL);
-                     attr[i++]= EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;
+                     attr[i++]= EGL_DMA_BUF_PLANE3_MODIFIER_HI_EXT;
                      attr[i++]= ((modifier[3] >> 32) & 0xFFFFFFFFUL);
                   }
                }
