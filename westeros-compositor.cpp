@@ -5635,9 +5635,9 @@ static WstSurface* wstSurfaceCreate( WstCompositor *wctx)
       }
       #ifdef ENABLE_LEXPSYNCPROTOCOL
       if (surface) {
-      	WstLExpSyncClear(&surface->createdBufferSync);
-      	WstLExpSyncClear(&surface->attachedBufferSync);
-      	WstLExpSyncClear(&surface->detachedBufferSync);
+         WstLExpSyncClear(&surface->createdBufferSync);
+         WstLExpSyncClear(&surface->attachedBufferSync);
+         WstLExpSyncClear(&surface->detachedBufferSync);
       }
       #endif
    }
