@@ -2858,7 +2858,7 @@ void WstCompositorStop( WstCompositor *wctx )
       if ( ctx->running || ctx->compositorThreadStarted )
       {
          pthread_t threadId;
-	 ctx->running= false;
+         ctx->running= false;
 
          ctx->outputNestedListener= 0;
          ctx->outputNestedListenerUserData= 0;
