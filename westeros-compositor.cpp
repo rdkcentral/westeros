@@ -6200,18 +6200,18 @@ static void wstISurfaceAttach(struct wl_client *client,
        * app rendering for embedded compositors
        */
       bool gotLock= true;
-      if ( pthread_mutex_trylock( &surface->renderMutex ) )
-      {
-          int framePeriodMillis;
-          pthread_mutex_lock(&ctx->mutex);
-          framePeriodMillis = ctx->framePeriodMillis;
-          pthread_mutex_unlock(&ctx->mutex);
-          int retryLimit= framePeriodMillis*2;
-          gotLock= false;
-          while( retryLimit-- > 0 )
+          if ( pthread_mutex_trylock( &surface->renderMutex ) )
           {
-             if ( !pthread_mutex_trylock( &surface->renderMutex ) )
+             int framePeriodMillis;
+             pthread_mutex_lock(&ctx->mutex);
+             framePeriodMillis = ctx->framePeriodMillis;
+             pthread_mutex_unlock(&ctx->mutex);
+             int retryLimit= framePeriodMillis*2;
+             gotLock= false;
+             while( retryLimit-- > 0 )
              {
+                if ( !pthread_mutex_trylock( &surface->renderMutex ) )
+                {
                gotLock= true;
                break;
             }
