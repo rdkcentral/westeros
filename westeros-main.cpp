@@ -631,31 +631,36 @@ int openDevice( std::vector<pollfd> &deviceFds, const char *devPathName )
    int fd= -1;   
    struct stat buf;
    
-   if ( stat( devPathName, &buf ) == 0 )
+   fd= open( devPathName, O_RDONLY | O_CLOEXEC );
+   if ( fd < 0 )
    {
-      if ( S_ISCHR(buf.st_mode) )
+      printf( "error opening device: %s\n", devPathName );
+   }
+   else
+   {
+      if ( fstat( fd, &buf ) == 0 )
       {
-         fd= open( devPathName, O_RDONLY | O_CLOEXEC );
-         if ( fd < 0 )
-         {
-            printf( "error opening device: %s\n", devPathName );
-         }
-         else
+         if ( S_ISCHR(buf.st_mode) )
          {
             pollfd pfd;
+            memset(&pfd, 0, sizeof(pfd));
             printf( "opened device %s : fd %d\n", devPathName, fd );
             pfd.fd= fd;
             deviceFds.push_back( pfd );
          }
+         else
+         {
+            printf("ignoring non character device %s\n", devPathName );
+            close( fd );
+            fd= -1;
+         }
       }
       else
       {
-         printf("ignoring non character device %s\n", devPathName );
+         printf( "error performing fstat on device: %s\n", devPathName );
+         close( fd );
+         fd= -1;
       }
-   }
-   else
-   {
-      printf( "error performing stat on device: %s\n", devPathName );
    }
    
    return fd;
@@ -740,8 +745,8 @@ void* inputThread( void *data )
    input_event e;
    unsigned int keyModifiers= 0;
    int mouseAccel= 1;
-   unsigned int mouseX= 0;
-   unsigned int mouseY= 0;
+   int mouseX= 0;
+   int mouseY= 0;
    unsigned int outputWidth= 0, outputHeight= 0;
    bool mouseEnterSent= false;
    bool mouseMoved= false;
@@ -749,7 +754,7 @@ void* inputThread( void *data )
    bool touchChanges= false;
    bool touchClean= false;
    int notifyFd= -1, watchFd=-1;
-   char intfyEvent[512];
+   char intfyEvent[512] = {0};
    pollfd pfd;
    
    inCtx->started= true;
@@ -757,6 +762,7 @@ void* inputThread( void *data )
    notifyFd= inotify_init();
    if ( notifyFd >= 0 )
    {
+      memset(&pfd, 0, sizeof(pfd));
       pfd.fd= notifyFd;
       watchFd= inotify_add_watch( notifyFd, inputPath, IN_CREATE | IN_DELETE );
       inCtx->deviceFds.push_back( pfd );
@@ -787,8 +793,21 @@ void* inputThread( void *data )
                   {
                      struct inotify_event *iev= (struct inotify_event*)intfyEvent;
                      {
-                        // Re-discover devices                        
-                        printf("inotify: mask %x (%s) wd %d (%d)\n", iev->mask, iev->name, iev->wd, watchFd );
+                        // Re-discover devices
+                        char safeName[256];
+                        int maxNameLen = (iev->len > 0 && iev->len <= sizeof(safeName)) 
+                                         ? ((iev->len < sizeof(safeName)) ? iev->len : sizeof(safeName) - 1) 
+                                         : 0;
+                        if ( maxNameLen > 0 )
+                        {
+                           memcpy(safeName, iev->name, maxNameLen);
+                           safeName[maxNameLen] = '\0';
+                        }
+                        else
+                        {
+                           safeName[0] = '\0';
+                        }
+                        printf("inotify: mask %x (%s) wd %d (%d)\n", iev->mask, safeName, iev->wd, watchFd );
                         inCtx->deviceFds.pop_back();
                         releaseDevices( inCtx->deviceFds );
                         usleep( 100000 );

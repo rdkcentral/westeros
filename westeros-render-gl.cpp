@@ -219,7 +219,7 @@ typedef struct _WstShader
 
 static char message[1024];
 
-#define MAX_TEXTURES (2)
+#define MAX_TEXTURES (4)
 
 struct _WstRenderSurface
 {
@@ -2321,16 +2321,19 @@ static void wstRendererUpdateScene( WstRenderer *renderer )
       int renderFenceFd;
       rendererGL->displaySync= wstCreateRenderSync(rendererGL);
       renderFenceFd= wstCreateFenceFd(rendererGL, rendererGL->displaySync);
-      for( int i= 0; i < imax; ++i )
+      if ( renderFenceFd >= 0 )
       {
-         WstRenderSurface *surface= rendererGL->surfaces[i];
-         if ( surface->visible && (surface->bufferSync.bufferRelease != NULL) )
+         for( int i= 0; i < imax; ++i )
          {
-            assert( surface->bufferSync.bufferRelease->renderFenceFd == -1 );
-            surface->bufferSync.bufferRelease->renderFenceFd= dup(renderFenceFd);
+            WstRenderSurface *surface= rendererGL->surfaces[i];
+            if ( surface->visible && (surface->bufferSync.bufferRelease != NULL) )
+            {
+               assert( surface->bufferSync.bufferRelease->renderFenceFd == -1 );
+               surface->bufferSync.bufferRelease->renderFenceFd= dup(renderFenceFd);
+            }
          }
+         close(renderFenceFd);
       }
-      close(renderFenceFd);
    }
    #endif
 

@@ -264,6 +264,7 @@ WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, s
       renderer->outputWidth= width;
       renderer->outputHeight= height;
       renderer->nativeWindow= nativeWindow;
+      renderer->module= module;
       
       rc= ((WSTMethodRenderInit)init)( renderer, argc, argv );
       if ( rc )
@@ -289,6 +290,7 @@ exit:
       if ( module )
       {
          dlclose( module );
+         module= 0;
       }
    }
    
@@ -303,6 +305,11 @@ void WstRendererDestroy( WstRenderer *renderer )
       {
          renderer->renderTerm( renderer );
          renderer->renderer= 0;
+      }
+      if ( renderer->module )
+      {
+         dlclose( renderer->module );
+         renderer->module= 0;
       }
       free( renderer );      
    }

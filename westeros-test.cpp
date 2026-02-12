@@ -227,7 +227,7 @@ static long long currentTimeMillis()
    struct timeval tv;   
 
    gettimeofday(&tv, NULL);
-   timeMillis = tv.tv_sec * 1000 + tv.tv_usec / 1000;
+   timeMillis = (long long)tv.tv_sec * 1000LL + tv.tv_usec / 1000;
    
    return timeMillis;
 }
@@ -1226,7 +1226,10 @@ int main( int argc, char** argv)
                   }
                   break;
                default:
-                  sym= c;
+                  if ( c >= 0 )
+                  {
+                     sym= c;
+                  }
                   break;
             }
             processInput(&ctx, sym);
