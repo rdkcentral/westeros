@@ -106,9 +106,9 @@ void WstNestedConnectionDisconnect( WstNestedConnection *nc );
 
 void WstNestedConnectionDestroy( WstNestedConnection *nc );
 
-wl_display* WstNestedConnectionGetDisplay( WstNestedConnection *nc );
+struct wl_display* WstNestedConnectionGetDisplay( WstNestedConnection *nc );
 
-wl_surface* WstNestedConnectionGetCompositionSurface( WstNestedConnection *nc );
+struct wl_surface* WstNestedConnectionGetCompositionSurface( WstNestedConnection *nc );
 
 struct wl_surface* WstNestedConnectionCreateSurface( WstNestedConnection *nc );
 

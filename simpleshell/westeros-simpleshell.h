@@ -40,15 +40,19 @@ struct wayland_simple_shell_callbacks {
    void (*set_scale)( void *userData, uint32_t surfaceId, float scaleX, float scaleY );
 };
 
-wl_simple_shell* WstSimpleShellInit( struct wl_display *display,
+struct wl_simple_shell* WstSimpleShellInit( struct wl_display *display,
                                      wayland_simple_shell_callbacks *callbacks,
                                      void *userData ); 
-void WstSimpleShellUninit( wl_simple_shell *shell );
+void WstSimpleShellUninit( struct wl_simple_shell *shell );
 
-void WstSimpleShellNotifySurfaceCreated( wl_simple_shell *shell, struct wl_client *client, 
+void WstSimpleShellNotifySurfaceCreated( struct wl_simple_shell *shell, struct wl_client *client, 
                                          struct wl_resource *surface_resource, uint32_t surfaceId );
 
-void WstSimpleShellNotifySurfaceDestroyed( wl_simple_shell *shell, struct wl_client *client, uint32_t surfaceId );
+void WstSimpleShellNotifySurfaceDestroyed( struct wl_simple_shell *shell, struct wl_client *client, uint32_t surfaceId );
+
+void WstSimpleShellNotifySurfaceStatus( struct wl_simple_shell *shell, uint32_t surfaceId, const char *name,
+                                        bool visible, int32_t x, int32_t y, int32_t width, int32_t height,
+                                        float opacity, float zorder );
 
 #endif
 

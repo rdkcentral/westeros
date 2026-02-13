@@ -109,7 +109,7 @@ struct wayland_sb_callbacks {
    void (*release_buffer)(void *user_data, struct wl_sb_buffer *buffer);
 };
 
-wl_sb* WstSBInit( struct wl_display *display, struct wayland_sb_callbacks *callbacks, void *userData );
+struct wl_sb* WstSBInit( struct wl_display *display, struct wayland_sb_callbacks *callbacks, void *userData );
 void WstSBUninit( struct wl_sb *sb );
 struct wl_sb_buffer *WstSBBufferGet( struct wl_resource *resource );
 uint32_t WstSBBufferGetFormat(struct wl_sb_buffer *buffer);

@@ -253,7 +253,10 @@ $GST_PKG_ERRORS])], [])
 WAYLANDLIB="-lwayland-server"
 AC_SUBST(WAYLANDLIB)
 
-AC_CONFIG_FILES([Makefile westeros-compositor.pc])
+AC_CONFIG_FILES([Makefile 
+                 simpleshell/Makefile
+                 simplebuffer/Makefile
+                 westeros-compositor.pc])
 AC_SUBST(WAYLAND_CFLAGS)
 AC_SUBST(GUPNP_VERSION)
 AC_SUBST(ENABLE_WESTEROS_APP)
