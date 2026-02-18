@@ -6162,7 +6162,7 @@ static void wstISurfaceAttach(struct wl_client *client,
        */
       bool gotLock= true;
       if ( pthread_mutex_trylock( &surface->renderMutex ) )
-       {
+      {
           int framePeriodMillis;
           pthread_mutex_lock(&ctx->mutex);
           framePeriodMillis = ctx->framePeriodMillis;
