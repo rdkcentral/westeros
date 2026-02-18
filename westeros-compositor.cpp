@@ -4845,9 +4845,13 @@ static int wstCompositorDisplayTimeOut( void *data )
    }
 
    now= wstGetCurrentTimeMillis();
-   nextFrameDelay= (ctx->framePeriodMillis-(now-frameTime));
+   int framePeriodMillis;
+   pthread_mutex_lock(&ctx->mutex);
+   framePeriodMillis = ctx->framePeriodMillis;
+   pthread_mutex_unlock(&ctx->mutex);
+   nextFrameDelay= (framePeriodMillis-(now-frameTime));
    if ( nextFrameDelay < 1 ) nextFrameDelay= 1;
-   if ( nextFrameDelay > ctx->framePeriodMillis ) nextFrameDelay= ctx->framePeriodMillis;
+   if ( nextFrameDelay > framePeriodMillis ) nextFrameDelay= framePeriodMillis;
 
    pthread_mutex_lock( &ctx->mutex );
    wl_event_source_timer_update( ctx->displayTimer, nextFrameDelay );
@@ -6158,13 +6162,17 @@ static void wstISurfaceAttach(struct wl_client *client,
        */
       bool gotLock= true;
       if ( pthread_mutex_trylock( &surface->renderMutex ) )
-      {
-         int retryLimit= ctx->framePeriodMillis*2;
-         gotLock= false;
-         while( retryLimit-- > 0 )
-         {
-            if ( !pthread_mutex_trylock( &surface->renderMutex ) )
-            {
+       {
+          int framePeriodMillis;
+          pthread_mutex_lock(&ctx->mutex);
+          framePeriodMillis = ctx->framePeriodMillis;
+          pthread_mutex_unlock(&ctx->mutex);
+          int retryLimit= framePeriodMillis*2;
+          gotLock= false;
+          while( retryLimit-- > 0 )
+          {
+             if ( !pthread_mutex_trylock( &surface->renderMutex ) )
+             {
                gotLock= true;
                break;
             }
