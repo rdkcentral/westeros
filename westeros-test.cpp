@@ -1769,7 +1769,6 @@ static AppSurface* createWindowSurface( AppCtx *ctx, int width, int height )
    }
 
    surface= (AppSurface*)calloc( 1, sizeof(AppSurface) );
-   //ctx->surfaces.push_back(surface);
    if ( !surface )
    {
       printf("createWindowSurface: out of memory\n");
