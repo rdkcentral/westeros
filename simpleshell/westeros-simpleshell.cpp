@@ -90,6 +90,11 @@ static void wstISimpleShellSetFocus(struct wl_client *client, struct wl_resource
                                      uint32_t surfaceId);
 static void wstISimpleShellSetScale(struct wl_client *client, struct wl_resource *resource,
                                      uint32_t surfaceId, wl_fixed_t scaleX, wl_fixed_t scaleY);
+static void wstISimpleShellGetPopup(struct wl_client *client, struct wl_resource *resource,
+                                    uint32_t surfaceId, uint32_t parentSurfaceId,
+                                    int32_t x, int32_t y, int32_t width, int32_t height);
+static void wstISimpleShellIsSurfacePopup(struct wl_client *client, struct wl_resource *resource,
+                                         uint32_t surfaceId);
 static void wstSimpleShellBind_internal(struct wl_client *client, void *data, uint32_t version, uint32_t id);
 
 #ifdef UNIT_TEST
@@ -108,7 +113,9 @@ const struct wl_simple_shell_interface simple_shell_interface = {
    wstISimpleShellGetStatus,
    wstISimpleShellGetSurfaces,
    wstISimpleShellSetFocus,
-   wstISimpleShellSetScale
+   wstISimpleShellSetScale,
+   wstISimpleShellGetPopup,
+   wstISimpleShellIsSurfacePopup
 };
 
 #ifdef UNIT_TEST
@@ -355,6 +362,32 @@ static void wstISimpleShellSetScale(struct wl_client *client, struct wl_resource
    printf("westeros-simpleshell: wstSimpleShellSetScale: surfaceId %u scaleX %f scaleY %f\n",
            surfaceId, fScaleX, fScaleY);
    shell->callbacks->set_scale(shell->userData, surfaceId, fScaleX, fScaleY);
+}
+
+static void wstISimpleShellGetPopup(struct wl_client *client, struct wl_resource *resource,
+                                    uint32_t surfaceId, uint32_t parentSurfaceId,
+                                    int32_t x, int32_t y, int32_t width, int32_t height)
+{
+   struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
+   if ( shell && shell->callbacks && shell->callbacks->get_popup )
+   {
+      shell->callbacks->get_popup(shell->userData, surfaceId, parentSurfaceId, x, y, width, height);
+      wstSimpleShellBroadcastSurfaceUpdate(client, shell, surfaceId );
+   }
+}
+
+static void wstISimpleShellIsSurfacePopup(struct wl_client *client, struct wl_resource *resource,
+                                         uint32_t surfaceId)
+{
+   struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
+   uint32_t parentId= 0;
+   bool popup= false;
+
+   if ( shell && shell->callbacks && shell->callbacks->is_surface_popup )
+   {
+      shell->callbacks->is_surface_popup(shell->userData, surfaceId, &popup, &parentId);
+   }
+   wl_simple_shell_send_popup_details(resource, surfaceId, parentId, popup ? 1 : 0);
 }
 
 static void destroy_shell(struct wl_resource *resource)

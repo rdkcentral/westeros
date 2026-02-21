@@ -44,6 +44,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <memory.h>
+#include <string.h>
 #include <assert.h>
 #include <errno.h>
 #include <unistd.h>
@@ -51,6 +52,13 @@
 #include <termios.h>
 #include <sys/mman.h>
 #include <sys/time.h>
+#include <math.h>
+#include <vector>
+#include <algorithm>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -108,6 +116,11 @@ static void shellSurfaceStatus(void *data,
                                wl_fixed_t zorder);
 static void shellGetSurfacesDone(void *data,
                                  struct wl_simple_shell *wl_simple_shell);
+static void shellPopupDetails(void *data,
+                              struct wl_simple_shell *wl_simple_shell,
+                              uint32_t surfaceId,
+                              uint32_t parentSurfaceId,
+                              int32_t popup);
 
 static const struct wl_simple_shell_listener shellListener = 
 {
@@ -115,7 +128,8 @@ static const struct wl_simple_shell_listener shellListener =
    shellSurfaceCreated,
    shellSurfaceDestroyed,
    shellSurfaceStatus,
-   shellGetSurfacesDone
+   shellGetSurfacesDone,
+   shellPopupDetails
 };
 
 typedef enum _InputState
@@ -133,6 +147,50 @@ typedef enum _Attribute
    Attribute_zorder
 } Attribute;
 
+static const int SURFACE_INDEX_MAIN= 0;
+static const int SURFACE_INDEX_POPUP= 1;
+static const int MAX_POPUPS= 5;
+
+typedef struct _AppSurface
+{
+   struct wl_surface *wlSurface;
+   struct wl_buffer *shmBuffer;
+   struct wl_egl_window *eglWindow;
+   EGLSurface eglSurface;
+
+   int eglWidth;
+   int eglHeight;
+
+   uint32_t surfaceId;
+   uint32_t parentSurfaceId;
+
+   int surfaceX;
+   int surfaceY;
+   int surfaceWidth;
+   int surfaceHeight;
+
+   int parentX;
+   int parentY;
+   int parentWidth;
+   int parentHeight;
+
+   int restoreX;
+   int restoreY;
+   int restoreWidth;
+   int restoreHeight;
+
+   float surfaceOpacity;
+   float surfaceZOrder;
+   bool surfaceVisible;
+
+   bool moveMode;
+   bool minimized;
+   bool maximized;
+
+   long long startTime;
+   float color[4];
+} AppSurface;
+
 typedef struct _AppCtx
 {
    struct wl_display *display;
@@ -144,9 +202,7 @@ typedef struct _AppCtx
    struct wl_keyboard *keyboard;
    struct wl_pointer *pointer;
    struct wl_touch *touch;
-   struct wl_surface *surface;
    struct wl_output *output;
-   struct wl_egl_window *native;
    struct wl_callback *frameCallback;
 
    struct xkb_context *xkbCtx;
@@ -157,10 +213,7 @@ typedef struct _AppCtx
 
    EGLDisplay eglDisplay;
    EGLConfig eglConfig;
-   EGLSurface eglSurfaceWindow;
    EGLContext eglContext;   
-   EGLImageKHR eglImage;
-   EGLNativePixmapType eglPixmap;
 
    bool getShell;
    InputState inputState;
@@ -172,45 +225,43 @@ typedef struct _AppCtx
    int planeWidth;
    int planeHeight;
 
-   uint32_t surfaceIdOther;
-   uint32_t surfaceIdCurrent;
-   float surfaceOpacity;
-   float surfaceZOrder;
-   bool surfaceVisible;   
-   int surfaceX;
-   int surfaceY;
-   int surfaceWidth;
-   int surfaceHeight;
-   
+   std::vector<AppSurface*> surfaces;
+
    int surfaceDX;
    int surfaceDY;
    int surfaceDWidth;
    int surfaceDHeight;
-
+      
    struct
    {
-      GLuint rotation_uniform;
+      GLuint mvp;
       GLuint pos;
       GLuint col;
    } gl;
-   long long startTime;
-   long long currTime;
+
    bool noAnimation;
    bool needRedraw;
    bool verboseLog;
    int pointerX, pointerY;
+
+   AppSurface* keyboardFocus;
+   AppSurface* pointerFocus;
 } AppCtx;
 
-
+static AppSurface* getTopSurface( AppCtx *ctx );
+static AppSurface* getSurfaceByID( AppCtx *ctx, uint32_t surfaceId );
+static AppSurface* getSurfaceByWL( AppCtx *ctx, struct wl_surface* wlSurface );
 static void processInput( AppCtx *ctx, uint32_t sym );
-static void drawFrame( AppCtx *ctx );
+static void drawFrame( AppCtx *ctx, bool registerCallback );
 static bool setupEGL( AppCtx *ctx );
 static void termEGL( AppCtx *ctx );
-static bool createSurface( AppCtx *ctx );
-static void resizeSurface( AppCtx *ctx, int dx, int dy, int width, int height );
-static void destroySurface( AppCtx *ctx );
+static AppSurface* createWindowSurface( AppCtx *ctx, int width, int height );
+static AppSurface* createPopupSurface( AppCtx *ctx, AppSurface *parentSurface );
+static void destroySurface( AppCtx *ctx, AppSurface *surface );
+static void resizeSurface( AppSurface *surface, int dx, int dy, int width, int height );
 static bool setupGL( AppCtx *ctx );
-static void renderGL( AppCtx *ctx );
+static void renderGL( AppCtx *ctx, int width, int height, long long startTime, bool clearScreen );
+static void renderPopup(AppCtx *ctx, int width, int height, long long startTime, const float* backgroundColor);
 
 int g_running= 0;
 int g_log= 0;
@@ -296,21 +347,37 @@ static void keyboardKeymap( void *data, struct wl_keyboard *keyboard, uint32_t f
 static void keyboardEnter( void *data, struct wl_keyboard *keyboard, uint32_t serial,
                            struct wl_surface *surface, struct wl_array *keys )
 {
-   UNUSED(data);
+   AppCtx *ctx= (AppCtx*)data;
    UNUSED(keyboard);
    UNUSED(serial);
    UNUSED(keys);
 
-   printf("keyboard enter surface %p\n", surface );
+   ctx->keyboardFocus= getSurfaceByWL(ctx, surface);
+   if ( ctx->keyboardFocus )
+   {
+      printf("keyboardEnter surfaceId=%u wlSurface=%p\n", ctx->keyboardFocus->surfaceId, surface );
+   }
+   else
+   {
+      printf("keyboardEnter unexpected wlSurface %p\n", surface);
+   }
 }
 
 static void keyboardLeave( void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *surface )
 {
-   UNUSED(data);
+   AppCtx *ctx= (AppCtx*)data;
    UNUSED(keyboard);
    UNUSED(serial);
 
-   printf("keyboard leave surface %p\n", surface );
+   if ( ctx->keyboardFocus && ctx->keyboardFocus->wlSurface == surface )
+   {
+      printf("keyboardLeave surfaceId=%u wlSurface=%p\n", ctx->keyboardFocus->surfaceId, surface );
+      ctx->keyboardFocus= 0;
+   }
+   else
+   {
+      printf("keyboardLeave error: unexpected wlSurface %p\n", surface);
+   }
 }
 
 static void keyboardKey( void *data, struct wl_keyboard *keyboard, uint32_t serial,
@@ -344,8 +411,11 @@ static void keyboardKey( void *data, struct wl_keyboard *keyboard, uint32_t seri
             alt= 1;
          }
 
-         printf("keyboardKey: sym %X state %s ctrl %d alt %d time %u\n",
-                sym, (state == WL_KEYBOARD_KEY_STATE_PRESSED ? "Down" : "Up"), ctrl, alt, time);
+         printf("keyboardKey: surfaceId=%u wlSurface=%p sym=%X state=%s ctrl=%d alt=%d time=%u\n",
+            ctx->keyboardFocus ? ctx->keyboardFocus->surfaceId : -1, 
+            ctx->keyboardFocus ? ctx->keyboardFocus->wlSurface : 0,
+            sym, (state == WL_KEYBOARD_KEY_STATE_PRESSED ? "Down" : "Up"), 
+            ctrl, alt, time);
       }
 
       if ( state == WL_KEYBOARD_KEY_STATE_PRESSED )
@@ -362,16 +432,28 @@ static void keyboardModifiers( void *data, struct wl_keyboard *keyboard, uint32_
    AppCtx *ctx= (AppCtx*)data;
    if ( ctx->xkbState )
    {
+      if ( ctx->verboseLog )
+      {
+         printf("keyboardModifiers: surfaceId=%u wlSurface=%p dep=%X latch=%X lock=%X grp=%X\n",
+            ctx->keyboardFocus ? ctx->keyboardFocus->surfaceId : -1, 
+            ctx->keyboardFocus ? ctx->keyboardFocus->wlSurface : 0,
+            mods_depressed, mods_latched, mods_locked, group);
+      }
       xkb_state_update_mask( ctx->xkbState, mods_depressed, mods_latched, mods_locked, 0, 0, group );
    }
 }
 
 static void keyboardRepeatInfo( void *data, struct wl_keyboard *keyboard, int32_t rate, int32_t delay )
 {
-   UNUSED(data);
    UNUSED(keyboard);
-   UNUSED(rate);
-   UNUSED(delay);
+   AppCtx *ctx= (AppCtx*)data;
+   if ( ctx->verboseLog )
+   {
+      printf("keyboardRepeatInfo: surfaceId=%u wlSurface=%p rate=%d delay=%d\n",
+         ctx->keyboardFocus ? ctx->keyboardFocus->surfaceId : -1, 
+         ctx->keyboardFocus ? ctx->keyboardFocus->wlSurface : 0,
+         rate, delay);
+   }
 }
 
 static const struct wl_keyboard_listener keyboardListener= {
@@ -397,16 +479,32 @@ static void pointerEnter( void* data, struct wl_pointer *pointer, uint32_t seria
    ctx->pointerX= x;
    ctx->pointerY= y;
 
-   printf("pointer enter surface %p (%d,%d)\n", surface, x, y );
+   ctx->pointerFocus= getSurfaceByWL(ctx, surface);
+   if ( ctx->pointerFocus )
+   {
+      printf("pointerEnter surfaceId=%u wlSurface=%p\n", ctx->pointerFocus->surfaceId, surface );
+   }
+   else
+   {
+      printf("pointerEnter unexpected wlSurface %p\n", surface);
+   }
 }
 
 static void pointerLeave( void* data, struct wl_pointer *pointer, uint32_t serial, struct wl_surface *surface )
 {
-   UNUSED(data);
+   AppCtx *ctx= (AppCtx*)data;
    UNUSED(pointer);
    UNUSED(serial);
 
-   printf("pointer leave surface %p\n", surface );
+   if ( ctx->pointerFocus && ctx->pointerFocus->wlSurface == surface )
+   {
+      printf("pointerLeave surfaceId=%u wlSurface=%p\n", ctx->pointerFocus->surfaceId, surface );
+      ctx->pointerFocus= 0;
+   }
+   else
+   {
+      printf("pointerLeave error: unexpected wlSurface %p\n", surface);
+   }
 }
 
 static void pointerMotion( void *data, struct wl_pointer *pointer, uint32_t time, wl_fixed_t sx, wl_fixed_t sy )
@@ -423,7 +521,7 @@ static void pointerMotion( void *data, struct wl_pointer *pointer, uint32_t time
 
    if ( ctx->verboseLog )
    {
-      printf("pointer motion surface (%d,%d) time %u\n", x, y, time );
+      //printf("pointer motion surface (%d,%d) time %u\n", x, y, time );
    }
 }
 
@@ -432,13 +530,33 @@ static void pointerButton( void *data, struct wl_pointer *pointer, uint32_t seri
 {
    UNUSED(pointer);
    UNUSED(serial);
+   UNUSED(time);
    AppCtx *ctx= (AppCtx*)data;
 
-   if ( ctx->verboseLog )
-   {
-      printf("pointer button %u state %u (%d, %d)\n", button, state, ctx->pointerX, ctx->pointerY);
-   }
+   AppSurface *popupSurface= ctx->surfaces.size() > 1 ? getTopSurface( ctx ) : 0;
 
+   if ( ctx->surfaces.size() == 1 )
+   {
+      printf("pointerButton surfaceId=%u wlSurface=%p button=%u state=%u\n",
+         ctx->pointerFocus ? ctx->pointerFocus->surfaceId : -1, 
+         ctx->pointerFocus ? ctx->pointerFocus->wlSurface : 0,
+         button, state );
+   }
+   else
+   {
+      AppSurface *popup= getTopSurface( ctx );
+      printf("pointerButton surfaceId=%u wlSurface=%p popupId=%u wlPopup=%p button=%u state=%u\n",
+         ctx->pointerFocus ? ctx->pointerFocus->surfaceId : -1, 
+         ctx->pointerFocus ? ctx->pointerFocus->wlSurface : 0,
+         popup ? popup->surfaceId : 0, 
+         popup ? popup->wlSurface : 0,
+         button, state );
+
+      if (ctx->pointerFocus != popupSurface)
+      {
+         printf("pointerButton error: popup %u lost focus\n", popup ? popup->surfaceId : 0);   
+      }
+   }
 }
 
 static void pointerAxis( void *data, struct wl_pointer *pointer, uint32_t time,
@@ -477,7 +595,7 @@ static void touchHandleDown( void *data, struct wl_touch *touch,
 
    if ( ctx->verboseLog )
    {
-      printf("touch down id %x (%d,%d) time %u\n", id, x, y, time);
+      printf("touch down id %d (%d,%d) time %u\n", id, x, y, time);
    }
 }
 
@@ -490,7 +608,7 @@ static void touchHandleUp( void *data, struct wl_touch *touch,
 
    if ( ctx->verboseLog )
    {
-      printf("touch up id %x time %u\n", id, time);
+      printf("touch up id %d time %u\n", id, time);
    }
 }
 
@@ -507,7 +625,7 @@ static void touchHandleMotion( void *data, struct wl_touch *touch,
 
    if ( ctx->verboseLog )
    {
-      printf("touch motion id %x (%d,%d) time %u\n", id, x, y, time);
+      printf("touch motion id %d (%d,%d) time %u\n", id, x, y, time);
    }
 }
 
@@ -588,6 +706,7 @@ static void outputMode( void *data, struct wl_output *output, uint32_t flags,
                         int32_t width, int32_t height, int32_t refresh )
 {
    AppCtx *ctx = (AppCtx*)data;
+   AppSurface* surface = NULL;
 
    if ( flags & WL_OUTPUT_MODE_CURRENT )
    {
@@ -600,7 +719,30 @@ static void outputMode( void *data, struct wl_output *output, uint32_t flags,
          {
             printf("outputMode: resize egl window to (%d,%d)\n", ctx->planeWidth, ctx->planeHeight );
          }
-         resizeSurface( ctx, 0, 0, ctx->planeWidth, ctx->planeHeight);
+
+         if ( ctx->surfaces.empty() )
+         {
+            printf("outputMode: no surfaces\n");
+            return;
+         }
+
+         //main surface is 0
+         surface= ctx->surfaces[0];
+
+         float widthRatio = (float)width / (float)surface->surfaceWidth;
+         float heightRatio = (float)height / (float)surface->surfaceHeight;
+
+         //resize main surface to fit the plane
+         resizeSurface( surface, 0, 0, ctx->planeWidth, ctx->planeHeight);
+
+         //scale child surfaces up or down to preserve their relative orientation
+         for (uint32_t i = 1; i < ctx->surfaces.size(); ++i)
+         {
+            AppSurface* child = ctx->surfaces[i];
+            resizeSurface( ctx->surfaces[i], 0, 0, 
+               child->surfaceWidth * widthRatio, 
+               child->surfaceHeight * heightRatio);
+         }
       }
    }
 }
@@ -657,7 +799,7 @@ static void registryHandleGlobal(void *data,
    }
    else if ( (len==15) && !strncmp(interface, "wl_simple_shell", len) ) {
       if ( ctx->getShell ) {
-         ctx->shell= (struct wl_simple_shell*)wl_registry_bind(registry, id, &wl_simple_shell_interface, 1);      
+         ctx->shell= (struct wl_simple_shell*)wl_registry_bind(registry, id, &wl_simple_shell_interface, 1);
          printf("shell %p\n", ctx->shell );
          wl_simple_shell_add_listener(ctx->shell, &shellListener, ctx);
       }
@@ -676,10 +818,20 @@ static void shellSurfaceId(void *data,
                            uint32_t surfaceId)
 {
    AppCtx *ctx = (AppCtx*)data;
-   char name[32];
-  
-   sprintf( name, "westeros-test-surface-%x", surfaceId );
-   printf("shell: surface created: %p id %x\n", surface, surfaceId);
+   char name[50];
+   AppSurface* surf = NULL;
+
+   printf("shellSurfaceId: id=%u\n", surfaceId);
+
+   surf = getSurfaceByWL( ctx, surface );
+   if (!surf)
+   {
+      printf("shellSurfaceId: surface not found\n");
+      return;
+   }
+   surf->surfaceId = surfaceId;
+
+   sprintf( name, "westeros-test-surface-%u", surfaceId );
    wl_simple_shell_set_name( ctx->shell, surfaceId, name );
 }
                            
@@ -689,12 +841,8 @@ static void shellSurfaceCreated(void *data,
                                 const char *name)
 {
    AppCtx *ctx = (AppCtx*)data;
-
-   printf("shell: surface created: %x name: %s\n", surfaceId, name);
-   ctx->surfaceIdOther= ctx->surfaceIdCurrent;
-   ctx->surfaceIdCurrent= surfaceId;   
-   wl_simple_shell_get_status( ctx->shell, ctx->surfaceIdCurrent );
-   printf("shell: surfaceCurrent: %x surfaceOther: %x\n", ctx->surfaceIdCurrent, ctx->surfaceIdOther);
+   printf("shellSurfaceCreated: id=%u name=%s\n", surfaceId, name);
+   wl_simple_shell_get_status( ctx->shell, surfaceId );
 }
 
 static void shellSurfaceDestroyed(void *data,
@@ -703,20 +851,7 @@ static void shellSurfaceDestroyed(void *data,
                                   const char *name)
 {
    AppCtx *ctx = (AppCtx*)data;
-
-   printf("shell: surface destroyed: %x name: %s\n", surfaceId, name);
-   
-   if ( ctx->surfaceIdCurrent == surfaceId )
-   {
-      ctx->surfaceIdCurrent= ctx->surfaceIdOther;
-      ctx->surfaceIdOther= 0;
-      wl_simple_shell_get_status( ctx->shell, ctx->surfaceIdCurrent );
-   }
-   if ( ctx->surfaceIdOther == surfaceId )
-   {
-      ctx->surfaceIdOther= 0;
-   }
-   printf("shell: surfaceCurrent: %x surfaceOther: %x\n", ctx->surfaceIdCurrent, ctx->surfaceIdOther);
+   printf("shellSurfaceDestroyed: id=%u name=%s\n", surfaceId, name);
 }
                                   
 static void shellSurfaceStatus(void *data,
@@ -732,18 +867,26 @@ static void shellSurfaceStatus(void *data,
                                wl_fixed_t zorder)
 {
    AppCtx *ctx = (AppCtx*)data;
+   AppSurface* surf;
 
-   printf("shell: surface: %x name: %s\n", surfaceId, name);
-   printf("shell: position (%d,%d,%d,%d) visible %d opacity %f zorder %f\n",
-           x, y, width, height, visible, wl_fixed_to_double(opacity), wl_fixed_to_double(zorder) );
+   printf("shellSurfaceStatus: id=%u name=%s x=%d y=%d w=%d h=%d visible=%d opacity=%d zorder=%f\n", 
+      surfaceId, name, x, y, width, height, visible, 
+      wl_fixed_to_double(opacity), wl_fixed_to_double(zorder));
 
-   ctx->surfaceVisible= visible;
-   ctx->surfaceX= x;
-   ctx->surfaceY= y;
-   ctx->surfaceWidth= width;
-   ctx->surfaceHeight= height;
-   ctx->surfaceOpacity= wl_fixed_to_double(opacity);
-   ctx->surfaceZOrder= wl_fixed_to_double(zorder);   
+   surf= getSurfaceByID( ctx, surfaceId );
+   if ( !surf )
+   {
+      printf("shellSurfaceStatus: surface not found\n");
+      return;
+   }
+
+   surf->surfaceVisible= visible;
+   surf->surfaceX= x;
+   surf->surfaceY= y;
+   surf->surfaceWidth= width;
+   surf->surfaceHeight= height;
+   surf->surfaceOpacity= wl_fixed_to_double(opacity);
+   surf->surfaceZOrder= wl_fixed_to_double(zorder);   
 }                               
 
 static void shellGetSurfacesDone(void *data,
@@ -751,6 +894,27 @@ static void shellGetSurfacesDone(void *data,
 {
    printf("shell: get all surfaces done\n");
 }                                        
+
+static void shellPopupDetails(void *data,
+                              struct wl_simple_shell *wl_simple_shell,
+                              uint32_t surfaceId,
+                              uint32_t parentSurfaceId,
+                              int32_t popup)
+{
+   AppCtx *ctx = (AppCtx*)data;
+   AppSurface *surf;
+   UNUSED(wl_simple_shell);
+
+   surf= getSurfaceByID( ctx, surfaceId );
+   if ( !surf )
+   {
+      printf("shellPopupDetails: surface not found\n");
+      return;
+   }
+
+   printf("shellPopupDetails: surface %u popup=%d parent=%u\n",
+      surfaceId, popup, parentSurfaceId);
+}
 
 #define NON_BLOCKING_ENABLED (0)
 #define NON_BLOCKING_DISABLED (1)
@@ -796,7 +960,7 @@ static bool isKeyHit()
    return keyHit;
 }
 
-static void adjustAttribute( AppCtx *ctx, uint32_t sym )
+static void adjustAttribute( AppCtx* ctx, AppSurface *surface, uint32_t sym )
 {
    switch( ctx->attribute )
    {
@@ -804,16 +968,16 @@ static void adjustAttribute( AppCtx *ctx, uint32_t sym )
          switch( sym )
          {
             case XKB_KEY_Up:
-               --ctx->surfaceDY;
+               ctx->surfaceDY -= 5;
                break;
             case XKB_KEY_Down:
-               ++ctx->surfaceDY;
+               ctx->surfaceDY += 5;
                break;
             case XKB_KEY_Right:
-               ++ctx->surfaceDX;
+               ctx->surfaceDX += 5;
                break;
             case XKB_KEY_Left:
-               --ctx->surfaceDX;
+               ctx->surfaceDX -= 5;
                break;
          }
          break;
@@ -821,16 +985,16 @@ static void adjustAttribute( AppCtx *ctx, uint32_t sym )
          switch( sym )
          {
             case XKB_KEY_Up:
-               --ctx->surfaceDHeight;
+               ctx->surfaceDHeight += 5;
                break;
             case XKB_KEY_Down:
-               ++ctx->surfaceDHeight;
+               ctx->surfaceDHeight -= 5;
                break;
             case XKB_KEY_Right:
-               ++ctx->surfaceDWidth;
+               ctx->surfaceDWidth += 5;
                break;
             case XKB_KEY_Left:
-               --ctx->surfaceDWidth;
+               ctx->surfaceDWidth -= 5;
                break;
          }
          break;
@@ -841,8 +1005,8 @@ static void adjustAttribute( AppCtx *ctx, uint32_t sym )
             case XKB_KEY_Right:
             case XKB_KEY_Down:
             case XKB_KEY_Left:
-               ctx->surfaceVisible= !ctx->surfaceVisible;
-               wl_simple_shell_set_visible( ctx->shell, ctx->surfaceIdCurrent, (ctx->surfaceVisible ? 1 : 0) );
+               surface->surfaceVisible= !surface->surfaceVisible;
+               wl_simple_shell_set_visible( ctx->shell, surface->surfaceId, (surface->surfaceVisible ? 1 : 0) );
                break;
          }
          break;
@@ -851,21 +1015,21 @@ static void adjustAttribute( AppCtx *ctx, uint32_t sym )
          {
             case XKB_KEY_Up:
             case XKB_KEY_Right:
-               ctx->surfaceOpacity += 0.1;
-               if ( ctx->surfaceOpacity > 1.0 )
+               surface->surfaceOpacity += 0.1;
+               if ( surface->surfaceOpacity > 1.0 )
                {
-                  ctx->surfaceOpacity= 1.0;
+                  surface->surfaceOpacity= 1.0;
                }
-               wl_simple_shell_set_opacity( ctx->shell, ctx->surfaceIdCurrent, wl_fixed_from_double(ctx->surfaceOpacity) );
+               wl_simple_shell_set_opacity( ctx->shell, surface->surfaceId, wl_fixed_from_double(surface->surfaceOpacity) );
                break;
             case XKB_KEY_Down:
             case XKB_KEY_Left:
-               ctx->surfaceOpacity -= 0.1;
-               if ( ctx->surfaceOpacity < 0.0 )
+               surface->surfaceOpacity -= 0.1;
+               if ( surface->surfaceOpacity < 0.0 )
                {
-                  ctx->surfaceOpacity= 0.0;
+                  surface->surfaceOpacity= 0.0;
                }
-               wl_simple_shell_set_opacity( ctx->shell, ctx->surfaceIdCurrent, wl_fixed_from_double(ctx->surfaceOpacity) );
+               wl_simple_shell_set_opacity( ctx->shell, surface->surfaceId, wl_fixed_from_double(surface->surfaceOpacity) );
                break;
          }
          break;
@@ -874,21 +1038,21 @@ static void adjustAttribute( AppCtx *ctx, uint32_t sym )
          {
             case XKB_KEY_Up:
             case XKB_KEY_Right:
-               ctx->surfaceZOrder += 0.1;
-               if ( ctx->surfaceZOrder > 1.0 )
+               surface->surfaceZOrder += 0.1;
+               if ( surface->surfaceZOrder > 1.0 )
                {
-                  ctx->surfaceZOrder= 1.0;
+                  surface->surfaceZOrder= 1.0;
                }
-               wl_simple_shell_set_zorder( ctx->shell, ctx->surfaceIdCurrent, wl_fixed_from_double(ctx->surfaceZOrder) );
+               wl_simple_shell_set_zorder( ctx->shell, surface->surfaceId, wl_fixed_from_double(surface->surfaceZOrder) );
                break;
             case XKB_KEY_Down:
             case XKB_KEY_Left:
-               ctx->surfaceZOrder -= 0.1;
-               if ( ctx->surfaceZOrder < 0.0 )
+               surface->surfaceZOrder -= 0.1;
+               if ( surface->surfaceZOrder < 0.0 )
                {
-                  ctx->surfaceZOrder= 0.0;
+                  surface->surfaceZOrder= 0.0;
                }
-               wl_simple_shell_set_zorder( ctx->shell, ctx->surfaceIdCurrent, wl_fixed_from_double(ctx->surfaceZOrder) );
+               wl_simple_shell_set_zorder( ctx->shell, surface->surfaceId, wl_fixed_from_double(surface->surfaceZOrder) );
                break;
          }
          break;
@@ -897,36 +1061,27 @@ static void adjustAttribute( AppCtx *ctx, uint32_t sym )
 
 static void processInputMain( AppCtx *ctx, uint32_t sym )
 {
+   AppSurface* surface = getTopSurface( ctx );
+   if (!surface)
+   {
+      printf("processInputMain: no surfaces\n");
+      return;
+   }
+
    switch( sym )
    {
       case XKB_KEY_Left:
       case XKB_KEY_Up:
       case XKB_KEY_Right:
       case XKB_KEY_Down:
-         if ( ctx->surfaceIdCurrent )
-         {
-            adjustAttribute( ctx, sym );
-         }
+         adjustAttribute( ctx, surface, sym );
          break;
       case XKB_KEY_a:
          ctx->inputState= InputState_attribute;
          printf("attribute: (p) osition, (s) ize, (v) isible, (o) pacity, (z) order (x) back to main\n");
          break;
       case XKB_KEY_s:
-         if ( ctx->surfaceIdCurrent )
-         {
-            wl_simple_shell_get_status( ctx->shell, ctx->surfaceIdCurrent );
-         }
-         break;
-      case XKB_KEY_n:
-         if ( ctx->surfaceIdOther )
-         {
-            uint32_t temp= ctx->surfaceIdCurrent;
-            ctx->surfaceIdCurrent= ctx->surfaceIdOther;
-            ctx->surfaceIdOther= temp;
-            printf("shell: surfaceCurrent: %x surfaceOther: %x\n", ctx->surfaceIdCurrent, ctx->surfaceIdOther);
-            wl_simple_shell_get_status( ctx->shell, ctx->surfaceIdCurrent );
-         }
+         wl_simple_shell_get_status( ctx->shell, surface->surfaceId );
          break;
       case XKB_KEY_l:
          printf("get all surfaces:\n");
@@ -935,11 +1090,37 @@ static void processInputMain( AppCtx *ctx, uint32_t sym )
       case XKB_KEY_r:
          if ( ctx->haveMode )
          {
-            int surfaceWidth= (ctx->surfaceWidth == ctx->planeWidth) ? ctx->planeWidth/2 : ctx->planeWidth;
-            int surfaceHeight= (ctx->surfaceHeight == ctx->planeHeight) ? ctx->planeHeight/2 : ctx->planeHeight;
-            printf("resize egl window to (%d,%d)\n", surfaceWidth, surfaceHeight );
-            resizeSurface( ctx, 0, 0, surfaceWidth, surfaceHeight);
+            int width= (surface->surfaceWidth == ctx->planeWidth) ? ctx->planeWidth/2 : ctx->planeWidth;
+            int height= (surface->surfaceHeight == ctx->planeHeight) ? ctx->planeHeight/2 : ctx->planeHeight;
+            printf("resize egl window to (%d,%d)\n", width, height);
+            resizeSurface( surface, 0, 0, width, height );
          }
+         break;
+      case XKB_KEY_p:
+         createPopupSurface( ctx, surface );
+         break;
+      case XKB_KEY_d:
+         if (surface != ctx->surfaces[0])
+         {
+            printf("Destroying popup surface\n");
+            destroySurface( ctx, surface );
+            wl_display_flush( ctx->display );
+            ctx->needRedraw= true;
+         }
+         break;
+      case XKB_KEY_i:
+         if (surface != ctx->surfaces[0])
+         {
+            printf("Getting popup details\n");
+            wl_simple_shell_is_surface_popup( ctx->shell, surface->surfaceId );
+            wl_display_flush( ctx->display );
+         }
+         break;
+      case XKB_KEY_q:
+         printf("exiting\n");
+         g_running = 0;
+         break;
+      default:
          break;
    }
 }
@@ -983,6 +1164,45 @@ static void processInput( AppCtx *ctx, uint32_t sym )
    }
 }
 
+static AppSurface* getTopSurface( AppCtx* ctx )
+{
+   AppSurface* surface = NULL;
+   float topZOrder = -1.0f;
+   for (uint32_t i = 0; i < ctx->surfaces.size(); i++)
+   {
+      if ( ctx->surfaces[i]->surfaceZOrder > topZOrder )
+      {
+         surface = ctx->surfaces[i];
+         topZOrder = surface->surfaceZOrder;
+      }
+   }
+   return surface;
+}
+
+static AppSurface* getSurfaceByID( AppCtx *ctx, uint32_t surfaceId )
+{
+   for (uint32_t i = 0; i < ctx->surfaces.size(); i++)
+   {
+      if ( ctx->surfaces[i]->surfaceId == surfaceId)
+      {
+         return ctx->surfaces[i];
+      }
+   }
+   return NULL;
+}
+
+static AppSurface* getSurfaceByWL( AppCtx *ctx, struct wl_surface* wlSurface )
+{
+   for (uint32_t i = 0; i < ctx->surfaces.size(); i++)
+   {
+      if ( ctx->surfaces[i]->wlSurface == wlSurface)
+      {
+         return ctx->surfaces[i];
+      }
+   }
+   return NULL;
+}
+
 static void showUsage()
 {
    printf("usage:\n");
@@ -1013,25 +1233,48 @@ static struct wl_callback_listener frameListener=
    redraw
 };
 
-static void drawFrame( AppCtx *ctx )
+static void drawFrame( AppCtx *ctx, bool registerCallback )
 {
    if ( ctx->surfaceDX || ctx->surfaceDY || ctx->surfaceDWidth || ctx->surfaceDHeight )
    {
-      ctx->surfaceX += ctx->surfaceDX;
-      ctx->surfaceY += ctx->surfaceDY;
-      ctx->surfaceWidth += ctx->surfaceDWidth;
-      ctx->surfaceHeight += ctx->surfaceDHeight;
+      AppSurface* top = getTopSurface( ctx );
+      top->surfaceX += ctx->surfaceDX;
+      top->surfaceY += ctx->surfaceDY;
+      top->surfaceWidth += ctx->surfaceDWidth;
+      top->surfaceHeight += ctx->surfaceDHeight;
       
-      wl_simple_shell_set_geometry( ctx->shell, ctx->surfaceIdCurrent, 
-                                    ctx->surfaceX, ctx->surfaceY, ctx->surfaceWidth, ctx->surfaceHeight );
+      wl_simple_shell_set_geometry( ctx->shell, top->surfaceId, 
+                                    top->surfaceX, top->surfaceY, top->surfaceWidth, top->surfaceHeight );
    }
-   
-   renderGL(ctx);
-   
-   ctx->frameCallback= wl_surface_frame( ctx->surface );
-   wl_callback_add_listener( ctx->frameCallback, &frameListener, ctx );
-   
-   eglSwapBuffers(ctx->eglDisplay, ctx->eglSurfaceWindow);
+
+   for ( uint32_t i = 0; i < ctx->surfaces.size(); ++i )
+   {
+      AppSurface* surface = ctx->surfaces[i];
+
+      if ( ctx->surfaces.size() > 1 )
+      {
+         //EGL context switching per surface; render as a window with border
+         eglMakeCurrent( ctx->eglDisplay, surface->eglSurface, surface->eglSurface, ctx->eglContext );
+      }
+
+      if ( i == 0 )
+      {
+         renderGL( ctx, surface->eglWidth, surface->eglHeight, surface->startTime, true );
+      }
+      else
+      {
+         renderPopup( ctx, surface->eglWidth, surface->eglHeight, surface->startTime, surface->color );
+      }
+
+      if ( registerCallback && i == 0 )
+      {  
+         // register frame callback on main surface before surface commit is performed by eglSwapBuffers
+         ctx->frameCallback= wl_surface_frame( surface->wlSurface );
+         wl_callback_add_listener( ctx->frameCallback, &frameListener, ctx );
+      }
+
+      eglSwapBuffers(ctx->eglDisplay, surface->eglSurface );
+   }
 }
 
 #define NUM_EVENTS (20)
@@ -1039,6 +1282,7 @@ int main( int argc, char** argv)
 {
    int nRC= 0;
    AppCtx ctx;
+   AppSurface *mainSurface = NULL;
    struct sigaction sigint;
    struct wl_display *display= 0;
    struct wl_registry *registry= 0;
@@ -1104,7 +1348,6 @@ int main( int argc, char** argv)
       }
    }
 
-   ctx.startTime= currentTimeMillis();
    
    if ( display_name )
    {
@@ -1143,20 +1386,29 @@ int main( int argc, char** argv)
    
    wl_display_roundtrip(ctx.display);
    
-   setupEGL(&ctx);
+   if ( !setupEGL(&ctx) )
+   {
+      printf("setupEGL failed\n");
+      return 1;
+   }
 
-   ctx.surfaceWidth= ctx.planeWidth;
-   ctx.surfaceHeight= ctx.planeHeight;
-   ctx.surfaceX= 0;
-   ctx.surfaceY= 0;
-
-   createSurface(&ctx);
+   mainSurface= createWindowSurface( &ctx, ctx.planeWidth, ctx.planeHeight);
+   if ( !mainSurface )
+   {
+      printf("createWindowSurface failed\n");
+      termEGL( &ctx );
+      return 1;
+   }
+   
+   
+   eglSwapInterval( ctx.eglDisplay, 1 );
+   printf("swap interface set to 1\n" );//TODO add 'swap' command line parameter
    
    setupGL(&ctx);
    
    if ( paceRendering )
    {
-      drawFrame(&ctx);
+      drawFrame(&ctx, true);
    }
   
    sigint.sa_handler = signalHandler;
@@ -1166,7 +1418,7 @@ int main( int argc, char** argv)
 
    if ( !isBackgroundProcess )
    {
-      setBlockingMode(NON_BLOCKING_ENABLED);
+      //setBlockingMode(NON_BLOCKING_ENABLED);
    }
 
    ctx.inputState= InputState_main;
@@ -1177,6 +1429,8 @@ int main( int argc, char** argv)
    {
       if ( wl_display_dispatch( ctx.display ) == -1 )
       {
+         int err= wl_display_get_error( ctx.display );
+         printf("failed wl_display_dispatch (wl_display_get_error=%d: %s)\n", err, strerror(err) );
          break;
       }
 
@@ -1186,13 +1440,12 @@ int main( int argc, char** argv)
          {
             usleep(delay);
          }
-         renderGL(&ctx);
-         eglSwapBuffers(ctx.eglDisplay, ctx.eglSurfaceWindow);
+         drawFrame( &ctx, false );
       }
       else if ( ctx.needRedraw )
       {
          ctx.needRedraw= false;
-         drawFrame(&ctx);
+         drawFrame( &ctx, true );
       }
 
       if ( ctx.getShell && !isBackgroundProcess )
@@ -1408,6 +1661,8 @@ static bool setupEGL( AppCtx *ctx )
    attr[i++]= GREEN_SIZE;
    attr[i++]= EGL_BLUE_SIZE;
    attr[i++]= BLUE_SIZE;
+   attr[i++]= EGL_ALPHA_SIZE;
+   attr[i++]= ALPHA_SIZE;
    attr[i++]= EGL_DEPTH_SIZE;
    attr[i++]= DEPTH_SIZE;
    attr[i++]= EGL_STENCIL_SIZE;
@@ -1493,105 +1748,343 @@ static void termEGL( AppCtx *ctx )
    {
       eglMakeCurrent( ctx->eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT );
       
-      destroySurface( ctx );
+      while ( !ctx->surfaces.empty() )
+      {
+         destroySurface( ctx, ctx->surfaces.back() );
+      }
       
       eglTerminate( ctx->eglDisplay );
       eglReleaseThread();
    }
 }
 
-static bool createSurface( AppCtx *ctx )
+static AppSurface* createWindowSurface( AppCtx *ctx, int width, int height )
 {
-   bool result= false;
-   EGLBoolean b;
-
-   ctx->surface= wl_compositor_create_surface(ctx->compositor);
-   printf("surface=%p\n", ctx->surface);   
-   if ( !ctx->surface )
-   {
-      printf("error: unable to create wayland surface\n");
-      goto exit;
-   }
-
-   ctx->native= wl_egl_window_create(ctx->surface, ctx->planeWidth, ctx->planeHeight);
-   if ( !ctx->native )
-   {
-      printf("error: unable to create wl_egl_window\n");
-      goto exit;
-   }
-   printf("wl_egl_window %p\n", ctx->native);
+   AppSurface* surface = NULL;
    
-   /*
-    * Create a window surface
-    */
-   ctx->eglSurfaceWindow= eglCreateWindowSurface( ctx->eglDisplay,
-                                                  ctx->eglConfig,
-                                                  (EGLNativeWindowType)ctx->native,
-                                                  NULL );
-   if ( ctx->eglSurfaceWindow == EGL_NO_SURFACE )
+   if (ctx->surfaces.size() == MAX_POPUPS + 1)
    {
-      printf("eglCreateWindowSurface: A: error %X\n", eglGetError() );
-      ctx->eglSurfaceWindow= eglCreateWindowSurface( ctx->eglDisplay,
-                                                     ctx->eglConfig,
-                                                     (EGLNativeWindowType)NULL,
-                                                     NULL );
-      if ( ctx->eglSurfaceWindow == EGL_NO_SURFACE )
+      printf("createWindowSurface: max surface count reached\n");
+      return NULL;
+   }
+
+   surface= (AppSurface*)calloc( 1, sizeof(AppSurface) );
+   //ctx->surfaces.push_back(surface);
+   if ( !surface )
+   {
+      printf("createWindowSurface: out of memory\n");
+      return NULL;
+   }
+
+   surface->wlSurface= wl_compositor_create_surface(ctx->compositor);
+   if ( !surface->wlSurface )
+   {
+      printf("createWindowSurface: wl_compositor_create_surface failed\n");
+      free(surface);
+      return NULL;
+   }
+   ctx->surfaces.push_back(surface);
+   printf("createWindowSurface: wl_compositor_create_surface returned %p\n", surface->wlSurface);
+   if ( ctx->shell )
+   {
+      //to get the surfaceId immediately
+      wl_display_roundtrip(ctx->display);   
+   }
+ 
+   surface->eglWindow= wl_egl_window_create(surface->wlSurface, width, height);
+   if ( !surface->eglWindow )
+   {
+      printf("createWindowSurface: wl_egl_window_create failed\n");
+      destroySurface( ctx, surface );
+      return NULL;
+   }
+   printf("createWindowSurface: wl_egl_window_create returned %p\n", surface->eglWindow);
+
+   surface->eglWidth= width;
+   surface->eglHeight= height;
+
+   surface->eglSurface= eglCreateWindowSurface( ctx->eglDisplay,
+                                                ctx->eglConfig,
+                                                (EGLNativeWindowType)surface->eglWindow,
+                                                NULL );
+   if ( surface->eglSurface == EGL_NO_SURFACE )
+   {
+      printf("createWindowSurface: eglCreateWindowSurface failed on attempt 1 of 2: error %X\n", eglGetError() );
+      surface->eglSurface= eglCreateWindowSurface( ctx->eglDisplay,
+                                                   ctx->eglConfig,
+                                                   (EGLNativeWindowType)NULL,
+                                                   NULL );
+      if ( surface->eglSurface == EGL_NO_SURFACE )
       {
-         printf("eglCreateWindowSurface: B: error %X\n", eglGetError() );
-         goto exit;
+         printf("createWindowSurface: eglCreateWindowSurface failed on attempt 2 of 2: error %X\n", eglGetError() );
+         destroySurface( ctx, surface );
+         return NULL;
       }
    }
-   printf("eglCreateWindowSurface: eglSurfaceWindow %p\n", ctx->eglSurfaceWindow );                                         
-
-   /*
-    * Establish EGL context for this thread
-    */
-   b= eglMakeCurrent( ctx->eglDisplay, ctx->eglSurfaceWindow, ctx->eglSurfaceWindow, ctx->eglContext );
-   if ( !b )
+   printf("createWindowSurface: eglCreateWindowSurface returned %p\n", surface->eglSurface);
+ 
+   if ( !eglMakeCurrent( ctx->eglDisplay, surface->eglSurface, surface->eglSurface, ctx->eglContext ) )
    {
-      printf("error: eglMakeCurrent failed: %X\n", eglGetError() );
-      goto exit;
+      printf("eglMakeCurrent failed: %X\n", eglGetError() );
+      destroySurface( ctx, surface );
+      return NULL;
    }
-    
-   eglSwapInterval( ctx->eglDisplay, 1 );
 
-exit:
+   if (!ctx->shell)
+   {
+      surface->surfaceVisible= true;
+      surface->surfaceX= 0;
+      surface->surfaceY= 0;
+      surface->surfaceWidth= width;
+      surface->surfaceHeight= height;
+      surface->surfaceOpacity= 1.0;
+      surface->surfaceZOrder= 0.5f * (float)ctx->surfaces.size();
+   }
+   surface->startTime= currentTimeMillis();
 
-   return result;
+   printf("createWindowSurface success surfaceId=%u wlSurface=%p\n", surface->surfaceId, surface->wlSurface);
+
+   return surface;
 }
 
-static void destroySurface( AppCtx *ctx )
+static AppSurface* createPopupSurface( AppCtx *ctx, AppSurface *parentSurface )
 {
-   if ( ctx->eglSurfaceWindow )
+   AppSurface* surface = NULL;
+
+   printf("Creating popup surface over current surface\n");
+
+   if ( !ctx->shell )
    {
-      eglDestroySurface( ctx->eglDisplay, ctx->eglSurfaceWindow );
+      printf("createPopupSurface: wl_simple_shell interface not available\n");
+      return NULL;
+   }
+
+   if ( !parentSurface || !parentSurface->surfaceId )
+   {
+      printf("createPopupSurface: invalid parent surface\n");
+      return NULL;
+   }
+
+   //get the current parent size
+   wl_simple_shell_get_status( ctx->shell, parentSurface->surfaceId );
+   wl_display_roundtrip(ctx->display);
+
+   //layout popup (in this test example we allow)
+   int parentX= parentSurface->surfaceX;
+   int parentY= parentSurface->surfaceY;
+   int parentW= parentSurface->surfaceWidth;
+   int parentH= parentSurface->surfaceHeight;
+   int screenW = ctx->surfaces[0]->surfaceWidth;
+   int screenH = ctx->surfaces[0]->surfaceHeight;
+
+   int popupX= 0;
+   int popupY= 0;
+   int popupW= 128;
+   int popupH= 128;
+
+   uint32_t numPopup = ctx->surfaces.size();
+   if ( numPopup == 1 )//first popup
+   {
+      // Typical popup: smaller than parent, centered on parent 
+      printf("Creating popup 1 centered on screen\n");
+      popupW= parentW * 0.4;
+      popupH= parentH * 0.4;
+      popupX= parentX + (parentW-popupW)/2;
+      popupY= parentY + (parentH-popupH)/2;
+   }
+   else
+   {
+      //small popups in the corners
+      popupW= screenW/4;
+      popupH= screenH/4;
+      if ( numPopup == 2 )//top-left
+      {
+         printf("Creating popup 2 in top-left corner\n");
+         popupX= screenW/8;
+         popupY= screenH - screenH/8 - popupH;
+      }
+      else if ( numPopup == 3 )//top-right
+      {
+         printf("Creating popup 3 in top-right corner\n");
+         popupX= screenW - screenW/8 - popupW;
+         popupY= screenH - screenH/8 - popupH;
+      }
+      else if ( numPopup == 4 )//bottom-right
+      {
+         printf("Creating popup 4 in bottom-right corner\n");
+         popupX= screenW - screenW/8 - popupW;
+         popupY= screenH/8;
+      }
+      else if ( numPopup == 5 )//bottom-left
+      {
+         printf("Creating popup 5 in bottom-left corner\n");
+         popupX= screenW/8;
+         popupY= screenH/8;
+      }
+      else
+      {
+         //shouldn't come here because MAX_POPUPS limit
+         printf("Creating yet another popup centered on screen\n");
+         popupX= parentX + (parentW-popupW)/2;
+         popupY= parentY + (parentH-popupH)/2;
+      }
+   }
       
-      wl_egl_window_destroy( ctx->native );   
-   }
-   if ( ctx->surface )
+   surface = createWindowSurface( ctx, popupW, popupH );
+
+   if ( !surface )
    {
-      wl_surface_destroy( ctx->surface );
-      ctx->surface= 0;
+      printf("createPopupSurface: createWindowSurface failed\n");
+      return NULL;
    }
+
+   wl_display_roundtrip(ctx->display);//to acquire the surfaceId right now
+
+   if ( !surface->surfaceId )
+   {
+      printf("createPopupSurface: failed to obtain popup surface id\n");
+      destroySurface( ctx, surface );
+      return NULL;
+   }
+
+   surface->parentSurfaceId= parentSurface->surfaceId;
+   surface->surfaceWidth= popupW;
+   surface->surfaceHeight= popupH;
+   surface->surfaceX= popupX;
+   surface->surfaceY= popupY;
+
+   //set a custom color for each popup
+   surface->color[0]= 0.25f;
+   surface->color[1]= 0.25f;
+   surface->color[2]= 0.25f;
+   surface->color[3]= 1.0f;
+   if ( numPopup == 1 )
+   {
+      surface->color[0]= 0.75f;
+      surface->color[1]= 0.75f;
+      surface->color[2]= 0.75f;
+   }
+   else if ( numPopup == 2 )
+   {//red
+      surface->color[0]= 1.0f;
+   }
+   else if ( numPopup == 3 )
+   {//green
+      surface->color[1]= 1.0f;
+   }
+   else if ( numPopup == 4 )
+   {//blue
+      surface->color[2]= 1.0f;
+   }
+   else if ( numPopup == 5 )
+   {//semi-transparent
+      surface->color[0]= 0.75f;
+      surface->color[1]= 0.75f;
+      surface->color[2]= 0.75f;
+      surface->color[3]= 0.75f;
+   }
+
+   printf("createPopupSurface: create popup surfaceId=%u parentId=%u at (%d,%d,%d,%d)\n",
+            surface->surfaceId, surface->parentSurfaceId, popupX, popupY, popupW, popupH);
+
+   wl_simple_shell_get_popup( ctx->shell,
+                              surface->surfaceId,
+                              parentSurface->surfaceId,
+                              popupX, popupY, popupW, popupH );
+   wl_display_flush(ctx->display);
+   ctx->needRedraw= true;
+
+   if (ctx->surfaces.size() == 3)
+   {
+      wl_simple_shell_set_zorder(ctx->shell, ctx->surfaces[1]->surfaceId, wl_fixed_from_double(10));
+   }
+   return surface;
 }
 
-static void resizeSurface( AppCtx *ctx, int dx, int dy, int width, int height )
+static void destroySurface( AppCtx *ctx, AppSurface *surface )
 {
-   ctx->surfaceWidth= width;
-   ctx->surfaceHeight= height;
-   if ( ctx->native )
+   if ( !ctx || !surface )
    {
-      wl_egl_window_resize( ctx->native, width, height, dx, dy );
+      printf("destroySurface: invalid argument");
+      return;
+   }   
+
+   printf("destroySurface surfaceId=%u wlSurface=%p\n", surface->surfaceId, surface->wlSurface);
+
+   ctx->surfaces.erase( std::remove(ctx->surfaces.begin(), ctx->surfaces.end(), surface), ctx->surfaces.end() );
+
+   if ( surface->eglSurface )
+   {
+      if ( surface->eglSurface == eglGetCurrentSurface(EGL_DRAW) )
+      {
+         AppSurface* top = getTopSurface( ctx );
+         if ( top )
+            eglMakeCurrent( ctx->eglDisplay, top->eglSurface, top->eglSurface, ctx->eglContext );
+         else
+            eglMakeCurrent( ctx->eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT );
+      }
+
+      eglDestroySurface( ctx->eglDisplay, surface->eglSurface );
+      surface->eglSurface= EGL_NO_SURFACE;
    }
+
+   if ( surface->eglWindow )
+   {
+      wl_egl_window_destroy( surface->eglWindow );
+      surface->eglWindow= 0;
+   }
+
+   if ( surface->shmBuffer )
+   {
+      wl_buffer_destroy( surface->shmBuffer );
+      surface->shmBuffer= 0;
+   } 
+
+   if ( surface->wlSurface )
+   {
+      printf("destroySurface before wl_surface_destroy\n");
+      wl_surface_destroy( surface->wlSurface );
+      surface->wlSurface= 0;
+   }
+
+   printf("destroySurface before wl_display_roundtrip\n");
+   wl_display_roundtrip( ctx->display );
+   printf("destroySurface after wl_display_roundtrip\n");
+
+   if ( ctx->keyboardFocus == surface )
+   {
+      printf("destroySurface setting keyboardFocus=NULL\n");
+      ctx->keyboardFocus= 0;
+   }
+
+   if ( ctx->pointerFocus == surface )
+   {
+      printf("destroySurface setting pointerFocus=NULL\n");
+      ctx->pointerFocus= 0;
+   }
+
+   free((void*)surface);
+}
+
+static void resizeSurface( AppSurface *surface, int dx, int dy, int width, int height )
+{
+   if ( !surface->eglWindow )
+   {
+      printf("resizeSurface: invalid egl window\n");
+      return;
+   }
+   surface->surfaceWidth= width;
+   surface->surfaceHeight= height;
+   wl_egl_window_resize( surface->eglWindow, width, height, dx, dy );
 }
 
 static const char *vert_shader_text =
-   "uniform mat4 rotation;\n"
+   "uniform mat4 mvp;\n"
    "attribute vec4 pos;\n"
    "attribute vec4 color;\n"
    "varying vec4 v_color;\n"
    "void main() {\n"
-   "  gl_Position = rotation * pos;\n"
+   "  gl_Position = mvp * pos;\n"
    "  v_color = color;\n"
    "}\n";
 
@@ -1641,6 +2134,10 @@ static bool setupGL( AppCtx *ctx )
    program= glCreateProgram();
    glAttachShader(program, frag);
    glAttachShader(program, vert);
+   ctx->gl.pos= 0;
+   ctx->gl.col= 1;
+   glBindAttribLocation(program, ctx->gl.pos, "pos");
+   glBindAttribLocation(program, ctx->gl.col, "color");
    glLinkProgram(program);
 
    glGetProgramiv(program, GL_LINK_STATUS, &status);
@@ -1653,22 +2150,62 @@ static bool setupGL( AppCtx *ctx )
       goto exit;
    }
 
+   ctx->gl.mvp= glGetUniformLocation(program, "mvp");
    glUseProgram(program);
 
-   ctx->gl.pos= 0;
-   ctx->gl.col= 1;
-
-   glBindAttribLocation(program, ctx->gl.pos, "pos");
-   glBindAttribLocation(program, ctx->gl.col, "color");
-   glLinkProgram(program);
-
-   ctx->gl.rotation_uniform= glGetUniformLocation(program, "rotation");
+   result= true;
 
 exit:
    return result;
 }
 
-static void renderGL( AppCtx *ctx )
+static void drawRect( AppCtx *ctx, GLenum mode, const void* verts, const void* color, GLsizei count )
+{
+   glVertexAttribPointer(ctx->gl.pos, 2, GL_FLOAT, GL_FALSE, 0, verts);
+   glVertexAttribPointer(ctx->gl.col, 4, GL_FLOAT, GL_FALSE, 0, color);
+   glEnableVertexAttribArray(ctx->gl.pos);
+   glEnableVertexAttribArray(ctx->gl.col);
+   glDrawArrays(mode, 0, 4);
+   glDisableVertexAttribArray(ctx->gl.pos);
+   glDisableVertexAttribArray(ctx->gl.col);
+   GLenum err= glGetError();
+   if ( err != GL_NO_ERROR )
+      printf( "renderGL: glGetError() = %X\n", err );
+}
+
+static void renderPopup( AppCtx *ctx, int width, int height, long long startTime, const float* c )
+{
+   const float BORDER_WIDTH= 5;
+   float W = (float)width;
+   float H = (float)height;
+   float B = 5.0f;
+
+   float ortho[16] = {
+      2.0f/W,  0.0f,     0.0f,   0.0f,
+      0.0f,    2.0f/H,   0.0f,   0.0f,
+      0.0f,    0.0f,    -1.0f,   0.0f,
+     -1.0f,   -1.0f,     0.0f,   1.0f
+   };
+
+   const GLfloat rectVerts[4][2] = {{0, 0}, {W, 0}, {W, H}, {0, H}};
+   const GLfloat borderColor[4][4] = {{1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}, {1, 1, 1, 1}};
+   const GLfloat backgroundColor[4][4] = {{c[0], c[1], c[2], c[3]}, {c[0], c[1], c[2], c[3]}, {c[0], c[1], c[2], c[3]}, {c[0], c[1], c[2], c[3]}};
+
+   glDisable(GL_DEPTH_TEST);
+   glEnable(GL_BLEND);
+   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+   
+   glViewport(0, 0, width, height);
+   glClearColor(0, 0, 0, 1);
+   glClear(GL_COLOR_BUFFER_BIT);
+   glUniformMatrix4fv(ctx->gl.mvp, 1, GL_FALSE, (GLfloat*)ortho);
+   drawRect( ctx, GL_TRIANGLE_FAN, rectVerts, backgroundColor, 4 );
+   glLineWidth(BORDER_WIDTH);
+   drawRect( ctx, GL_LINE_LOOP, rectVerts, borderColor, 4 );
+   renderGL ( ctx, width, height, startTime, false );//draw the spinning triangle inside
+}
+
+static void renderGL( AppCtx *ctx, int width, int height, long long startTime, bool clearScreen )
 {
    if ( !ctx->haveMode ) return;
 
@@ -1689,21 +2226,22 @@ static void renderGL( AppCtx *ctx )
       { 0, 0, 1, 0 },
       { 0, 0, 0, 1 }
    };
+
+   if ( clearScreen )
+   {
+      glViewport( 0, 0, width, height );
+      glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+      glClear(GL_COLOR_BUFFER_BIT);
+   }
+
    static const uint32_t speed_div = 5;
-
-   glViewport( 0, 0, ctx->planeWidth, ctx->planeHeight );
-   glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-   glClear(GL_COLOR_BUFFER_BIT);
-
-   ctx->currTime= currentTimeMillis();
-
-   angle = ctx->noAnimation ? 0.0 : ((ctx->currTime-ctx->startTime) / speed_div) % 360 * M_PI / 180.0;
+   angle = ctx->noAnimation ? 0.0 : ((currentTimeMillis()-startTime) / speed_div) % 360 * M_PI / 180.0;
    rotation[0][0] =  cos(angle);
    rotation[0][2] =  sin(angle);
    rotation[2][0] = -sin(angle);
    rotation[2][2] =  cos(angle);
 
-   glUniformMatrix4fv(ctx->gl.rotation_uniform, 1, GL_FALSE, (GLfloat *) rotation);
+   glUniformMatrix4fv(ctx->gl.mvp, 1, GL_FALSE, (GLfloat *) rotation);
 
    glVertexAttribPointer(ctx->gl.pos, 2, GL_FLOAT, GL_FALSE, 0, verts);
    glVertexAttribPointer(ctx->gl.col, 4, GL_FLOAT, GL_FALSE, 0, colors);
@@ -1721,4 +2259,3 @@ static void renderGL( AppCtx *ctx )
       printf( "renderGL: glGetError() = %X\n", err );
    }
 }
-

@@ -351,6 +351,8 @@ typedef struct _WstSurface
    float zorder;
    bool tempVisible;
 
+   bool isPopup;
+   uint32_t popupParentSurfaceId;
    const char *name;   
    int refCount;
    
@@ -3735,6 +3737,14 @@ static void simpleShellSetFocus( void* userData, uint32_t surfaceId )
          {
             ERROR("failed to set focus - missing keyboard");
          }
+         if ( wctx->pointer )
+         {
+            wstPointerSetFocus( wctx->pointer, surface, wctx->pointer->pointerX, wctx->pointer->pointerY );
+         }
+         else
+         {
+            ERROR("failed to set focus - missing pointer");
+         }
       }
       else
       {
@@ -3746,6 +3756,91 @@ static void simpleShellSetFocus( void* userData, uint32_t surfaceId )
       ERROR("failed to set focus - missing seat");
    }
 }
+
+static void simpleShellSetScale( void* userData, uint32_t surfaceId, float scaleX, float scaleY )
+{
+   WstContext *ctx= (WstContext*)userData;
+   WstSurface *surface= wstGetSurfaceFromSurfaceId(ctx, surfaceId);
+   if ( surface )
+   {
+      INFO("simpleShellSetScale: surfaceId %x scaleX %f scaleY %f (ignored)", surfaceId, scaleX, scaleY );
+   }
+}
+
+static void simpleShellGetPopup( void* userData, uint32_t surfaceId, uint32_t parentSurfaceId,
+                                 int32_t x, int32_t y, int32_t width, int32_t height )
+{
+   WstSurface *surface= 0;
+   WstSurface *parentSurface= 0;
+   WstContext *ctx= (WstContext*)userData;
+
+   INFO("simpleShellGetPopup: surface=%u parent=%u x=%d y=%d width=%d height=%d",
+        surfaceId, parentSurfaceId, x, y, width, height);
+
+   pthread_mutex_lock( &ctx->mutex );
+   surface= wstGetSurfaceFromSurfaceId( ctx, surfaceId );
+   parentSurface= wstGetSurfaceFromSurfaceId( ctx, parentSurfaceId );
+   if ( surface && parentSurface )
+   {
+      surface->isPopup= true;
+      surface->popupParentSurfaceId= parentSurfaceId;
+
+      // Ensure popup remains above its parent without client-side set_zorder.
+      if ( surface->zorder <= parentSurface->zorder )
+      {
+         float newZ= parentSurface->zorder + 0.01f;
+         surface->zorder= newZ;
+         if ( ctx->isRepeater )
+         {
+            WstNestedConnectionSurfaceSetZOrder( ctx->nc, surface->surfaceNested, newZ );
+         }
+         else
+         {
+            WstRendererSurfaceSetZOrder( ctx->renderer, surface->surface, newZ );
+            wstSurfaceInsertSurface( ctx, surface );
+         }
+      }
+   }
+   else if ( surface )
+   {
+      WARNING("westeros-compositor: simpleShellGetPopup invalid parent id %u", parentSurfaceId);
+      surface->isPopup= false;
+      surface->popupParentSurfaceId= 0;
+   }
+   else
+   {
+      WARNING("westeros-compositor: simpleShellGetPopup invalid surface id %u", surfaceId);
+   }
+   pthread_mutex_unlock( &ctx->mutex );
+
+   if ( surface && parentSurface )
+   {
+      simpleShellSetGeometry( userData, surfaceId, x, y, width, height );
+      simpleShellSetFocus( userData, surfaceId );
+   }
+}
+
+static void simpleShellIsSurfacePopup( void* userData, uint32_t surfaceId, bool *popup, uint32_t *parentSurfaceId )
+{
+   WstContext *ctx= (WstContext*)userData;
+   WstSurface *surface= wstGetSurfaceFromSurfaceId(ctx, surfaceId);
+   INFO("westeros-compositor: simpleShellIsSurfacePopup called for surfaceId=%u surface=%p\n",
+                   surfaceId, (void*)surface);
+
+   if ( surface && surface->isPopup )
+   {
+      *popup= true;
+      *parentSurfaceId= surface->popupParentSurfaceId;
+       INFO("westeros-compositor: surface IS popup, parent=%u\n", surface->popupParentSurfaceId);
+   }
+   else
+   {
+      *popup= false;
+      *parentSurfaceId= 0;
+       WARNING("westeros-compositor: surface is NOT popup\n");
+   }
+}
+
 
 static void simpleShellGetName( void* userData, uint32_t surfaceId, const char **name )
 {
@@ -3816,7 +3911,10 @@ struct wayland_simple_shell_callbacks simpleShellCallbacks= {
    simpleShellSetZOrder,
    simpleShellGetName,
    simpleShellGetStatus,
-   simpleShellSetFocus
+   simpleShellSetFocus,
+   simpleShellSetScale,
+   simpleShellGetPopup,
+   simpleShellIsSurfacePopup
 };
 
 static void* wstCompositorThread( void *arg )
@@ -5654,6 +5752,19 @@ static WstSurface* wstSurfaceCreate( WstCompositor *wctx)
       surface->refCount= 1;
       pthread_mutex_init( &surface->renderMutex, 0 );
       
+      float zorder = 0.5f;
+      if ( !ctx->surfaceMap.empty() )
+      {
+         for( std::map<int32_t, WstSurface*>::iterator it= ctx->surfaceMap.begin(); it != ctx->surfaceMap.end(); ++it )
+         {
+            if (it->second->zorder > zorder)
+            {
+               zorder = it->second->zorder;
+            }
+         }
+         zorder += 0.5f;
+      }
+
       surface->surfaceId= ctx->nextSurfaceId++;
       ctx->surfaceMap.insert( std::pair<int32_t,WstSurface*>( surface->surfaceId, surface ) );
 
@@ -5664,7 +5775,9 @@ static WstSurface* wstSurfaceCreate( WstCompositor *wctx)
 
       surface->visible= true;
       surface->opacity= 1.0;
-      surface->zorder= 0.5;
+      surface->zorder= zorder;
+      surface->isPopup= false;
+      surface->popupParentSurfaceId= 0;
       if ( ctx->isRepeater )
       {
          surface->surfaceNested= WstNestedConnectionCreateSurface( ctx->nc );
@@ -5687,7 +5800,7 @@ static WstSurface* wstSurfaceCreate( WstCompositor *wctx)
 
          if ( surface )
          {
-            WstRendererSurfaceGetZOrder( ctx->renderer, surface->surface, &surface->zorder );
+            WstRendererSurfaceSetZOrder( ctx->renderer, surface->surface, surface->zorder );
          }
       }
 
@@ -5712,6 +5825,10 @@ static void wstSurfaceDestroy( WstSurface *surface )
    WstCompositor *wctx= surface->compositor;
    WstContext *ctx= wctx->ctx;
    WstSurfaceFrameCallback *fcb;
+   bool hadKeyboardPopup= false;
+   bool hadPointerPopup= false;
+   bool hadTouchPopup= false;
+   WstSurface *parentSurface= 0;
    
    DEBUG("wstSurfaceDestroy: surface %p refCount %d", surface, surface->refCount );
    
@@ -5761,11 +5878,25 @@ static void wstSurfaceDestroy( WstSurface *surface )
       #endif
    }
 
+   if (surface->isPopup)
+   {
+      for (std::vector<WstSurface *>::iterator it = ctx->surfaces.begin(); it != ctx->surfaces.end(); ++it)
+      {
+         WstSurface *other= (*it);
+         if ( other->surfaceId == surface->popupParentSurfaceId )
+         {
+            parentSurface= other;
+            break;
+         }
+      }      
+   }
+
    // Remove from keyboard focus
    if ( wctx->keyboard &&
         (wctx->keyboard->focus == surface) )
    {
       wctx->keyboard->focus= 0;
+      hadKeyboardPopup= surface->isPopup;
    }
 
    // Remove from pointer focus
@@ -5773,6 +5904,7 @@ static void wstSurfaceDestroy( WstSurface *surface )
         (wctx->pointer->focus == surface) )
    {
       wctx->pointer->focus= 0;
+      hadPointerPopup= surface->isPopup;
       if ( !ctx->dcDefaultCursor )
       {
          wstPointerSetPointer( wctx->pointer, 0 );
@@ -5784,6 +5916,7 @@ static void wstSurfaceDestroy( WstSurface *surface )
         (wctx->touch->focus == surface) )
    {
       wctx->touch->focus= 0;
+      hadTouchPopup= surface->isPopup;
    }
    
    // Remove as pointer surface
@@ -5888,10 +6021,26 @@ static void wstSurfaceDestroy( WstSurface *surface )
    pthread_mutex_destroy( &surface->renderMutex );
    free(surface);
 
+   //mrolli - added new focus checks for keyboard/touch.
+   //since this is new code, added a guard so that it only happens when the surface was a popup
+   //can remove guard once embedded composer path is fully tested
+   if ( wctx->keyboard && hadKeyboardPopup && parentSurface )
+   {
+      pthread_mutex_unlock( &ctx->mutex );
+      wstKeyboardCheckFocus( wctx->keyboard, parentSurface );
+      pthread_mutex_lock( &ctx->mutex );
+   }
    if ( wctx->pointer )
    {
       pthread_mutex_unlock( &ctx->mutex );
       wstPointerCheckFocus( wctx->pointer, wctx->pointer->pointerX, wctx->pointer->pointerY );
+      pthread_mutex_lock( &ctx->mutex );
+   }
+   if ( wctx->touch && hadTouchPopup )
+   {
+      pthread_mutex_unlock( &ctx->mutex );
+      //unclear if pointer x,y is the correct touch x,y
+      wstTouchCheckFocus( wctx->touch, wctx->pointer->pointerX, wctx->pointer->pointerY );
       pthread_mutex_lock( &ctx->mutex );
    }
    
@@ -5975,6 +6124,33 @@ static WstSurface* wstGetSurfaceFromPoint( WstCompositor *wctx, int x, int y )
    bool haveRoles= false;
    WstSurface *surfaceNoRole= 0;
    WstContext *ctx= wctx->ctx;
+
+   /* Modal popup behavior: if any visible popup exists for this compositor,
+   *     do not allow pointer focus to fall through to surfaces behind it.
+   *
+   * - If the pointer is inside the top-most visible popup, route events to the popup.
+   * - If the pointer is outside the popup, route events to no surface (drop clicks).
+   *
+   * This gives pointer enter/leave behavior similar to the main surface while still
+   * preventing click-through when a modal popup is present.
+   */
+   for ( std::vector<WstSurface*>::reverse_iterator it= ctx->surfaces.rbegin();
+         it != ctx->surfaces.rend();
+         ++it )
+   {
+      WstSurface *popup= (*it);
+      if ( popup->compositor != wctx ) continue;
+      if ( popup->isPopup && popup->visible )
+      {
+	      WstRendererSurfaceGetGeometry( ctx->renderer, popup->surface, &sx, &sy, &sw, &sh );
+         if ( (x >= sx) && (x < sx+sw) && (y >= sy) && (y < sy+sh) )
+         {
+            DEBUG("wstGetSurfaceFromPoint return popup %d\n", popup->surfaceId);
+            return popup;
+         }
+         return 0;
+      }
+   }
 
    // Identify top-most surface containing the pointer position
    for ( std::vector<WstSurface*>::reverse_iterator it= ctx->surfaces.rbegin();
@@ -6139,7 +6315,11 @@ static void wstISurfaceDestroy(struct wl_client *client, struct wl_resource *res
    if ( it != ctx->clientInfoMap.end() )
    {
       WstClientInfo *clientInfo= it->second;
-      clientInfo->surface= 0;
+      if (clientInfo->surface == surface)
+      {
+         INFO("wstISurfaceDestroy clearing surface\n");
+         clientInfo->surface= 0;
+      }
    }
 }
 
@@ -10636,3 +10816,4 @@ bool WstCompositorResetFirstFrame( WstCompositor *wctx )
    wctx->clientFirstFrame = false;
    return true;
 }
+

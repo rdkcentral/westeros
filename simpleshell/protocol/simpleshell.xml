@@ -103,6 +103,14 @@
       </description>
     </event>
     
+    <event name="popup_details">
+      <description summary="sent for the response of is_surface_popup">
+      </description>
+      <arg name="surfaceId" type="uint"/>
+      <arg name="parentSurfaceId" type="uint" summary="this will be 0 if the popup does not have a parent or the surface is not a popup"/>
+      <arg name="popup" type="int" summary="boolean for whether surface is a popup or not"/>
+    </event>
+
     <!-- Set the name of a surface -->
     <request name="set_name">
       <arg name="surfaceId" type="uint"/>
@@ -160,6 +168,20 @@
       <arg name="surfaceId" type="uint"/>
       <arg name="scaleX" type="fixed"/>
       <arg name="scaleY" type="fixed"/>
+    </request>
+
+    <request name="get_popup">
+      <description summary="creates a popup surface that is anchored to the specified parent"/>
+      <arg name="surfaceId" type="uint"/>
+      <arg name="parentSurfaceId" type="uint"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </request>
+
+    <request name="is_surface_popup">
+      <arg name="surfaceId" type="uint"/>
     </request>
 
   </interface>
