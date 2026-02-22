@@ -32,13 +32,18 @@ BUILT_SOURCES = \
     protocol/simplebuffer-client-protocol.h \
     protocol/simplebuffer-protocol.c
 
-protocol/simplebuffer-server-protocol.h: protocol/simplebuffer.xml
+# Note: XML file is simple-buffer.xml but outputs are simplebuffer-*
+
+protocol/simplebuffer-server-protocol.h: protocol/simple-buffer.xml
+	$(MKDIR_P) protocol
 	wayland-scanner server-header < $< > $@
 
-protocol/simplebuffer-client-protocol.h: protocol/simplebuffer.xml
+protocol/simplebuffer-client-protocol.h: protocol/simple-buffer.xml
+	$(MKDIR_P) protocol
 	wayland-scanner client-header < $< > $@
 
-protocol/simplebuffer-protocol.c: protocol/simplebuffer.xml
+protocol/simplebuffer-protocol.c: protocol/simple-buffer.xml
+	$(MKDIR_P) protocol
 	wayland-scanner code < $< > $@
 
 lib_LTLIBRARIES = libwesteros_simplebuffer_server.la libwesteros_simplebuffer_client.la

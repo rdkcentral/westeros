@@ -165,16 +165,21 @@ BUILT_SOURCES += \
     simpleshell/protocol/simpleshell-protocol.c
 
 simpleshell/protocol/simpleshell-server-protocol.h: simpleshell/protocol/simpleshell.xml
+	$(MKDIR_P) simpleshell/protocol
 	wayland-scanner server-header < $< > $@
 
 simpleshell/protocol/simpleshell-client-protocol.h: simpleshell/protocol/simpleshell.xml
+	$(MKDIR_P) simpleshell/protocol
 	wayland-scanner client-header < $< > $@
 
 simpleshell/protocol/simpleshell-protocol.c: simpleshell/protocol/simpleshell.xml
+	$(MKDIR_P) simpleshell/protocol
 	wayland-scanner code < $< > $@
 
 libwesteros_simpleshell_server_la_SOURCES = simpleshell/westeros-simpleshell.cpp simpleshell/protocol/simpleshell-protocol.c
 libwesteros_simpleshell_server_la_CXXFLAGS = $(AM_CXXFLAGS) \
+   -I$(srcdir) \
+   -I$(top_builddir) \
    -I$(srcdir)/simpleshell/protocol
 libwesteros_simpleshell_server_la_LDFLAGS = \
    $(AM_LDFLAGS) \
@@ -195,16 +200,21 @@ BUILT_SOURCES += \
     simplebuffer/protocol/simplebuffer-protocol.c
 
 simplebuffer/protocol/simplebuffer-server-protocol.h: simplebuffer/protocol/simple-buffer.xml
+	$(MKDIR_P) simplebuffer/protocol
 	wayland-scanner server-header < $< > $@
 
 simplebuffer/protocol/simplebuffer-client-protocol.h: simplebuffer/protocol/simple-buffer.xml
+	$(MKDIR_P) simplebuffer/protocol
 	wayland-scanner client-header < $< > $@
 
 simplebuffer/protocol/simplebuffer-protocol.c: simplebuffer/protocol/simple-buffer.xml
+	$(MKDIR_P) simplebuffer/protocol
 	wayland-scanner code < $< > $@
 
 libwesteros_simplebuffer_server_la_SOURCES = simplebuffer/westeros-simplebuffer.cpp simplebuffer/protocol/simplebuffer-protocol.c
 libwesteros_simplebuffer_server_la_CXXFLAGS = $(AM_CXXFLAGS) \
+   -I$(srcdir) \
+   -I$(top_builddir) \
    -I$(srcdir)/simplebuffer/protocol
 libwesteros_simplebuffer_server_la_LDFLAGS = \
    $(AM_LDFLAGS) \

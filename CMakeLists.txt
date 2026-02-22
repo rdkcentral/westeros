@@ -95,6 +95,14 @@ else()
     message(STATUS "✗ Wayland not found - using mock implementations")
 endif()
 
+# Wayland Scanner for protocol generation
+find_program(WAYLAND_SCANNER wayland-scanner)
+if(WAYLAND_SCANNER)
+    message(STATUS "✓ wayland-scanner found: ${WAYLAND_SCANNER}")
+else()
+    message(WARNING "✗ wayland-scanner not found - protocol headers must be pre-generated")
+endif()
+
 # EGL/GLES support
 pkg_check_modules(EGL egl)
 pkg_check_modules(GLES glesv2)

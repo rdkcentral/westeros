@@ -50,8 +50,10 @@
     </description>
 
     <enum name="error">
+      <entry name="authenticate_fail" value="0"/>
       <entry name="invalid_format" value="1"/>
-      <entry name="invalid_native_handle" value="2"/>
+      <entry name="invalid_name" value="2"/>
+      <entry name="invalid_native_handle" value="3"/>
     </enum>
 
     <enum name="format">
