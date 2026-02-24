@@ -26,6 +26,24 @@ AM_CXXFLAGS += $(WAYLAND_CLIENT_CFLAGS) $(WAYLAND_SERVER_CFLAGS)
 AM_LDFLAGS=$(WAYLANDLIB)
 AM_CFLAGS = $(AM_CXXFLAGS)
 
+# Generate protocol files before building
+BUILT_SOURCES = \
+    protocol/simpleshell-server-protocol.h \
+    protocol/simpleshell-client-protocol.h \
+    protocol/simpleshell-protocol.c
+
+protocol/simpleshell-server-protocol.h: protocol/simpleshell.xml
+	$(MKDIR_P) protocol
+	wayland-scanner server-header < $< > $@
+
+protocol/simpleshell-client-protocol.h: protocol/simpleshell.xml
+	$(MKDIR_P) protocol
+	wayland-scanner client-header < $< > $@
+
+protocol/simpleshell-protocol.c: protocol/simpleshell.xml
+	$(MKDIR_P) protocol
+	wayland-scanner code < $< > $@
+
 lib_LTLIBRARIES = libwesteros_simpleshell_server.la libwesteros_simpleshell_client.la
 
 libwesteros_simpleshell_server_la_SOURCES = westeros-simpleshell.cpp ${srcdir}/protocol/simpleshell-protocol.c
