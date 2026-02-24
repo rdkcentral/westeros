@@ -20,30 +20,7 @@
 #ifndef _WESTEROS_LINUX_EXPSYNC_H
 #define _WESTEROS_LINUX_EXPSYNC_H
 
-/*
- * UNIT TESTING SUPPORT:
- * The STATIC_TEST macro is used to conditionally make internal functions and
- * interfaces testable. When UNIT_TEST is defined (during test builds), it
- * expands to nothing for functions (giving them external linkage by default).
- * In production builds, it expands to 'static', keeping them file-local for encapsulation.
- * 
- * For const objects (like interface structures), we use STATIC_TEST_CONST which
- * expands to 'extern const' when UNIT_TEST is defined, because const objects have
- * internal linkage by default in C++.
- */
-#ifdef UNIT_TEST
-#define STATIC_TEST
-#define STATIC_TEST_CONST extern const
-#else
-#define STATIC_TEST static
-#define STATIC_TEST_CONST static const
-#endif
-
-#ifndef _WIN32
 #include <unistd.h>
-#else
-#include <io.h>
-#endif
 
 struct wl_lexpsync;
 
@@ -61,40 +38,23 @@ typedef struct _WstExplicitSync
 
 inline void WstLExpSyncClear(WstExplicitSync *sync)
 {
-  if ( !sync )
-  {
-     return;
-  }
   sync->bufferRelease= 0;
   sync->acquireFenceFd= -1;
 }
 
 inline void WstLExpSyncMove(WstExplicitSync *target, WstExplicitSync *source)
 {
-  if ( !target || !source )
-  {
-     return;
-  }
   *target= *source;
   WstLExpSyncClear(source);
 }
 
 inline void WstLExpSyncCopy(WstExplicitSync *target, WstExplicitSync *source)
 {
-  if ( !target || !source )
-  {
-     return;
-  }
   *target= *source;
 }
 
 inline void WstLExpSyncFdUpdate(int *fd, int newFd)
 {
-   if ( !fd )
-   {
-      return;
-   }
-   
    if ( *fd == newFd )
    {
       return;
@@ -110,10 +70,6 @@ inline void WstLExpSyncFdUpdate(int *fd, int newFd)
 
 inline void WstLExpSyncFdMove(int *dest, int *src)
 {
-   if (!dest || !src)
-   {
-      return;
-   }
    if (dest == src)
    {
       return;
@@ -124,15 +80,11 @@ inline void WstLExpSyncFdMove(int *dest, int *src)
 
 inline void WstLExpSyncFdClear(int *fd)
 {
-   if ( !fd )
-   {
-      return;
-   }
    WstLExpSyncFdUpdate(fd, -1);
 }
 
 
-struct wl_lexpsync* WstLExpSyncInit( struct wl_display *display, void *userData );
+wl_lexpsync* WstLExpSyncInit( struct wl_display *display, void *userData );
 void WstLExpSyncUninit( struct wl_lexpsync *lexpsync );
 void WstLExpSyncFireRelease( WstExplicitSync *bufferSync );
 

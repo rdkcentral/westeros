@@ -1288,7 +1288,6 @@ static void wstRendererGLCommitSB( WstRendererGL *rendererGL, WstRenderSurface *
       }
    }
    #else
-   #if defined (WESTEROS_PLATFORM_EMBEDDED)
    EGLNativePixmapType eglPixmap= 0;
    EGLImageKHR eglImage= 0;
    bool resize= false;
@@ -1363,7 +1362,6 @@ static void wstRendererGLCommitSB( WstRendererGL *rendererGL, WstRenderSurface *
       }
       #endif
    }
-   #endif
    #endif
    #if WESTEROS_INVERTED_Y
    surface->invertedY= true;
