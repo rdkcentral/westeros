@@ -43,19 +43,15 @@ struct wayland_simple_shell_callbacks {
    void (*is_surface_popup)( void *userData, uint32_t surfaceId, bool *popup, uint32_t *parentSurfaceId );
 };
 
-struct wl_simple_shell* WstSimpleShellInit( struct wl_display *display,
+wl_simple_shell* WstSimpleShellInit( struct wl_display *display,
                                      wayland_simple_shell_callbacks *callbacks,
                                      void *userData ); 
-void WstSimpleShellUninit( struct wl_simple_shell *shell );
+void WstSimpleShellUninit( wl_simple_shell *shell );
 
-void WstSimpleShellNotifySurfaceCreated( struct wl_simple_shell *shell, struct wl_client *client, 
+void WstSimpleShellNotifySurfaceCreated( wl_simple_shell *shell, struct wl_client *client, 
                                          struct wl_resource *surface_resource, uint32_t surfaceId );
 
-void WstSimpleShellNotifySurfaceDestroyed( struct wl_simple_shell *shell, struct wl_client *client, uint32_t surfaceId );
-
-void WstSimpleShellNotifySurfaceStatus( struct wl_simple_shell *shell, uint32_t surfaceId, const char *name,
-                                        bool visible, int32_t x, int32_t y, int32_t width, int32_t height,
-                                        float opacity, float zorder );
+void WstSimpleShellNotifySurfaceDestroyed( wl_simple_shell *shell, struct wl_client *client, uint32_t surfaceId );
 
 #endif
 

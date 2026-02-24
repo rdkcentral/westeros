@@ -20,43 +20,23 @@
 SUBDIRS = 
 AM_CXXFLAGS= \
 	-I$(top_srcdir)/include \
-	-I$(top_srcdir) \
-	-I$(top_builddir) \
 	-I${srcdir}/protocol \
    -I${PKG_CONFIG_SYSROOT_DIR}/$(includedir)/wayland 
 AM_CXXFLAGS += $(WAYLAND_CLIENT_CFLAGS) $(WAYLAND_SERVER_CFLAGS)   
 AM_LDFLAGS=$(WAYLANDLIB)
 AM_CFLAGS = $(AM_CXXFLAGS)
 
-# Generate protocol files before building
-BUILT_SOURCES = \
-    simpleshell/protocol/simpleshell-server-protocol.h \
-    simpleshell/protocol/simpleshell-client-protocol.h \
-    simpleshell/protocol/simpleshell-protocol.c
-
-simpleshell/protocol/simpleshell-server-protocol.h: protocol/simpleshell.xml
-	$(MKDIR_P) simpleshell/protocol
-	wayland-scanner server-header < $< > $@
-
-simpleshell/protocol/simpleshell-client-protocol.h: protocol/simpleshell.xml
-	$(MKDIR_P) simpleshell/protocol
-	wayland-scanner client-header < $< > $@
-
-simpleshell/protocol/simpleshell-protocol.c: protocol/simpleshell.xml
-	$(MKDIR_P) simpleshell/protocol
-	wayland-scanner code < $< > $@
-
 lib_LTLIBRARIES = libwesteros_simpleshell_server.la libwesteros_simpleshell_client.la
 
-libwesteros_simpleshell_server_la_SOURCES = westeros-simpleshell.cpp simpleshell/protocol/simpleshell-protocol.c
-libwesteros_simpleshell_server_la_include_HEADERS = westeros-simpleshell.h simpleshell/protocol/simpleshell-client-protocol.h
+libwesteros_simpleshell_server_la_SOURCES = westeros-simpleshell.cpp ${srcdir}/protocol/simpleshell-protocol.c
+libwesteros_simpleshell_server_la_include_HEADERS = westeros-simpleshell.h ${srcdir}/protocol/simpleshell-client-protocol.h
 libwesteros_simpleshell_server_la_includedir = $(includedir)
 
 libwesteros_simpleshell_server_la_LDFLAGS= \
    $(AM_LDFLAGS) \
    $(WAYLAND_SERVER_LIBS)
 
-libwesteros_simpleshell_client_la_SOURCES = simpleshell/protocol/simpleshell-protocol.c
+libwesteros_simpleshell_client_la_SOURCES = ${srcdir}/protocol/simpleshell-protocol.c
 libwesteros_simpleshell_client_la_LDFLAGS= \
    $(AM_LDFLAGS) \
    $(WAYLAND_CLIENT_LIBS)

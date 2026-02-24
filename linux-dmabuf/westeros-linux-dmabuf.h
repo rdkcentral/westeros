@@ -61,7 +61,7 @@ struct wayland_ldb_callbacks {
    void (*bind)(void *user_data, struct wl_client *client, struct wl_resource *resource);
 };
 
-struct wl_ldb* WstLDBInit( struct wl_display *display, struct wayland_ldb_callbacks *callbacks, void *userData );
+wl_ldb* WstLDBInit( struct wl_display *display, struct wayland_ldb_callbacks *callbacks, void *userData );
 void WstLDBUninit( struct wl_ldb *ldb );
 void WstLDBSetRenderer( struct wl_ldb *ldb, WstRenderer *renderer );
 struct wl_ldb_buffer *WstLDBBufferGet( struct wl_resource *resource );
