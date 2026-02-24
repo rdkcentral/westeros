@@ -17,64 +17,50 @@
 # limitations under the License.
 #
 
-SUBDIRS = 
-AM_CXXFLAGS= \
-	-I$(top_srcdir)/include \
-	-I${srcdir}/protocol \
-   -I${PKG_CONFIG_SYSROOT_DIR}/$(includedir)/wayland 
-AM_CXXFLAGS += $(WAYLAND_CLIENT_CFLAGS) $(WAYLAND_SERVER_CFLAGS)   
-AM_LDFLAGS=$(WAYLANDLIB)
-AM_CFLAGS = $(AM_CXXFLAGS)
+#                                               -*- Autoconf -*-
+# Process this file with autoconf to produce a configure script.
 
-# Generate protocol files before building
-BUILT_SOURCES = \
-    protocol/simpleshell-server-protocol.h \
-    protocol/simpleshell-client-protocol.h \
-    protocol/simpleshell-protocol.c
+dnl AC_PREREQ([2.65])
+AC_INIT(westeros-simpleshell, version-1.0, jeff_wannamaker@cable.comcast.com,westeros-simpleshell)
+AC_CONFIG_SRCDIR([])
+AC_CONFIG_HEADERS([cfg/config.h])
+AC_CONFIG_MACRO_DIR([m4])
+AC_CONFIG_AUX_DIR([cfg])
+AM_INIT_AUTOMAKE([foreign no-dist-gzip dist-bzip2 1.9])
+LT_INIT
 
-protocol/simpleshell-server-protocol.h: protocol/simpleshell.xml
-	$(MKDIR_P) protocol
-	wayland-scanner server-header < $< > $@
+# Checks for programs.
+AC_PROG_CC
+AC_PROG_INSTALL
+AC_PROG_MAKE_SET
+AC_PROG_CXX
 
-protocol/simpleshell-client-protocol.h: protocol/simpleshell.xml
-	$(MKDIR_P) protocol
-	wayland-scanner client-header < $< > $@
+# Checks for header files.
+AC_CHECK_HEADERS([stdlib.h string.h unistd.h])
 
-protocol/simpleshell-protocol.c: protocol/simpleshell.xml
-	$(MKDIR_P) protocol
-	wayland-scanner code < $< > $@
+# Checks for typedefs, structures, and compiler characteristics.
+AC_TYPE_SIZE_T
+AC_HEADER_STDBOOL
 
-lib_LTLIBRARIES = libwesteros_simpleshell_server.la libwesteros_simpleshell_client.la
+IARM_CFLAGS=" "
 
-libwesteros_simpleshell_server_la_SOURCES = westeros-simpleshell.cpp ${srcdir}/protocol/simpleshell-protocol.c
-libwesteros_simpleshell_server_la_include_HEADERS = westeros-simpleshell.h ${srcdir}/protocol/simpleshell-client-protocol.h
-libwesteros_simpleshell_server_la_includedir = $(includedir)
+# Checks for library functions.
+#Add the subdirectories to be considered for building.
+SUBDIRS=" "
+#to setup m4 macros
+m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])],
+[AM_DEFAULT_VERBOSITY=1
+AC_SUBST(AM_DEFAULT_VERBOSITY)])
 
-libwesteros_simpleshell_server_la_LDFLAGS= \
-   $(AM_LDFLAGS) \
-   $(WAYLAND_SERVER_LIBS)
+PKG_CHECK_MODULES([GLIB],[glib-2.0 >= 2.22.5])
+PKG_CHECK_MODULES([GTHREAD],[gthread-2.0 >= 2.38.2])
+PKG_CHECK_MODULES([WAYLAND_CLIENT],[wayland-client >= 1.6.0])
+PKG_CHECK_MODULES([WAYLAND_SERVER],[wayland-server >= 1.6.0])
 
-libwesteros_simpleshell_client_la_SOURCES = ${srcdir}/protocol/simpleshell-protocol.c
-libwesteros_simpleshell_client_la_LDFLAGS= \
-   $(AM_LDFLAGS) \
-   $(WAYLAND_CLIENT_LIBS)
-   
-distcleancheck_listfiles = *-libtool
+WAYLANDLIB="-lwayland-client"
+AC_SUBST(WAYLANDLIB)
 
-## IPK Generation Support
-IPK_GEN_PATH = $(abs_top_builddir)/ipk
-IPK_GEN_STAGING_DIR=$(abs_top_builddir)/staging_dir
-IPK_GEN_INPUT  = debian-binary control.tar.gz data.tar.gz
-IPK_GEN_OUTPUT = westeros-simpleshell.ipk
-
-package_ipk:
-	@echo "Generating IPK Package"
-	$(MAKE) prefix=${abs_top_builddir}/staging_dir install
-	$(mkdir_p) $(IPK_GEN_STAGING_DIR)/usr/bin/
-	cp -af $(IPK_GEN_STAGING_DIR)/bin/* $(IPK_GEN_STAGING_DIR)/usr/bin/
-	tar -czvf $(IPK_GEN_PATH)/data.tar.gz -C $(IPK_GEN_STAGING_DIR) usr
-	tar -czvf $(IPK_GEN_PATH)/control.tar.gz -C $(IPK_GEN_PATH) control postinst prerm
-	cd $(IPK_GEN_PATH) && ar cr $(IPK_GEN_OUTPUT) $(IPK_GEN_INPUT) && cd -
-	rm -rf ${abs_top_builddir}/staging_dir
-	rm -rf $(abs_top_builddir)/ipk/control.tar.gz
-	rm -rf $(abs_top_builddir)/ipk/data.tar.gz
+AC_CONFIG_FILES([Makefile])
+AC_SUBST(WAYLAND_CFLAGS)
+AC_SUBST(GUPNP_VERSION)
+AC_OUTPUT
