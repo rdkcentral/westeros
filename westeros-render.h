@@ -103,7 +103,6 @@ typedef struct _WstRenderer
    int outputHeight;
    void *nativeWindow;
    struct wl_display *display;
-   void *module;
    void *renderer;
    
    WSTMethodRenderTerm renderTerm;
@@ -142,7 +141,6 @@ typedef struct _WstRenderer
    int hints;
    bool needHolePunch;
    std::vector<WstRect> rects;
-   std::vector<WstRect> rectsForUpdate; 
 } WstRenderer;
 
 WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, 

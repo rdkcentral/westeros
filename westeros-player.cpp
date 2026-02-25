@@ -716,26 +716,32 @@ int main( int argc, char **argv )
 
             while( g_ctx )
             {
-               if ( remove( "/tmp/wp-pause" ) == 0 )
+               struct stat finfo;
+               if ( stat( "/tmp/wp-pause", &finfo ) == 0 )
                {
+                  remove( "/tmp/wp-pause" );
                   gst_element_set_state(ctx->pipeline, GST_STATE_PAUSED);
                }
-               else if ( remove( "/tmp/wp-play" ) == 0 )
+               else if ( stat( "/tmp/wp-play", &finfo ) == 0 )
                {
+                  remove( "/tmp/wp-play" );
                   gst_element_set_state(ctx->pipeline, GST_STATE_PLAYING);
                }
-               else if ( remove( "/tmp/wp-show" ) == 0 )
+               else if ( stat( "/tmp/wp-show", &finfo ) == 0 )
                {
+                  remove( "/tmp/wp-show" );
                   g_object_set(G_OBJECT(ctx->westerossink), "show-video-window", TRUE, NULL );
                }
-               else if ( remove( "/tmp/wp-hide" ) == 0 )
+               else if ( stat( "/tmp/wp-hide", &finfo ) == 0 )
                {
+                  remove( "/tmp/wp-hide" );
                   g_object_set(G_OBJECT(ctx->westerossink), "show-video-window", FALSE, NULL );
                }
-               else if ( remove( "/tmp/wp-zoom" ) == 0 )
+               else if ( stat( "/tmp/wp-zoom", &finfo ) == 0 )
                {
                   static bool full= true;
                   char work[32];
+                  remove( "/tmp/wp-zoom" );
                   if ( full )
                   {
                      sprintf( work, "%d,%d,%d,%d", 200, 200, 640, 360 );
@@ -747,9 +753,10 @@ int main( int argc, char **argv )
                   full= !full;
                   g_object_set(G_OBJECT(ctx->westerossink), "window-set", work, NULL );
                }
-               else if ( remove( "/tmp/wp-peek" ) == 0 )
+               else if ( stat( "/tmp/wp-peek", &finfo ) == 0 )
                {
                   GstState state, pending;
+                  remove( "/tmp/wp-peek" );
 
                   gst_element_seek( ctx->pipeline,
                                     1.0,
