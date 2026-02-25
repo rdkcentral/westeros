@@ -20,8 +20,6 @@
 SUBDIRS = 
 AM_CXXFLAGS= \
 	-I$(top_srcdir)/include \
-	-I$(top_srcdir) \
-	-I$(top_builddir) \
 	-I${srcdir}/protocol \
    -I${PKG_CONFIG_SYSROOT_DIR}/$(includedir)/wayland 
 AM_CXXFLAGS += $(WAYLAND_CLIENT_CFLAGS) $(WAYLAND_SERVER_CFLAGS)   
@@ -30,15 +28,15 @@ AM_CFLAGS = $(AM_CXXFLAGS)
 
 ib_LTLIBRARIES = libwesteros_simplebuffer_server.la libwesteros_simplebuffer_client.la
 
-libwesteros_simplebuffer_server_la_SOURCES = westeros-simplebuffer.cpp simplebuffer/protocol/simplebuffer-protocol.c
-libwesteros_simplebuffer_server_la_include_HEADERS = westeros-simplebuffer.h simplebuffer/protocol/simplebuffer-client-protocol.h
+libwesteros_simplebuffer_server_la_SOURCES = westeros-simplebuffer.cpp ${srcdir}/protocol/simplebuffer-protocol.c
+libwesteros_simplebuffer_server_la_include_HEADERS = westeros-simplebuffer.h ${srcdir}/protocol/simplebuffer-client-protocol.h
 libwesteros_simplebuffer_server_la_includedir = $(includedir)
 
 libwesteros_simplebuffer_server_la_LDFLAGS= \
    $(AM_LDFLAGS) \
    $(WAYLAND_SERVER_LIBS)
 
-libwesteros_simplebuffer_client_la_SOURCES = simplebuffer/protocol/simplebuffer-protocol.c
+libwesteros_simplebuffer_client_la_SOURCES = ${srcdir}/protocol/simplebuffer-protocol.c
 libwesteros_simplebuffer_client_la_LDFLAGS= \
    $(AM_LDFLAGS) \
    $(WAYLAND_CLIENT_LIBS)
