@@ -663,11 +663,6 @@ WstNestedConnection* WstNestedConnectionCreate( WstCompositor *wctx,
    bool error= false;
    int rc;
    
-   if ( !wctx )
-   {
-      return 0;
-   }
-   
    nc= (WstNestedConnection*)calloc( 1, sizeof(WstNestedConnection) );
    if ( nc )
    {
@@ -1179,11 +1174,6 @@ void WstNestedConnectionAttachAndCommitClone( WstNestedConnection *nc,
 
 void WstNestedConnectionReleaseRemoteBuffers( WstNestedConnection *nc )
 {
-   if ( nc == NULL )
-   {
-      return;
-   }
-   
    pthread_mutex_lock( &nc->buffersToReleaseMutex );
    while( nc->buffersToRelease.size() )
    {
@@ -1213,6 +1203,7 @@ void WstNestedConnectionPointerSetCursor( WstNestedConnection *nc,
 
 struct wl_shm_pool* WstNestedConnnectionShmCreatePool( WstNestedConnection *nc, int fd, int size )
 {
+   WST_UNUSED(nc);
    struct wl_shm_pool *pool= 0;
    
    if ( nc && nc->shm )
@@ -1220,31 +1211,28 @@ struct wl_shm_pool* WstNestedConnnectionShmCreatePool( WstNestedConnection *nc, 
       pool= wl_shm_create_pool( nc->shm, fd, size );
       wl_display_flush( nc->display );      
    }
+   
    return pool;
 }
 
 void WstNestedConnectionShmDestroyPool( WstNestedConnection *nc, struct wl_shm_pool *pool )
 {
    WST_UNUSED(nc);
-   if ( !nc || !pool )
+   if ( pool )
    {
-      return;
+      wl_shm_pool_destroy( pool );
+      wl_display_flush( nc->display );      
    }
-   
-   wl_shm_pool_destroy( pool );
-   wl_display_flush( nc->display );
 }
 
 void WstNestedConnectionShmPoolResize( WstNestedConnection *nc, struct wl_shm_pool *pool, int size )
 {
    WST_UNUSED(nc);
-   if ( !nc || !pool )
+   if ( pool )
    {
-      return;
+      wl_shm_pool_resize( pool, size );
+      wl_display_flush( nc->display );      
    }
-   
-   wl_shm_pool_resize( pool, size );
-   wl_display_flush( nc->display );
 }
 
 struct wl_buffer* WstNestedConnectionShmPoolCreateBuffer( WstNestedConnection *nc,
