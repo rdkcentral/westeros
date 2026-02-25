@@ -222,7 +222,7 @@ static char message[1024];
 static bool emitFPS= false;
 
 
-#define MAX_TEXTURES (4)
+#define MAX_TEXTURES (2)
 
 struct _WstRenderSurface
 {
@@ -327,7 +327,6 @@ typedef struct _WstRendererEMB
    float baseZOrder;
    bool fastPathActive;   
    WstRenderer *rendererFast;
-   void *moduleFast;
 
 } WstRendererEMB;
 
@@ -651,11 +650,6 @@ static void wstRendererEMBDestroy( WstRendererEMB *renderer )
          renderer->rendererFast->renderTerm( renderer->rendererFast );
          free( renderer->rendererFast );
          renderer->rendererFast= 0;
-      }
-      if ( renderer->moduleFast )
-      {
-         dlclose( renderer->moduleFast );
-         renderer->moduleFast= 0;
       }
       free( renderer );
    }
@@ -2129,7 +2123,7 @@ static void wstRendererUpdateScene( WstRenderer *renderer )
       rendererEMB->fastPathActive= false;
    }
 
-   if ( rendererEMB->fastPathActive && rendererEMB->rendererFast )
+   if ( rendererEMB->fastPathActive )
    {
       rendererEMB->rendererFast->outputX= renderer->outputX;
       rendererEMB->rendererFast->outputY= renderer->outputY;
@@ -2174,7 +2168,7 @@ static void wstRendererUpdateScene( WstRenderer *renderer )
          renderer->needHolePunch= true;
       }
 
-      rendererEMB->rendererFast->delegateUpdateScene( rendererEMB->rendererFast, renderer->rectsForUpdate );
+      rendererEMB->rendererFast->delegateUpdateScene( rendererEMB->rendererFast, renderer->rects );
 
       return;
    }
@@ -2247,19 +2241,16 @@ static void wstRendererUpdateScene( WstRenderer *renderer )
       int renderFenceFd;
       rendererEMB->displaySync= wstCreateRenderSync(rendererEMB);
       renderFenceFd= wstCreateFenceFd(rendererEMB, rendererEMB->displaySync);
-      if ( renderFenceFd >= 0 )
+      for( int i= 0; i < imax; ++i )
       {
-         for( int i= 0; i < imax; ++i )
+         WstRenderSurface *surface= rendererEMB->surfaces[i];
+         if ( surface->visible && (surface->bufferSync.bufferRelease != NULL) )
          {
-            WstRenderSurface *surface= rendererEMB->surfaces[i];
-            if ( surface->visible && (surface->bufferSync.bufferRelease != NULL) )
-            {
-               assert( surface->bufferSync.bufferRelease->renderFenceFd == -1 );
-               surface->bufferSync.bufferRelease->renderFenceFd= dup(renderFenceFd);
-            }
+            assert( surface->bufferSync.bufferRelease->renderFenceFd == -1 );
+            surface->bufferSync.bufferRelease->renderFenceFd= dup(renderFenceFd);
          }
-         close(renderFenceFd);
       }
+      close(renderFenceFd);
    }
    #endif
 }
@@ -2336,7 +2327,7 @@ static void wstRendererSurfaceCommit( WstRenderer *renderer, WstRenderSurface *s
       rendererEMB->fastPathActive= false;
    }
    
-   if ( rendererEMB->fastPathActive && rendererEMB->rendererFast )
+   if ( rendererEMB->fastPathActive )
    {
       rendererEMB->rendererFast->surfaceCommit( rendererEMB->rendererFast, surface->surfaceFast, resource );
       return;
@@ -2775,7 +2766,6 @@ static void wstRendererInitFastPath( WstRendererEMB *renderer )
       }
       
       renderer->rendererFast= rendererFast;
-      renderer->moduleFast= module;
       
       {
          renderer->baseZOrder= 0.5;
