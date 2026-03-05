@@ -21,6 +21,7 @@
 #include <memory.h>
 #include <unistd.h>
 #include <assert.h>
+#include <inttypes.h>
 
 #include "westeros-linux-expsync.h"
 
