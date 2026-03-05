@@ -72,6 +72,10 @@ if ENABLE_XDG_STABLE
 AM_CXXFLAGS += -DUSE_XDG_STABLE -I$(srcdir)/protocol/stable
 endif
 
+if ENABLE_TELEMETRY_LOGGING
+AM_CXXFLAGS += -DENABLE_TELEMETRY_LOGGING
+endif
+
 AM_CFLAGS = $(AM_CXXFLAGS) -Wno-deprecated-declarations
 
 if ENABLE_WESTEROS_LDBPROTOCOL
@@ -161,6 +165,7 @@ libwesteros_compositor_la_include_HEADERS = \
    westeros-compositor.h \
    westeros-version.h \
    westeros-render.h \
+   westeros-telemetry.h \
    protocol/vpc-client-protocol.h
 libwesteros_compositor_la_DEPENDENCIES =
 libwesteros_compositor_la_includedir = $(includedir)
@@ -176,6 +181,9 @@ libwesteros_compositor_la_LDFLAGS= \
    -lwesteros_simpleshell_server \
    -lpthread \
    -ldl
+if ENABLE_TELEMETRY_LOGGING
+libwesteros_compositor_la_LDFLAGS += -ltelemetry2
+endif
 if ENABLE_WESTEROS_LEXPSYNCPROTOCOL
 libwesteros_compositor_la_SOURCES += linux-expsync/protocol/linux-explicit-synchronization-unstable-v1-protocol.c
 libwesteros_compositor_la_include_HEADERS += linux-expsync/protocol/linux-explicit-synchronization-unstable-v1-server-protocol.h

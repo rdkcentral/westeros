@@ -70,6 +70,7 @@
 #include "vpc-server-protocol.h"
 
 #include "westeros-version.h"
+#include "westeros-telemetry.h"
 
 #if defined ( USE_XDG_STABLE )
 // It's neither defined nor used for 'stable' version
@@ -881,6 +882,16 @@ static pthread_mutex_t g_mutexMasterEmbedded= PTHREAD_MUTEX_INITIALIZER;
 static WstCompositor *g_masterEmbedded= 0;
 static int g_activeLevel= 3;
 
+static void wstTelemetryInit()
+{
+   WstUtils::Telemetry::init();
+}
+
+static void wstTelemetryEvent( const char *marker, const char *value )
+{
+   WstUtils::Telemetry::sendMessage(marker, value);
+}
+
 static void wstLog( int level, const char *fmt, ... )
 {
    if ( level <= g_activeLevel )
@@ -895,6 +906,8 @@ static void wstLog( int level, const char *fmt, ... )
 WstCompositor* WstCompositorCreate()
 {
    WstCompositor *wctx= 0;
+
+   wstTelemetryInit();
 
    const char *env= getenv( "WESTEROS_DEBUG" );
    if ( env )
@@ -2535,6 +2548,9 @@ bool WstCompositorComposeEmbedded( WstCompositor *wctx,
          if ( surface->commitCount > 1 )
          {
             TRACE1("compositor: display %s surface drop %d", ctx->displayName, surface->commitCount-1);
+            char t2Value[256];
+            snprintf(t2Value, sizeof(t2Value), "display=%s,drop=%d", ctx->displayName, surface->commitCount - 1);
+            wstTelemetryEvent("WST_COMP_SURFACE_DROP", t2Value);
          }
          surface->commitCount= 0;
       }
@@ -2602,6 +2618,9 @@ bool WstCompositorComposeEmbedded( WstCompositor *wctx,
                if ( wctx->clientStatusCB )
                {
                   INFO("display %s client pid %d first frame", ctx->displayName, wctx->clientCommitPid );
+                  char t2Value[256];
+                  snprintf(t2Value, sizeof(t2Value), "display=%s,pid=%d", ctx->displayName, wctx->clientCommitPid);
+                  wstTelemetryEvent("WST_COMP_FIRST_FRAME", t2Value);
                   wctx->clientStatusCB( wctx, WstClient_firstFrame, wctx->clientCommitPid, 0, wctx->clientStatusUserData );
                }
             }
@@ -2763,6 +2782,7 @@ bool WstCompositorStart( WstCompositor *wctx )
       {
          sprintf( wctx->lastErrorDetail,
                   "Error.  Failed to start compositor main thread: %d", rc );
+         wstTelemetryEvent("WST_COMP_START_THREAD_FAIL", wctx->lastErrorDetail);
          pthread_mutex_unlock( &ctx->mutex );
          goto exit;      
       }
@@ -2812,6 +2832,7 @@ bool WstCompositorStart( WstCompositor *wctx )
       {
          sprintf( wctx->lastErrorDetail,
                   "Error.  Compositor thread failed to create display" );
+         wstTelemetryEvent("WST_COMP_CREATE_DISPLAY_FAIL", wctx->lastErrorDetail);
          goto exit;      
       }
 
@@ -3855,18 +3876,21 @@ static void* wstCompositorThread( void *arg )
    if ( !wstShmInit(ctx) )
    {
       ERROR("unable to create wl_shm interface");
+      wstTelemetryEvent("WST_COMP_WL_INTERFACE_INIT_FAIL", "interface=wl_shm");
       goto exit;
    }
 
    if (!wl_global_create(ctx->display, &wl_compositor_interface, 3, ctx, wstCompositorBind))
    {
       ERROR("unable to create wl_compositor interface");
+      wstTelemetryEvent("WST_COMP_WL_INTERFACE_INIT_FAIL", "interface=wl_compositor");
       goto exit;
    }
    
    if (!wl_global_create(ctx->display, &wl_shell_interface, 1, ctx, wstShellBind))
    {
       ERROR("unable to create wl_shell interface");
+      wstTelemetryEvent("WST_COMP_WL_INTERFACE_INIT_FAIL", "interface=wl_shell");
       goto exit;
    }
 
@@ -3879,12 +3903,14 @@ static void* wstCompositorThread( void *arg )
                          1, ctx, wstXdgShellBind))
    {
       ERROR("unable to create xdg-shell interface");
+      wstTelemetryEvent("WST_COMP_WL_INTERFACE_INIT_FAIL", "interface=xdg_shell");
       goto exit;
    }
    
    if (!wl_global_create(ctx->display, &wl_vpc_interface, 1, ctx, wstVpcBind ))
    {
       ERROR("unable to create wl_vpc interface");
+      wstTelemetryEvent("WST_COMP_WL_INTERFACE_INIT_FAIL", "interface=wl_vpc");
       goto exit;
    }
    
@@ -3903,6 +3929,7 @@ static void* wstCompositorThread( void *arg )
    if (!wl_global_create(ctx->display, &wl_seat_interface, 4, ctx->seat, wstSeatBind))
    {
       ERROR("unable to create wl_seat interface");
+      wstTelemetryEvent("WST_COMP_WL_INTERFACE_INIT_FAIL", "interface=wl_seat");
       goto exit;
    }
 
