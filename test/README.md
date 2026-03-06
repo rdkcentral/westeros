@@ -38,7 +38,7 @@ To run a specific test:
 ---
 # Copyright and license
 
-If not stated otherwise in this file or this component's Licenses.txt file the
+If not stated otherwise in this file or this component's LICENSE file the
 following copyright and licenses apply:
 
 Copyright 2018 RDK Management

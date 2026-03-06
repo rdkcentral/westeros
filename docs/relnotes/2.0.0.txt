@@ -8,7 +8,7 @@ Date: 10 January 2026
 Tag: Westeros-2.0.0
 Changes:
  
-From this release onwards, Westeros is separated into different repos as per [CPESP-8255](https://ccp.sys.comcast.net/browse/CPESP-8255)
+From this release onwards, Westeros is separated into different repos.
 
 The changes : 
 * Westeros-sink reporting pre-seek position after seek, causing playback position jumps on video-only playback

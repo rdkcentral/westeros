@@ -13,7 +13,6 @@ applications's UI.
 ---
 # Copyright and license
 
-Most of Westeros is licensed under the Apache License, Version 2.0.  GStreamer plugins are licensed under
-the LGPL-2.1 license.  Licensing for the Apache-licensed portion is described in LICENSE and NOTICE, in
-the top level directory.  Licensing for the GStreamer plugins is described in westeros-sink/COPYING.
+Westeros is licensed under the Apache License, Version 2.0. Licensing is described in LICENSE and NOTICE, in
+the top level directory.
 

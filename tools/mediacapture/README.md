@@ -35,7 +35,7 @@ of the duration, press 's'.  Press 'q' to exit the app.
 ---
 # Copyright and license
 
-If not stated otherwise in this file or this component's Licenses.txt file the
+If not stated otherwise in this file or this component's LICENSE file the
 following copyright and licenses apply:
 
 Copyright 2017 RDK Management
