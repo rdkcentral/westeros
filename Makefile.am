@@ -160,6 +160,7 @@ libwesteros_compositor_la_SOURCES = \
    westeros-compositor.cpp \
    westeros-nested.cpp \
    westeros-render.cpp \
+   westeros-telemetry.cpp \
    protocol/vpc-protocol.c
 libwesteros_compositor_la_include_HEADERS = \
    westeros-compositor.h \

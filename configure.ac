@@ -237,16 +237,16 @@ AM_CONDITIONAL([ENABLE_MODULES], [test x$ENABLE_MODULES = xtrue])
 
 AM_COND_IF([ENABLE_MODULES], [AC_CONFIG_SUBDIRS([drm/modules])])
 
-AC_ARG_ENABLE([telemetry],
-              AS_HELP_STRING([--enable-telemetry],[enable telemetry logging (default is no)]),
+AC_ARG_ENABLE([telemetry2],
+              AS_HELP_STRING([--enable-telemetry2],[enable telemetry 2.0 logging (default is no)]),
               [
                 case "${enableval}" in
                  yes) ENABLE_TELEMETRY_LOGGING=true ;;
                   no) ENABLE_TELEMETRY_LOGGING=false ;;
-                   *) AC_MSG_ERROR([bad value ${enableval} for --enable-telemetry]) ;;
+                   *) AC_MSG_ERROR([bad value ${enableval} for --enable-telemetry2]) ;;
                 esac
               ],
-              [echo "telemetry logging is disabled"])
+              [echo "telemetry 2.0 logging is disabled"])
 AM_CONDITIONAL([ENABLE_TELEMETRY_LOGGING], [test x$ENABLE_TELEMETRY_LOGGING = xtrue])
 
 GST_MAJORMINOR=1.0

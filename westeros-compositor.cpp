@@ -884,12 +884,12 @@ static int g_activeLevel= 3;
 
 static void wstTelemetryInit()
 {
-   WstUtils::Telemetry::init();
+   WstUtils::telemetryInit();
 }
 
 static void wstTelemetryEvent( const char *marker, const char *value )
 {
-   WstUtils::Telemetry::sendMessage(marker, value);
+   WstUtils::telemetrySendMessage(marker, value);
 }
 
 static void wstLog( int level, const char *fmt, ... )
