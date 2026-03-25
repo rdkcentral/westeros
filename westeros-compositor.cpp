@@ -2837,6 +2837,7 @@ void WstCompositorStop( WstCompositor *wctx )
       if ( ctx->running || ctx->compositorThreadStarted )
       {
          ctx->running= false;
+         pthread_t threadId;
 
          ctx->outputNestedListener= 0;
          ctx->outputNestedListenerUserData= 0;
@@ -2849,9 +2850,10 @@ void WstCompositorStop( WstCompositor *wctx )
          {
             wl_display_terminate( ctx->display );
          }
-
+         
+         threadId= ctx->compositorThreadId;
          pthread_mutex_unlock( &ctx->mutex );
-         pthread_join( ctx->compositorThreadId, NULL );
+         pthread_join( threadId, NULL );
          pthread_mutex_lock( &ctx->mutex );
 
          ctx->compositorThreadStarted= false;
@@ -3273,8 +3275,10 @@ bool WstCompositorLaunchClient( WstCompositor *wctx, const char *cmd )
       {
          // PARENT PROCESS
          int pidChild, status;
-
+         
+         pthread_mutex_lock( &ctx->mutex );
          wctx->clientPid= pid;
+         pthread_mutex_unlock( &ctx->mutex );
 
          if(wctx->clientStatusCB)
          {
@@ -3317,7 +3321,9 @@ bool WstCompositorLaunchClient( WstCompositor *wctx, const char *cmd )
             }
          }
 
+         pthread_mutex_lock( &ctx->mutex );
          wctx->clientPid= 0;
+         pthread_mutex_unlock( &ctx->mutex );
       }
       
       result= true;
@@ -4113,13 +4119,13 @@ exit:
          wl_list_remove( &clientInfo->destroyListener.link );
       }
       ctx->clientInfoMap.erase( it );
+      free( clientInfo );
       if ( client )
       {
          pthread_mutex_unlock( &ctx->mutex );
          wl_client_destroy( client );
          pthread_mutex_lock( &ctx->mutex );
       }
-      free( clientInfo );
    }
 
    while( !ctx->surfaces.empty() )
@@ -5405,13 +5411,16 @@ static void wstCompositorBind( struct wl_client *client, void *data, uint32_t ve
    WstCompositor *wctx= wstGetCompositorFromClient( ctx, client );
    if ( wctx )
    {
+      pthread_mutex_lock( &ctx->mutex );
       if ( (wctx->clientPid != pid) && ctx->unboundClientCB )
       {
          WstClientInfo *clientInfo= 0;
 
-         ctx->unboundClientCB( ctx->wctx, pid, ctx->unboundClientUserData );
-
+         ctx->unboundClientCB( ctx->wctx, pid, ctx->unboundClientUserData );       
+         pthread_mutex_unlock( &ctx->mutex );
+         
          wctx= wstGetCompositorFromPid( ctx, client, pid );
+         pthread_mutex_lock( &ctx->mutex );
          std::map<struct wl_client*,WstClientInfo*>::iterator it= ctx->clientInfoMap.find( client );
          if ( it != ctx->clientInfoMap.end() )
          {
@@ -5423,6 +5432,7 @@ static void wstCompositorBind( struct wl_client *client, void *data, uint32_t ve
          }
       }
       wctx->clientCommit= false;
+      pthread_mutex_unlock( &ctx->mutex );
       if ( wctx->clientStatusCB )
       {
          wctx->clientStatusCB( wctx, WstClient_connected, pid, 0, wctx->clientStatusUserData );
@@ -6696,6 +6706,7 @@ static bool wstOutputInit( WstContext *ctx )
 {
    bool result= false;
    WstOutput *output= 0;
+   bool isEmbedded;
    
    ctx->output= (WstOutput*)calloc( 1, sizeof(WstOutput) );
    if ( !ctx->output )
@@ -6708,12 +6719,15 @@ static bool wstOutputInit( WstContext *ctx )
    wl_list_init( &output->resourceList );
    output->ctx= ctx;
 
+   pthread_mutex_lock( &ctx->mutex );
    output->refreshRate= ctx->frameRate;
    output->mmWidth= ctx->wctx->outputWidth;
    output->mmHeight= ctx->wctx->outputHeight;
+   isEmbedded = ctx->isEmbedded;
+   pthread_mutex_unlock( &ctx->mutex );
    output->subPixel= WL_OUTPUT_SUBPIXEL_HORIZONTAL_RGB;
    output->make= strdup("Westeros");
-   if ( ctx->isEmbedded )
+   if ( isEmbedded )
    {
       output->model= strdup("Westeros-embedded");
    }
@@ -6800,6 +6814,7 @@ static void wstOutputBind( struct wl_client *client, void *data, uint32_t versio
    wl_list_insert( &output->resourceList, wl_resource_get_link(resource) );
    wl_resource_set_implementation(resource, NULL, output, wstResourceUnBindCallback);
    
+   pthread_mutex_lock( &output->ctx->mutex );
    wl_output_send_geometry( resource,
                             output->x,
                             output->y,
@@ -6820,6 +6835,8 @@ static void wstOutputBind( struct wl_client *client, void *data, uint32_t versio
                         wctx->outputWidth,
                         wctx->outputHeight,
                         output->refreshRate * 1000);
+
+   pthread_mutex_unlock( &output->ctx->mutex );
 
    if ( version >= WL_OUTPUT_DONE_SINCE_VERSION )
    {
@@ -7514,6 +7531,7 @@ static void wstDefaultNestedConnectionEnded( void *userData )
    WstContext *ctx= (WstContext*)userData;
    if ( ctx )
    {
+      pthread_mutex_lock( &ctx->mutex );
       if ( ctx->display )
       {
          wl_display_terminate(ctx->display);
@@ -7522,6 +7540,7 @@ static void wstDefaultNestedConnectionEnded( void *userData )
       {
          ctx->terminatedCB( ctx->wctx, ctx->terminatedUserData );
       }
+      pthread_mutex_unlock( &ctx->mutex );
    }
 }
 
@@ -8541,7 +8560,8 @@ static void wstISeatGetKeyboard( struct wl_client *client, struct wl_resource *r
       wl_client_post_no_memory(client);
       return;
    }
-
+   
+   pthread_mutex_lock( &seat->ctx->mutex );
    if ( keyboard->focus ) focusClient= wl_resource_get_client(keyboard->focus->resource);
 
    if ( focusClient == client )
@@ -8557,16 +8577,23 @@ static void wstISeatGetKeyboard( struct wl_client *client, struct wl_resource *r
                                    &keyboard_interface,
                                    keyboard,
                                    wstResourceUnBindCallback );
-
+   
+   uint32_t xkbKeymapFormat = seat->ctx->xkbKeymapFormat;
+   int xkbKeymapFd = seat->ctx->xkbKeymapFd;
+   int xkbKeymapSize = seat->ctx->xkbKeymapSize;
+   pthread_mutex_unlock( &seat->ctx->mutex );
+    
    if ( wl_resource_get_version(resourceKbd) >= WL_KEYBOARD_REPEAT_INFO_SINCE_VERSION )
    {
+      pthread_mutex_lock( &seat->ctx->mutex );
       wl_keyboard_send_repeat_info( resourceKbd, seat->keyRepeatRate, seat->keyRepeatDelay );
+      pthread_mutex_unlock( &seat->ctx->mutex );
    }
    
    wl_keyboard_send_keymap( resourceKbd,
-                            seat->ctx->xkbKeymapFormat,
-                            seat->ctx->xkbKeymapFd,
-                            seat->ctx->xkbKeymapSize );
+                            xkbKeymapFormat,
+                            xkbKeymapFd,
+                            xkbKeymapSize );
 
    {
       struct wl_resource *surfaceResource= 0;
@@ -8724,12 +8751,19 @@ static void wstIPointerSetCursor( struct wl_client *client,
    {
       wl_client_get_credentials( client, &pid, NULL, NULL );
    
-      if ( ctx->allowModifyCursor || (pid == ctx->dcPid) )
+      pthread_mutex_lock( &ctx->mutex );
+      bool allowModifyCursor = ctx->allowModifyCursor;
+      int dcPid = ctx->dcPid;
+      pthread_mutex_unlock( &ctx->mutex );
+
+      if ( allowModifyCursor || (pid == dcPid) )
       {
-         if ( pid == ctx->dcPid )
+         if ( pid == dcPid )
          {
+            pthread_mutex_lock( &ctx->mutex );
             ctx->dcClient= client;
             ctx->dcDefaultCursor= true;
+            pthread_mutex_unlock( &ctx->mutex );
          }
          wstPointerSetPointer( pointer, surface );
          
@@ -8797,20 +8831,20 @@ static void wstIVpcGetVpcSurface( struct wl_client *client, struct wl_resource *
       wl_resource_post_no_memory(surfaceResource);
       return;
    }
-   
+
    vpcSurface->resource= wl_resource_create(client,
                                             &wl_vpc_surface_interface, 2, id);
-   if (!vpcSurface->resource) 
+   if (!vpcSurface->resource)
    {
       free(vpcSurface);
       wl_client_post_no_memory(client);
       return;
    }
-   
+
    wl_resource_set_implementation(vpcSurface->resource,
                                   &vpc_surface_interface,
                                   vpcSurface, wstDestroyVpcSurfaceCallback );
-   
+
    WstCompositor *compositor= surface->compositor;
    vpcSurface->surface= surface;
    vpcSurface->videoPathSet= false;
@@ -8843,10 +8877,10 @@ static void wstIVpcGetVpcSurface( struct wl_client *client, struct wl_resource *
    {
       WstRendererSurfaceSetVisible( compositor->ctx->renderer, surface->surface, false );
    }
-   
+
    surface->width= DEFAULT_OUTPUT_WIDTH;
    surface->height= DEFAULT_OUTPUT_HEIGHT;
-   
+
    surface->vpcSurface= vpcSurface;
 
    if ( compositor->ctx->isNested || compositor->ctx->hasVpcBridge )
@@ -9593,7 +9627,7 @@ static void wstKeyboardSetFocus( WstKeyboard *keyboard, WstSurface *surface )
       {
          serial= wl_display_next_serial( compositor->ctx->display );
          surfaceClient= wl_resource_get_client( keyboard->focus->resource );
-         wl_resource_for_each( resource, &keyboard->focusResourceList )
+	 wl_resource_for_each( resource, &keyboard->focusResourceList )
          {
             wl_keyboard_send_leave( resource, serial, keyboard->focus->resource );
          }
