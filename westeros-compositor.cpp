@@ -5675,9 +5675,12 @@ static WstSurface* wstSurfaceCreate( WstCompositor *wctx)
          wstSurfaceInsertSurface( ctx, surface );
       }
       #ifdef ENABLE_LEXPSYNCPROTOCOL
-      WstLExpSyncClear(&surface->createdBufferSync);
-      WstLExpSyncClear(&surface->attachedBufferSync);
-      WstLExpSyncClear(&surface->detachedBufferSync);
+      if ( surface )
+      {
+      	WstLExpSyncClear(&surface->createdBufferSync);
+      	WstLExpSyncClear(&surface->attachedBufferSync);
+      	WstLExpSyncClear(&surface->detachedBufferSync);
+      }
       #endif
    }
    
@@ -10191,6 +10194,7 @@ static void wstPruneOrphanFiles( WstContext *ctx )
    int prefixLen;
    int pid, rc;
    char work[34];
+   char filepath[64];
    if ( NULL != (dir = opendir( "/tmp" )) )
    {
       prefixLen= strlen(TEMPFILE_PREFIX);
@@ -10202,15 +10206,38 @@ static void wstPruneOrphanFiles( WstContext *ctx )
             snprintf( work, sizeof(work), "%s/%s", "/tmp", result->d_name);
             if ( sscanf( work, TEMPFILE_TEMPLATE, &pid ) == 1 )
             {
-               // Check if the pid of this temp file is still valid
                snprintf(work, sizeof(work), "/proc/%d", pid);
                rc= stat( work, &fileinfo );
                if ( rc )
                {
-                  // The pid is not valid, delete the file
-                  snprintf( work, sizeof(work), "%s/%s", "/tmp", result->d_name);
-                  INFO("removing temp file: %s", work);
-                  remove( work );
+		       int fd;
+                  snprintf( filepath, sizeof(filepath), "%s/%s", "/tmp", result->d_name);
+
+                  fd = open( filepath, O_RDONLY | O_NOFOLLOW | O_CLOEXEC );
+                  if ( fd >= 0 )
+                  {
+                     if ( fstat( fd, &fileinfo ) == 0 )
+                     {
+                        if ( S_ISREG(fileinfo.st_mode) )
+                        {
+                           INFO("removing temp file: %s", filepath);
+                           if ( unlink( filepath ) != 0 )
+                           {
+                              WARNING("Failed to remove temp file: %s (errno: %d)", filepath, errno);
+                           }
+			   	close( fd );
+                        }
+                        else
+                        {
+                           close( fd );
+                           WARNING("Skipping non-regular file: %s (mode: 0%o)", filepath, fileinfo.st_mode);
+                        }
+                     }
+                     else
+                     {
+                        close( fd );
+                     }
+                  }
                }
             }
          }
