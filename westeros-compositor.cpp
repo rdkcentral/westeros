@@ -1101,7 +1101,6 @@ WstCompositor* WstCompositorGetMasterEmbedded()
          if ( error )
          {
             WstCompositorDestroy( wctx );
-            wctx= 0;
          }
          else
          {
@@ -1128,15 +1127,27 @@ WstCompositor* WstCompositorCreateVirtualEmbedded( WstCompositor *wctx )
       wctx= WstCompositorGetMasterEmbedded();
    }
 
-   if ( wctx && wctx->ctx )
+   if ( wctx )
    {
-      WstContext *ctx= wctx->ctx;
+      WstContext *ctx= 0;
+      pthread_mutex_lock( &g_mutexMasterEmbedded );
+      ctx= wctx->ctx;
+
+      if ( !ctx )
+      {
+         pthread_mutex_unlock( &g_mutexMasterEmbedded );
+         goto exit;
+      }
+
+      pthread_mutex_lock( &ctx->mutex );
 
       if ( !ctx->isEmbedded )
       {
          sprintf( wctx->lastErrorDetail,
                   "Invalid argument.  Cannot set create virtual embedded from a non-embedded compositor" );
-         goto exit;
+         pthread_mutex_unlock( &ctx->mutex );
+         pthread_mutex_unlock( &g_mutexMasterEmbedded );
+	 goto exit;
       }
 
       virt= (WstCompositor*)calloc( 1, sizeof(WstCompositor) );
@@ -1144,16 +1155,16 @@ WstCompositor* WstCompositorCreateVirtualEmbedded( WstCompositor *wctx )
       {
          sprintf( wctx->lastErrorDetail,
                   "Error.  No memory to create virtual embedded compositor" );
-         goto exit;
+         pthread_mutex_unlock( &ctx->mutex );
+         pthread_mutex_unlock( &g_mutexMasterEmbedded );
+	 goto exit;
       }
-
-      pthread_mutex_lock( &ctx->mutex );
 
       virt->isVirtual= true;
       virt->ctx= ctx;
       ctx->virt.push_back( virt );
 
-      pthread_mutex_unlock( &ctx->mutex );
+      pthread_mutex_unlock( &g_mutexMasterEmbedded );
    }
 
 exit:
@@ -1499,22 +1510,23 @@ bool WstCompositorSetVpcBridge( WstCompositor *wctx, char *displayName )
                   "Invalid argument.  Cannot set vpc bridge for virtual embedded compositor" );
          goto exit;
       }
-
+      
+      pthread_mutex_lock( &ctx->mutex );
       if ( ctx->running )
       {
          sprintf( wctx->lastErrorDetail,
                   "Bad state.  Cannot set VPC bridge while compositor is running" );
-         goto exit;
+         pthread_mutex_unlock( &ctx->mutex );
+	 goto exit;
       }
 
       if ( !ctx->isEmbedded )
       {
          sprintf( wctx->lastErrorDetail,
                   "Error.  Cannot set VPC bridge on non-embedded compositor" );
-         goto exit;
+         pthread_mutex_unlock( &ctx->mutex );
+	 goto exit;
       }
-
-      pthread_mutex_lock( &ctx->mutex );
 
       ctx->hasVpcBridge= (displayName != 0);
 
@@ -1770,13 +1782,14 @@ bool WstCompositorSetDefaultCursor( WstCompositor *wctx, unsigned char *imgData,
 
       if ( ctx->dcClient )
       {
-         pthread_mutex_unlock( &ctx->mutex );
-         wl_client_destroy( ctx->dcClient );
-         usleep( 100000 );
-         pthread_mutex_lock( &ctx->mutex );
+         struct wl_client *dcClient = ctx->dcClient;
          ctx->dcClient= 0;
          ctx->dcPid= 0;
          ctx->dcDefaultCursor= false;
+	 pthread_mutex_unlock( &ctx->mutex );
+         wl_client_destroy( dcClient );
+         usleep( 100000 );
+         pthread_mutex_lock( &ctx->mutex );
       }
       else
       {
@@ -2464,7 +2477,11 @@ bool WstCompositorSetVirtualEmbeddedUnBoundClientListener( WstCompositor *wctx, 
    {
       WstContext *ctx= wctx->ctx;
 
-      if ( !ctx->isEmbedded )
+      pthread_mutex_lock( &ctx->mutex );
+      bool isEmbedded = ctx->isEmbedded;
+      pthread_mutex_unlock( &ctx->mutex );
+
+      if ( !isEmbedded )
       {
          sprintf( wctx->lastErrorDetail,
                   "Invalid argument.  Cannot set unbound callback for a non-embedded compositor" );
@@ -2784,17 +2801,18 @@ bool WstCompositorStart( WstCompositor *wctx )
             if ( ready )
             {
                pthread_mutex_lock( &ctx->mutex );
-               if ( ctx->isEmbedded )
+               bool isEmbedded = ctx->isEmbedded;
+               pthread_mutex_unlock( &ctx->mutex );
+
+	       if ( isEmbedded )
                {
                   if ( !wstCompositorCreateRenderer( ctx ) )
                   {
                      sprintf( wctx->lastErrorDetail,
                               "Error.  Failed to initialize render module" );
-                     pthread_mutex_unlock( &ctx->mutex );
                      goto exit;
                   }
                }
-               pthread_mutex_unlock( &ctx->mutex );
 
                INFO("compositor %s is started", ctx->displayName);
             }
@@ -2815,7 +2833,9 @@ bool WstCompositorStart( WstCompositor *wctx )
          goto exit;      
       }
 
+      pthread_mutex_lock( &ctx->mutex );
       ctx->running= true;
+      pthread_mutex_unlock( &ctx->mutex );
 
       result= true;      
 
@@ -3458,6 +3478,7 @@ static void sbReleaseBuffer(void *userData, struct wl_sb_buffer *buffer)
 
    if ( ctx )
    {
+      pthread_mutex_lock( &ctx->mutex );
       for ( size_t i= 0; i < ctx->surfaces.size(); ++i )
       {
          WstSurface *surface= ctx->surfaces[i];
@@ -3469,6 +3490,7 @@ static void sbReleaseBuffer(void *userData, struct wl_sb_buffer *buffer)
             break;
          }
       }
+      pthread_mutex_unlock( &ctx->mutex );
    }
 }
 
@@ -3836,8 +3858,14 @@ static void* wstCompositorThread( void *arg )
    struct wl_display *display= 0;
    struct wl_event_loop *loop= 0;
    bool startupAborted= true;
+   bool hasVpcBridge;
+   int width;
+   int height;
+   const char *nestedDisplayName;
 
+   pthread_mutex_lock( &ctx->mutex );
    ctx->compositorThreadStarted= true;
+   pthread_mutex_unlock( &ctx->mutex );
 
    DEBUG("calling wl_display_create");
    display= wl_display_create();
@@ -3962,7 +3990,11 @@ static void* wstCompositorThread( void *arg )
    }
    else
    {
-      if ( !ctx->isEmbedded && (!ctx->isNested || (ctx->isRepeater && ctx->mustInitRendererModule)) )
+      pthread_mutex_lock( &ctx->mutex );
+      bool isEmbedded = ctx->isEmbedded;
+      pthread_mutex_unlock( &ctx->mutex );
+
+      if ( !isEmbedded && (!ctx->isNested || (ctx->isRepeater && ctx->mustInitRendererModule)) )
       {
          if ( !wstCompositorCreateRenderer( ctx ) )
          {
@@ -3972,16 +4004,20 @@ static void* wstCompositorThread( void *arg )
       }
    }
 
-   if ( ctx->isNested || ctx->hasVpcBridge )
+   if ( ctx->isNested || hasVpcBridge )
    {
-      int width= ctx->nestedWidth;
-      int height= ctx->nestedHeight;
+      pthread_mutex_lock( &ctx->mutex );
+      hasVpcBridge = ctx->hasVpcBridge;
+      width= ctx->nestedWidth;
+      height= ctx->nestedHeight;
+      nestedDisplayName = ctx->nestedDisplayName;
+      pthread_mutex_unlock( &ctx->mutex );
 
-      if ( ctx->hasVpcBridge )
+      if ( hasVpcBridge )
       {
-         INFO("embedded compositor %s will bridge vpc to display %s", ctx->displayName, ctx->nestedDisplayName);
+         INFO("embedded compositor %s will bridge vpc to display %s", ctx->displayName, nestedDisplayName);
       }
-      if ( ctx->isRepeater || ctx->hasVpcBridge )
+      if ( ctx->isRepeater || hasVpcBridge )
       {
          width= 0;
          height= 0;
@@ -3990,14 +4026,14 @@ static void* wstCompositorThread( void *arg )
       pthread_cond_init( &ctx->ncStartedCond, 0);
       pthread_mutex_lock( &ctx->ncStartedMutex );
       ctx->nc= WstNestedConnectionCreate( wctx,
-                                          ctx->nestedDisplayName,
+                                          nestedDisplayName,
                                           width,
                                           height,
                                           &ctx->nestedListener,
                                           ctx );
       if ( !ctx->nc )
       {
-         ERROR( "Unable to create nested connection to display %s", ctx->nestedDisplayName );
+         ERROR( "Unable to create nested connection to display %s", nestedDisplayName );
          pthread_mutex_unlock( &ctx->ncStartedMutex );
          pthread_mutex_destroy( &ctx->ncStartedMutex );
          pthread_cond_destroy( &ctx->ncStartedCond );
@@ -4093,16 +4129,19 @@ static void* wstCompositorThread( void *arg )
 
 exit:
 
+   pthread_mutex_lock( &ctx->mutex );
    if ( ctx->dcClient )
    {
-      wl_client_destroy( ctx->dcClient );
-      usleep( 100000 );
+      struct wl_client *dcClient = ctx->dcClient;
       ctx->dcClient= 0;
       ctx->dcPid= 0;
       ctx->dcDefaultCursor= false;
+      pthread_mutex_unlock( &ctx->mutex );
+      wl_client_destroy( dcClient );
+      usleep( 100000 );
+      pthread_mutex_lock( &ctx->mutex );
    }
 
-   pthread_mutex_lock( &ctx->mutex );
    while( ctx->clientInfoMap.size() >  0 )
    {
       std::map<struct wl_client*,WstClientInfo*>::iterator it= ctx->clientInfoMap.begin();
@@ -4168,35 +4207,48 @@ static bool wstCompositorCreateRenderer( WstContext *ctx )
    char arg3[MAX_NESTED_NAME_LEN+1];
    char *argv[4]= { arg0, arg1, arg2, arg3 };
 
-   if ( ctx->isNested || ctx->hasVpcBridge )
-   {
-      int width= ctx->nestedWidth;
-      int height= ctx->nestedHeight;
+   pthread_mutex_lock( &ctx->mutex );
+   int width= ctx->nestedWidth;
+   int height= ctx->nestedHeight;
+   bool hasVpcBridge= ctx->hasVpcBridge;
+   pthread_mutex_unlock( &ctx->mutex );
 
-      if ( ctx->isRepeater || ctx->hasVpcBridge )
+
+   if ( ctx->isNested || hasVpcBridge )
+   {
+      if ( ctx->isRepeater || hasVpcBridge )
       {
          width= 0;
          height= 0;
       }
-
+      
+      pthread_mutex_lock( &ctx->mutex );
       argc= 4;
       strcpy( arg0, "--width" );
       sprintf( arg1, "%u", ctx->wctx->outputWidth );
       strcpy( arg2, "--height" );
       sprintf( arg3, "%u", ctx->wctx->outputHeight );
+      pthread_mutex_unlock( &ctx->mutex );
    }
    else
    {
+      pthread_mutex_lock( &ctx->mutex );
+      void *nativeWindow = ctx->nativeWindow;
+      pthread_mutex_unlock( &ctx->mutex );
       argc= 0;
-      if ( ctx->nativeWindow )
+      if ( nativeWindow )
       {
          argc += 2;
          strcpy( arg0, "--nativeWindow" );
-         sprintf( arg1, "%p", ctx->nativeWindow );
+         sprintf( arg1, "%p", nativeWindow );
       }
    }
 
-   ctx->renderer= WstRendererCreate( ctx->rendererModule, argc, (char **)argv, ctx->display, ctx->nc );
+   pthread_mutex_lock( &ctx->mutex );
+   const char *rendererModule = ctx->rendererModule;
+   pthread_mutex_unlock( &ctx->mutex );
+
+   ctx->renderer= WstRendererCreate( rendererModule, argc, (char **)argv, ctx->display, ctx->nc );
    if ( !ctx->renderer )
    {
       ERROR("unable to initialize renderer module");
@@ -5275,7 +5327,10 @@ static void wstShmPoolUnRef( WstShmPool *pool )
 static WstCompositor *wstGetCompositorFromPid( WstContext *ctx, struct wl_client *client, int pid )
 {
    WstCompositor *wctx= ctx->wctx;
-   if ( ctx->isEmbedded )
+   pthread_mutex_lock( &ctx->mutex );
+   bool isEmbedded = ctx->isEmbedded;
+   
+   if ( isEmbedded )
    {
       if ( ctx->virt.size() )
       {
@@ -5349,6 +5404,7 @@ static WstCompositor *wstGetCompositorFromPid( WstContext *ctx, struct wl_client
       }
    }
 
+   pthread_mutex_unlock( &ctx->mutex );
    return wctx;
 }
 
@@ -5702,7 +5758,10 @@ static void wstSurfaceDestroy( WstSurface *surface )
 
    #ifdef ENABLE_LEXPSYNCPROTOCOL
    // Invalidate buffer sync sent to gl-render
-   WstRendererSurfaceImportSync( surface->renderer, surface->surface, NULL);
+   if ( surface->renderer )
+   {
+      WstRendererSurfaceImportSync( surface->renderer, surface->surface, NULL);
+   }
    if( surface->createdBufferSync.bufferRelease )
    {
        // get_release, yet attach and commit
@@ -6310,6 +6369,8 @@ static void wstISurfaceFrame(struct wl_client *client,
       return;
    }
    
+   wl_resource_set_implementation( fcb->resource, NULL, fcb, NULL );
+
    wl_list_insert( surface->frameCallbackList.prev, &fcb->link );
 }
 
@@ -7722,9 +7783,9 @@ static void wstDefaultNestedKeyboardHandleKey( void *userData, uint32_t time, ui
       else
       {
          WstCompositor *wctx= ctx->wctx;
-         int eventIndex= wctx->eventIndex;
          pthread_mutex_lock( &ctx->mutex );
-         wctx->eventQueue[eventIndex].type= WstEventType_keyCode;
+         int eventIndex= wctx->eventIndex;
+	 wctx->eventQueue[eventIndex].type= WstEventType_keyCode;
          wctx->eventQueue[eventIndex].v1= time;
          wctx->eventQueue[eventIndex].v2= key;
          wctx->eventQueue[eventIndex].v3= state;
@@ -7751,9 +7812,9 @@ static void wstDefaultNestedKeyboardHandleModifiers( void *userData, uint32_t mo
       else
       {
          WstCompositor *wctx= ctx->wctx;
-         int eventIndex= wctx->eventIndex;
          pthread_mutex_lock( &ctx->mutex );
-         wctx->eventQueue[eventIndex].type= WstEventType_keyModifiers;
+         int eventIndex= wctx->eventIndex;
+	 wctx->eventQueue[eventIndex].type= WstEventType_keyModifiers;
          wctx->eventQueue[eventIndex].v1= mods_depressed;
          wctx->eventQueue[eventIndex].v2= mods_latched;
          wctx->eventQueue[eventIndex].v3= mods_locked;
@@ -7805,13 +7866,13 @@ static void wstDefaultNestedPointerHandleEnter( void *userData, struct wl_surfac
       {
          int x, y;
          WstCompositor *wctx= ctx->wctx;
-         int eventIndex= wctx->eventIndex;
          
          x= wl_fixed_to_int( sx );
          y= wl_fixed_to_int( sy );
 
          pthread_mutex_lock( &ctx->mutex );
-         wctx->eventQueue[eventIndex].type= WstEventType_pointerEnter;
+         int eventIndex= wctx->eventIndex;
+	 wctx->eventQueue[eventIndex].type= WstEventType_pointerEnter;
          wctx->eventQueue[eventIndex].v1= x;
          wctx->eventQueue[eventIndex].v2= y;
          wctx->eventQueue[eventIndex].p1= surfaceNested;
@@ -7836,9 +7897,9 @@ static void wstDefaultNestedPointerHandleLeave( void *userData, struct wl_surfac
       else
       {
          WstCompositor *wctx= ctx->wctx;
-         int eventIndex= wctx->eventIndex;
          pthread_mutex_lock( &ctx->mutex );
-         wctx->eventQueue[eventIndex].type= WstEventType_pointerLeave;
+         int eventIndex= wctx->eventIndex;
+	 wctx->eventQueue[eventIndex].type= WstEventType_pointerLeave;
          
          ++wctx->eventIndex;
          assert( wctx->eventIndex < WST_EVENT_QUEUE_SIZE );
@@ -7862,13 +7923,13 @@ static void wstDefaultNestedPointerHandleMotion( void *userData, uint32_t time, 
       {
          int x, y;
          WstCompositor *wctx= ctx->wctx;
-         int eventIndex= wctx->eventIndex;
          
          x= wl_fixed_to_int( sx );
          y= wl_fixed_to_int( sy );
 
          pthread_mutex_lock( &ctx->mutex );
-         wctx->eventQueue[eventIndex].type= WstEventType_pointerMove;
+         int eventIndex= wctx->eventIndex;
+	 wctx->eventQueue[eventIndex].type= WstEventType_pointerMove;
          wctx->eventQueue[eventIndex].v1= x;
          wctx->eventQueue[eventIndex].v2= y;
          
@@ -7893,9 +7954,9 @@ static void wstDefaultNestedPointerHandleButton( void *userData, uint32_t time, 
       else
       {
          WstCompositor *wctx= ctx->wctx;
-         int eventIndex= wctx->eventIndex;
          pthread_mutex_lock( &ctx->mutex );
-         wctx->eventQueue[eventIndex].type= WstEventType_pointerButton;
+         int eventIndex= wctx->eventIndex;
+	 wctx->eventQueue[eventIndex].type= WstEventType_pointerButton;
          wctx->eventQueue[eventIndex].v1= button;
          wctx->eventQueue[eventIndex].v2= state;
          wctx->eventQueue[eventIndex].v3= 1; // have time
@@ -8222,7 +8283,11 @@ static bool wstSeatInit( WstContext *ctx )
       seat->keyRepeatDelay= DEFAULT_KEY_REPEAT_DELAY;
       seat->keyRepeatRate= DEFAULT_KEY_REPEAT_RATE;
 
-      if ( !ctx->isEmbedded )
+      pthread_mutex_lock( &ctx->mutex );
+      bool isEmbedded = ctx->isEmbedded;
+      pthread_mutex_unlock( &ctx->mutex );
+
+      if ( !isEmbedded )
       {
          wstSeatCreateDevices( ctx->wctx );
       }
