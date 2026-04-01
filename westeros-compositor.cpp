@@ -9597,7 +9597,6 @@ static void wstKeyboardSetFocus( WstKeyboard *keyboard, WstSurface *surface )
       if ( keyboard->focus )
       {
          serial= wl_display_next_serial( compositor->ctx->display );
-         surfaceClient= wl_resource_get_client( keyboard->focus->resource );
          wl_resource_for_each( resource, &keyboard->focusResourceList )
          {
             wl_keyboard_send_leave( resource, serial, keyboard->focus->resource );
@@ -10176,8 +10175,11 @@ static void wstRemoveTempFile( int fd )
    
    if ( haveTempFilename )
    {
-      DEBUG( "removing tempory file (%s)", link );
-      remove( link );
+      DEBUG( "removing temporary file (%s)", link );
+      if ( remove( link ) != 0 )
+      {
+         ERROR("Failed to remove temporary file (%s): %s", link, strerror(errno));
+      }
    }
 }
 
