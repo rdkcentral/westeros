@@ -23,7 +23,7 @@
 
 ## [2.0.0] - 10 January 2026
 
-**Tag:** Westeros-2.0.0
+**Tag:** 2.0.0
 
 ### Changes
 - From this release onwards, Westeros is separated into different repos.
