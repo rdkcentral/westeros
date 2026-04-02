@@ -7,7 +7,7 @@
 **Tag:** 2.1.0
 
 ### Changes
-- westeros: add wl_simple_shell popup api
+- westeros: add wl_simple_shell popup API
 - Fix: vulkan running failure when URSR is updated to 25.0.3.
 - Resolve coverity issues for westeros
 
