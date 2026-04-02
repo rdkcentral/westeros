@@ -141,7 +141,7 @@
   - Allow RT thread priority to be overridden from kernel space
   - Add VSync marker stats
   - FTRACE Debug support controlled via flag
-- erm: fix demarsheling of video info in resource request
+- erm: fix demarshalling of video info in resource request
 - all: Cleanup comments containing proprietary device names
 - drm: ignore invalid video server rate changes
 - sink: Support for video pipeline graph in text form in westerossink
