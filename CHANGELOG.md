@@ -1137,7 +1137,7 @@
 - Initial support for secure video on AmLogic-Meson
 - Use QoS to signal dropped frames
 - v4l2 updates — re-subscribe for events after hard decoder reset; avoid double rendering of buffer during preroll; retain reference on input dma-buf gstbuffer until dequeued from driver
-- Fix crash on video server over subscribe — handle asynchronous frame updates at various rates; update display at mode rate; video server informs clients of display refresh rate; sink drops frames if video frame rate exceeds display rate; improve sink pause/resume; automatic screen refresh on HDMI hot plug; rely on gstreamer for AV sync; fixes for some sources of tearing; sink uses /dev/dri/renderD128 for SVP
+- Fix crash on video server oversubscribe — handle asynchronous frame updates at various rates; update display at mode rate; video server informs clients of display refresh rate; sink drops frames if video frame rate exceeds display rate; improve sink pause/resume; automatic screen refresh on HDMI hot plug; rely on gstreamer for AV sync; fixes for some sources of tearing; sink uses /dev/dri/renderD128 for SVP
 - v4l2: fix gem allocation for amlogic dw mode 0
 - v4l2 updates — increase input buffer sizes; fix sequencing of Amlogic svp decoder configuration
 - Move gamepad from joystick to evdev api
