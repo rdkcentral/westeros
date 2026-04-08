@@ -1192,7 +1192,7 @@
 - Fix compilation error — brcm: allow building with new Broadcom SDK versions where NXPL_CreateCompatiblePixmap no longer exists while still supporting older SDK versions
 - Fix handle leak in drm video server — drm: use DRM_IOCTL_GEM_CLOSE to release handles obtained from drmPrimeFDToHandle
 - Changes for building with Yocto 3.1 — fix build issues with Yocto 3.1
-- V4l2 updates — handle caps received prior to opening driver; fix munumap issue; fix sync issue on shutdown
+- V4l2 updates — handle caps received prior to opening driver; fix munmap issue; fix sync issue on shutdown
 - Ensure capture thread is stopped — brcm: if capture thread is started and the transition to paused state doesn't complete it needs to be stopped before the element is finalized
 - Adjust locking in v4l2 sink — fix some crashes
 - Enhance drm emulation for videoserver automated testing — expand drm emulation in automated test to support testing of westeros video server
