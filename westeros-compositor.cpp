@@ -1101,7 +1101,6 @@ WstCompositor* WstCompositorGetMasterEmbedded()
          if ( error )
          {
             WstCompositorDestroy( wctx );
-            wctx= 0;
          }
          else
          {
@@ -5702,7 +5701,12 @@ static void wstSurfaceDestroy( WstSurface *surface )
 
    #ifdef ENABLE_LEXPSYNCPROTOCOL
    // Invalidate buffer sync sent to gl-render
-   WstRendererSurfaceImportSync( surface->renderer, surface->surface, NULL);
+   
+   if ( surface->renderer )
+   {
+      WstRendererSurfaceImportSync( surface->renderer, surface->surface, NULL);
+   }
+
    if( surface->createdBufferSync.bufferRelease )
    {
        // get_release, yet attach and commit
@@ -6309,7 +6313,8 @@ static void wstISurfaceFrame(struct wl_client *client,
       free(fcb);
       return;
    }
-   
+  
+   wl_resource_set_implementation( fcb->resource, NULL, fcb, NULL );
    wl_list_insert( surface->frameCallbackList.prev, &fcb->link );
 }
 
