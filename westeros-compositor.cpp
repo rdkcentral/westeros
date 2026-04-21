@@ -3838,7 +3838,7 @@ static void* wstCompositorThread( void *arg )
 
    ctx->compositorThreadStarted= true;
 
-   DEBUG("calling wl_display_create");
+   DEBUG("calling wl_display_create WCTest");
    display= wl_display_create();
    DEBUG("wl_display=%p", display);
    if ( !display )
@@ -10178,7 +10178,7 @@ static void wstRemoveTempFile( int fd )
    
    if ( haveTempFilename )
    {
-      DEBUG( "removing temporary file (%s)", link );
+      DEBUG( "removing temporary file WCTest (%s)", link );
       if ( remove( link ) != 0 )
       {
          ERROR("Failed to remove temporary file (%s): %s", link, strerror(errno));
