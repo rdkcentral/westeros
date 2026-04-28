@@ -545,6 +545,23 @@ static WstRendererEMB* wstRendererEMBCreate( WstRenderer *renderer )
                  rendererEMB->eglUnbindWaylandDisplayWL &&
                  rendererEMB->eglQueryWaylandBufferWL )
             {               
+#ifdef WESTEROS_PLATFORM_EMBEDDED_RPI
+               printf("calling eglUnbindWaylandDisplayWL with eglDisplay %p and wayland display %p before bind\n", rendererEMB->eglDisplay, renderer->display );
+               EGLBoolean unbindRc= rendererEMB->eglUnbindWaylandDisplayWL( rendererEMB->eglDisplay, renderer->display );
+
+               if ( unbindRc ) {
+                  printf("pre-bind eglUnbindWaylandDisplayWL succeeded\n" );
+               }
+               else {
+                  EGLint unbindErr= eglGetError();
+
+                  if ( unbindErr == EGL_SUCCESS )
+                     printf("pre-bind eglUnbindWaylandDisplayWL returned false with EGL_SUCCESS (nothing to unbind)\n" );
+                  else
+                     printf("pre-bind eglUnbindWaylandDisplayWL failed: %x (continuing)\n", unbindErr );
+               }
+#endif /* WESTEROS_PLATFORM_EMBEDDED_RPI */
+
                printf("calling eglBindWaylandDisplayWL with eglDisplay %p and wayland display %p\n", rendererEMB->eglDisplay, renderer->display );
                EGLBoolean rc= rendererEMB->eglBindWaylandDisplayWL( rendererEMB->eglDisplay, renderer->display );
                if ( rc )
