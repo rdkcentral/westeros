@@ -206,7 +206,7 @@ static void setupEGL( AppCtx *appCtx )
       printf("Unable to initialize EGL display\n");
       goto exit;
    }
-   printf("Initialized EGL display: major %d minor: %d\n", major, minor );
+   printf("Initialized EGL display: major %d minor: %d\n", minor );
 
    b= eglGetConfigs( appCtx->eglDisplay, NULL, 0, &configCount );
    if ( !b )
