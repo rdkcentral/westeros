@@ -98,23 +98,23 @@
 
 #define MIN(x,y) (((x) < (y)) ? (x) : (y))
 
-#define INT_FATAL(FORMAT, ...)      wstLog(0, "Westeros Fatal: " FORMAT "\n", __VA_ARGS__)
-#define INT_ERROR(FORMAT, ...)      wstLog(0, "Westeros Error: " FORMAT "\n", __VA_ARGS__)
-#define INT_WARNING(FORMAT, ...)    wstLog(1, "Westeros Warning: " FORMAT "\n", __VA_ARGS__)
-#define INT_INFO(FORMAT, ...)       wstLog(2, "Westeros Info: " FORMAT "\n", __VA_ARGS__)
-#define INT_DEBUG(FORMAT, ...)      wstLog(3, "Westeros Debug: " FORMAT "\n", __VA_ARGS__)
-#define INT_TRACE1(FORMAT, ...)     wstLog(4, "Westeros Trace: " FORMAT "\n", __VA_ARGS__)
-#define INT_TRACE2(FORMAT, ...)     wstLog(5, "Westeros Trace: " FORMAT "\n", __VA_ARGS__)
-#define INT_TRACE3(FORMAT, ...)     wstLog(6, "Westeros Trace: " FORMAT "\n", __VA_ARGS__)
+#define INT_FATAL(FORMAT, ...)      wstLog(0, "Westeros Fatal: " FORMAT "\n", ##__VA_ARGS__)
+#define INT_ERROR(FORMAT, ...)      wstLog(0, "Westeros Error: " FORMAT "\n", ##__VA_ARGS__)
+#define INT_WARNING(FORMAT, ...)    wstLog(1, "Westeros Warning: " FORMAT "\n", ##__VA_ARGS__)
+#define INT_INFO(FORMAT, ...)       wstLog(2, "Westeros Info: " FORMAT "\n", ##__VA_ARGS__)
+#define INT_DEBUG(FORMAT, ...)      wstLog(3, "Westeros Debug: " FORMAT "\n", ##__VA_ARGS__)
+#define INT_TRACE1(FORMAT, ...)     wstLog(4, "Westeros Trace: " FORMAT "\n", ##__VA_ARGS__)
+#define INT_TRACE2(FORMAT, ...)     wstLog(5, "Westeros Trace: " FORMAT "\n", ##__VA_ARGS__)
+#define INT_TRACE3(FORMAT, ...)     wstLog(6, "Westeros Trace: " FORMAT "\n", ##__VA_ARGS__)
 
-#define FATAL(...)                  INT_FATAL(__VA_ARGS__, "")
-#define ERROR(...)                  INT_ERROR(__VA_ARGS__, "")
-#define WARNING(...)                INT_WARNING(__VA_ARGS__, "")
-#define INFO(...)                   INT_INFO(__VA_ARGS__, "")
-#define DEBUG(...)                  INT_DEBUG(__VA_ARGS__, "")
-#define TRACE1(...)                 INT_TRACE1(__VA_ARGS__, "")
-#define TRACE2(...)                 INT_TRACE2(__VA_ARGS__, "")
-#define TRACE3(...)                 INT_TRACE3(__VA_ARGS__, "")
+#define FATAL(...)                  INT_FATAL(__VA_ARGS__)
+#define ERROR(...)                  INT_ERROR(__VA_ARGS__)
+#define WARNING(...)                INT_WARNING(__VA_ARGS__)
+#define INFO(...)                   INT_INFO(__VA_ARGS__)
+#define DEBUG(...)                  INT_DEBUG(__VA_ARGS__)
+#define TRACE1(...)                 INT_TRACE1(__VA_ARGS__)
+#define TRACE2(...)                 INT_TRACE2(__VA_ARGS__)
+#define TRACE3(...)                 INT_TRACE3(__VA_ARGS__)
 
 #define WST_EVENT_QUEUE_SIZE (64)
 
@@ -988,8 +988,8 @@ void WstCompositorDestroy( WstCompositor *wctx )
             it != ctx->virt.end();
             ++it )
       {
-         WstCompositor *wctx= (*it);
-         wctx->destroyed= true;
+         WstCompositor *virtWctx= (*it);
+         virtWctx->destroyed= true;
       }
       pthread_mutex_unlock( &ctx->mutex );
       
@@ -6351,11 +6351,11 @@ static void wstISurfaceCommit(struct wl_client *client, struct wl_resource *reso
    {
       if ( !surface->compositor->clientCommit )
       {
-         struct wl_client *client= wl_resource_get_client( surface->resource );
-         if ( client )
+         struct wl_client *surfaceClient= wl_resource_get_client( surface->resource );
+         if ( surfaceClient )
          {
             int pid= 0;
-            wl_client_get_credentials( client, &pid, NULL, NULL );
+            wl_client_get_credentials( surfaceClient, &pid, NULL, NULL );
             surface->compositor->clientCommit= true;
             if ( pid != surface->compositor->clientCommitPid )
             {
@@ -8626,15 +8626,15 @@ static void wstISeatGetKeyboard( struct wl_client *client, struct wl_resource *r
          // and create surfaces with different client
          if ( wl_list_empty(&keyboard->focusResourceList) && !wl_list_empty(&keyboard->resourceList) )
          {
-            struct wl_client *client= 0;
+            struct wl_client *resourceClient= 0;
             resource= wl_container_of( keyboard->resourceList.next, resource, link);
             if ( resource )
             {
-               client= wl_resource_get_client( resource );
-               if ( client )
+               resourceClient= wl_resource_get_client( resource );
+               if ( resourceClient )
                {
-                  DEBUG("wstISeatGetKeyboard: move focus to client %p based on resource %p", client, resource);
-                  wstKeyboardMoveFocusToClient( keyboard, client );
+                  DEBUG("wstISeatGetKeyboard: move focus to client %p based on resource %p", resourceClient, resource);
+                  wstKeyboardMoveFocusToClient( keyboard, resourceClient );
                }
             }
          }
@@ -9515,11 +9515,11 @@ static void wstKeyboardCheckFocus( WstKeyboard *keyboard, WstSurface *surface )
          if ( !compositor->keyboard->focus )
          {
             struct wl_resource *temp;
-            WstKeyboard *keyboard= compositor->keyboard;
+            WstKeyboard *kbdFocus= compositor->keyboard;
 
             DEBUG("wstKeyboardCheckFocus: no key focus yet");
             bool clientHasListeners= false;
-            wl_resource_for_each_safe( resource, temp, &keyboard->resourceList )
+            wl_resource_for_each_safe( resource, temp, &kbdFocus->resourceList )
             {
                if ( wl_resource_get_client( resource ) == surfaceClient )
                {
@@ -9528,14 +9528,14 @@ static void wstKeyboardCheckFocus( WstKeyboard *keyboard, WstSurface *surface )
             }
             if ( !clientHasListeners )
             {
-               wl_resource_for_each_safe( resource, temp, &keyboard->focusResourceList )
+               wl_resource_for_each_safe( resource, temp, &kbdFocus->focusResourceList )
                {
                   if ( wl_resource_get_client( resource ) == surfaceClient )
                   {
                      // Move focus to null client first since we have acted on the workaround for apps that register
                      // keyboard listeners with one client and create surfaces with different client
                      clientHasListeners= true;
-                     wstKeyboardMoveFocusToClient( keyboard, 0 );
+                     wstKeyboardMoveFocusToClient( kbdFocus, 0 );
                   }
                }
             }
@@ -9543,7 +9543,7 @@ static void wstKeyboardCheckFocus( WstKeyboard *keyboard, WstSurface *surface )
             if ( clientHasListeners )
             {
                DEBUG("wstKeyboardCheckFocus: give key focus to surface %p resource %p", surface, surface->resource);
-               wstKeyboardSetFocus( keyboard, surface );
+               wstKeyboardSetFocus( kbdFocus, surface );
             }
          }
       }
