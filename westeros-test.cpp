@@ -278,7 +278,7 @@ static long long currentTimeMillis()
    struct timeval tv;   
 
    gettimeofday(&tv, NULL);
-   timeMillis = tv.tv_sec * 1000 + tv.tv_usec / 1000;
+   timeMillis = (long long)tv.tv_sec * 1000LL + tv.tv_usec / 1000;
    
    return timeMillis;
 }
@@ -869,7 +869,7 @@ static void shellSurfaceStatus(void *data,
    AppCtx *ctx = (AppCtx*)data;
    AppSurface* surf;
 
-   printf("shellSurfaceStatus: id=%u name=%s x=%d y=%d w=%d h=%d visible=%d opacity=%d zorder=%f\n", 
+   printf("shellSurfaceStatus: id=%u name=%s x=%d y=%d w=%d h=%d visible=%u opacity=%f zorder=%f\n", 
       surfaceId, name, x, y, width, height, visible, 
       wl_fixed_to_double(opacity), wl_fixed_to_double(zorder));
 
@@ -1306,10 +1306,14 @@ int main( int argc, char** argv)
          {
             int v= atoi(argv[++i]);
             printf("v=%d\n", v);
-            if ( v > 0 )
+            if ( v > 0 && v < 1000000 )
             {
                delay= v;
                printf("using delay=%d\n", delay );
+            }
+	    	else if ( v >= 1000000 )
+            {
+               printf("warning: delay value %d exceeds maximum (999999), keeping previous value\n", v);
             }
          }
       }
