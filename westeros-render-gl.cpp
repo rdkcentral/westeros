@@ -236,6 +236,7 @@ struct _WstRenderSurface
    bool memDirty;
    int memWidth;
    int memHeight;
+   int memStride;
    GLint memFormatGL;
    GLenum memType;
 
@@ -393,6 +394,7 @@ static int wstCreateFenceFd(WstRendererGL *rendererGL, EGLSyncKHR sync)
       return -1;
    }
 
+   glFlush();
    fd= rendererGL->eglDupNativeFenceFd(rendererGL->eglDisplay, sync);
    if (fd == EGL_NO_NATIVE_FENCE_FD_ANDROID)
    {
@@ -1036,6 +1038,15 @@ static void wstRendererGLCommitShm( WstRendererGL *rendererGL, WstRenderSurface 
             break;
       }
 
+      if ( (formatGL != GL_NONE) &&
+           (transformPixelsA || transformPixelsB || fillAlpha) &&
+           (stride < width*4) )
+      {
+         // wl_shm only enforces stride >= width (in pixels); reject
+         // under-strided 4bpp buffers so the transform loops stay in bounds.
+         formatGL= GL_NONE;
+      }
+
       if ( formatGL != GL_NONE )
       {
          wl_shm_buffer_begin_access(shmBuffer);
@@ -1045,6 +1056,7 @@ static void wstRendererGLCommitShm( WstRendererGL *rendererGL, WstRenderSurface 
               (
                 (surface->memWidth != width) ||
                 (surface->memHeight != height) ||
+                (surface->memStride != stride) ||
                 (surface->memFormatGL != formatGL) ||
                 (surface->memType != type)
               )
@@ -1114,6 +1126,7 @@ static void wstRendererGLCommitShm( WstRendererGL *rendererGL, WstRenderSurface 
             surface->bufferHeight= height;
             surface->memWidth= width;
             surface->memHeight= height;
+            surface->memStride= stride;
             surface->memFormatGL= formatGL;
             surface->memType= type;
             surface->memDirty= true;
