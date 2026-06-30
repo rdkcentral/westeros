@@ -162,7 +162,7 @@ Consolidated release details generated from docs/relnotes.
 - Date: June 13, 2023
 - Tag/Revision: Westeros-1.01.46
 - Highlights:
-  - v4l2, raw: relax tolerance for aspect ratio comparisions for zoom
+  - v4l2, raw: relax tolerance for aspect ratio comparisons for zoom
   - drm: fix potential crash with frame advance
   - essos: conditionally use eglGetPlatformDisplayEXT
 
