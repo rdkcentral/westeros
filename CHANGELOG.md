@@ -66,7 +66,7 @@ Consolidated release details generated from docs/relnotes.
 - Date: Feb 20, 2025
 - Tag/Revision: Westeros-1.01.58
 - Highlights:
-  - drm: Fix heap corruption resulting from race condition in vidoe disconnect
+  - drm: Fix heap corruption resulting from race condition in video disconnect
   - sink: Default position to GST_CLOCK_TIME_NONE instead of 0
   - drm/sink: Westeros RT Thread Updates
 
