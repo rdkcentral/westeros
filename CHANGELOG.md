@@ -305,7 +305,7 @@ Consolidated release details generated from docs/relnotes.
 - Tag/Revision: Westeros-1.01.28
 - Highlights:
   - v4l2: ensure driver events are checked after last frame decoded
-  - brcm: intial support for instant rate change
+  - brcm: initial support for instant rate change
   - drm: eliminate a source of video latency
 
 ## 1.01.27
