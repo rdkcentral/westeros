@@ -360,7 +360,7 @@ Consolidated release details generated from docs/relnotes.
 - Date: Nov 11, 2020
 - Tag/Revision: Westeros-1.01.21
 - Highlights:
-  - Limit audience for mode msgs with virtutual embedded compositor
+  - Limit audience for mode msgs with virtual embedded compositor
   - Video updates
   - v4l2 updates
 
