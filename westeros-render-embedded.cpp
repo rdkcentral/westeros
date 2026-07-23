@@ -2328,6 +2328,11 @@ static void wstRendererSurfaceImportSync( WstRenderer *renderer, WstRenderSurfac
       if( bufferSync )
       {
          WstLExpSyncCopy(&surface->bufferSync, bufferSync);
+         // Reset any stale render fence carried over on the shared bufferRelease
+         if ( surface->bufferSync.bufferRelease )
+         {
+            WstLExpSyncFdClear( &surface->bufferSync.bufferRelease->renderFenceFd );
+         }
       }
       else
       {
