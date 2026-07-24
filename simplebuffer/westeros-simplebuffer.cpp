@@ -189,6 +189,7 @@ static void wstISBCreatePlanarBufferFd(struct wl_client *client,
       case WL_SB_FORMAT_NV16:
          break;
       default:
+         if ( fd >= 0 ) close( fd );
          wl_resource_post_error(resource, WL_SB_ERROR_INVALID_FORMAT, "invalid format");
          return;
    }
@@ -221,6 +222,9 @@ static void wstISBCreatePlanarBufferFd2(struct wl_client *client,
       case WL_SB_FORMAT_NV61:
          break;
       default:
+         if ( fd0 >= 0 ) close( fd0 );
+         if ( fd1 >= 0 ) close( fd1 );
+         if ( fd2 >= 0 ) close( fd2 );
          wl_resource_post_error(resource, WL_SB_ERROR_INVALID_FORMAT, "invalid format");
          return;
    }
@@ -240,6 +244,9 @@ static void wstSBCreateBuffer(struct wl_client *client, struct wl_resource *reso
    buff= (wl_sb_buffer*)calloc(1, sizeof *buff);
    if (!buff) 
    {
+      if ( fd0 >= 0 ) close( fd0 );
+      if ( fd1 >= 0 ) close( fd1 );
+      if ( fd2 >= 0 ) close( fd2 );
       wl_resource_post_no_memory(resource);
       return;
    }
@@ -249,6 +256,9 @@ static void wstSBCreateBuffer(struct wl_client *client, struct wl_resource *reso
    buff->resource= wl_resource_create(client, &wl_buffer_interface, 1, id);
    if (!buff->resource) 
    {
+      if ( fd0 >= 0 ) close( fd0 );
+      if ( fd1 >= 0 ) close( fd1 );
+      if ( fd2 >= 0 ) close( fd2 );
       wl_resource_post_no_memory(resource);
       free(buff);
       return;
@@ -366,4 +376,3 @@ int WstSBBufferGetPlaneFd(struct wl_sb_buffer *buffer, int plane)
    }
    return fd;
 }
-
