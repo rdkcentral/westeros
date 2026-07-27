@@ -8817,6 +8817,23 @@ static void wstIVpcGetVpcSurface( struct wl_client *client, struct wl_resource *
    WstSurface *surface= (WstSurface*)wl_resource_get_user_data(surfaceResource);
    WstVpcSurface *vpcSurface= 0;
 
+   if ( !surface )
+   {
+      wl_resource_post_error( resource,
+                              WL_DISPLAY_ERROR_INVALID_OBJECT,
+                              "wl_surface no longer exists" );
+      return;
+   }
+
+   if ( surface->vpcSurface )
+   {
+      wl_resource_post_error( resource,
+                              WL_DISPLAY_ERROR_INVALID_OBJECT,
+                              "wl_surface@%u already has a vpc_surface",
+                              (unsigned)wl_resource_get_id(surfaceResource) );
+      return;
+   }
+
    vpcSurface= (WstVpcSurface*)calloc(1,sizeof(WstVpcSurface));
    if ( !vpcSurface )
    {
