@@ -5650,7 +5650,7 @@ static WstSurface* wstSurfaceCreate( WstCompositor *wctx)
          if ( !surface->surfaceNested )
          {
             ctx->surfaceMap.erase( surface->surfaceId );
-	    pthread_mutex_destroy( &surface->renderMutex );
+            pthread_mutex_destroy( &surface->renderMutex );
             free( surface );
             surface= 0;
          }
@@ -5663,7 +5663,7 @@ static WstSurface* wstSurfaceCreate( WstCompositor *wctx)
          if ( !surface->surface )
          {
             ctx->surfaceMap.erase( surface->surfaceId );
-	    pthread_mutex_destroy( &surface->renderMutex );
+            pthread_mutex_destroy( &surface->renderMutex );
             free( surface );
             surface= 0;
          }
@@ -9235,7 +9235,10 @@ static int wstConvertToReadOnlyFile( int fd )
       link[len]= '\0';
       if ( strstr( link, TEMPFILE_PREFIX ) )
       {
-         readOnlyFd= open( link, O_RDONLY | O_CLOEXEC );
+         /* Reopen via procfs magic-link (same inode as fd) rather than the
+          * /tmp pathname returned by readlink, which is racy against a
+          * concurrent unlink+symlink in world-writable /tmp. */
+         readOnlyFd= open( path, O_RDONLY | O_CLOEXEC );
          if ( readOnlyFd < 0 )
          {
             ERROR( "unable to obtain a readonly fd for fd %d", fd);
@@ -10620,4 +10623,3 @@ bool WstCompositorResetFirstFrame( WstCompositor *wctx )
    wctx->clientFirstFrame = false;
    return true;
 }
-
