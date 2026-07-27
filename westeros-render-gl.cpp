@@ -702,6 +702,7 @@ static void wstRendererGLFlushSurface( WstRendererGL *renderer, WstRenderSurface
         if ( surface->mem )
         {
            free( surface->mem );
+           surface->mem= 0;
         }
     }
 }
