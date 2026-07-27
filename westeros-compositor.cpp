@@ -5649,6 +5649,8 @@ static WstSurface* wstSurfaceCreate( WstCompositor *wctx)
          surface->surfaceNested= WstNestedConnectionCreateSurface( ctx->nc );
          if ( !surface->surfaceNested )
          {
+            ctx->surfaceMap.erase( surface->surfaceId );
+	    pthread_mutex_destroy( &surface->renderMutex );
             free( surface );
             surface= 0;
          }
@@ -5660,6 +5662,8 @@ static WstSurface* wstSurfaceCreate( WstCompositor *wctx)
          surface->surface= WstRendererSurfaceCreate( ctx->renderer );
          if ( !surface->surface )
          {
+            ctx->surfaceMap.erase( surface->surfaceId );
+	    pthread_mutex_destroy( &surface->renderMutex );
             free( surface );
             surface= 0;
          }
