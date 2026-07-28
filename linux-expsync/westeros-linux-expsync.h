@@ -48,6 +48,10 @@ inline void WstLExpSyncClear(WstExplicitSync *sync)
 
 inline void WstLExpSyncMove(WstExplicitSync *target, WstExplicitSync *source)
 {
+  if ( target->acquireFenceFd > 0 )
+  {
+    close(target->acquireFenceFd);
+  }
   *target= *source;
   WstLExpSyncClear(source);
 }
