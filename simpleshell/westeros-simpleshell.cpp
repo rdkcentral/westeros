@@ -114,9 +114,9 @@ static void wstSimpleShellBroadcastSurfaceUpdate(struct wl_client *client, struc
 {
    const char *name= 0;
 
-   bool visible;
-   int x, y, width, height;
-   float opacity, zorder;
+   bool visible= false;
+   int x= 0, y= 0, width= 0, height= 0;
+   float opacity= 0.0f, zorder= 0.0f;
    wl_fixed_t fixedOpacity, fixedZOrder;
 
    shell->callbacks->get_name( shell->userData, surfaceId, &name );
@@ -241,9 +241,9 @@ static void wstISimpleShellGetStatus(struct wl_client *client, struct wl_resourc
    if ( shell )
    {
       const char *name= 0;
-      bool visible;
-      int x, y, width, height;
-      float opacity, zorder;
+      bool visible= false;
+      int x= 0, y= 0, width= 0, height= 0;
+      float opacity= 0.0f, zorder= 0.0f;
       wl_fixed_t fixedOpacity, fixedZOrder;
 
       shell->callbacks->get_name( shell->userData, surfaceId, &name );
