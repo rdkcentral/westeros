@@ -41,6 +41,7 @@ struct wayland_simple_shell_callbacks {
    void (*get_popup)( void *userData, uint32_t surfaceId, uint32_t parentSurfaceId,
                       int32_t x, int32_t y, int32_t width, int32_t height );
    void (*is_surface_popup)( void *userData, uint32_t surfaceId, bool *popup, uint32_t *parentSurfaceId );
+   struct wl_client* (*get_surface_client)( void *userData, uint32_t surfaceId );
 };
 
 wl_simple_shell* WstSimpleShellInit( struct wl_display *display,
