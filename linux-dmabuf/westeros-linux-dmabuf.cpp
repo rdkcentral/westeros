@@ -192,6 +192,7 @@ static void wstLDBParamsCreate(struct wl_client *client,
                               "bad dimensions: %dx%d",
                               width,
                               height );
+      wl_resource_set_user_data(resourceParams, NULL);
       wstLDBBufferDestroy(buffer);
       return;
    }
@@ -201,6 +202,7 @@ static void wstLDBParamsCreate(struct wl_client *client,
       wl_resource_post_error( resourceParams,
                               ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INCOMPLETE,
                               "no planes have been added to this ldb parameters object" );
+      wl_resource_set_user_data(resourceParams, NULL);
       wstLDBBufferDestroy(buffer);
       return;
    }
@@ -213,6 +215,7 @@ static void wstLDBParamsCreate(struct wl_client *client,
                                  ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INCOMPLETE,
                                  "plane %i has been assigned no parameters",
                                  i );
+         wl_resource_set_user_data(resourceParams, NULL);
          wstLDBBufferDestroy(buffer);
          return;
       }
@@ -237,6 +240,7 @@ static void wstLDBParamsCreate(struct wl_client *client,
                                 ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INVALID_WL_BUFFER,
                                 "buffer creation failed");
       }
+      wl_resource_set_user_data(resourceParams, NULL);
       wstLDBBufferDestroy(buffer);
       return;
    }

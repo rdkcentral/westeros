@@ -173,7 +173,7 @@ rtError rtCaptureRegistryObject::pipelineMediaStart( rtString pipelineName )
    long long now= getCurrentTimeMillis();
 
    pthread_mutex_lock( &gMutex );
-   sprintf(work,"%llu %s %llu start", gMediaConsumptionOrdinal++, pipelineName.cString(), now);
+   snprintf(work, sizeof(work), "%lld %s %lld start", gMediaConsumptionOrdinal++, pipelineName.cString(), now);
    str.append( work );
    gMediaConsumptionInfo.push_back( str );
    pthread_mutex_unlock( &gMutex );
@@ -188,7 +188,7 @@ rtError rtCaptureRegistryObject::pipelineMediaStop( rtString pipelineName )
    long long now= getCurrentTimeMillis();
 
    pthread_mutex_lock( &gMutex );
-   sprintf(work,"%llu %s %llu stop", gMediaConsumptionOrdinal++, pipelineName.cString(), now);
+   snprintf(work, sizeof(work), "%lld %s %lld stop", gMediaConsumptionOrdinal++, pipelineName.cString(), now);
    str.append( work );
    gMediaConsumptionInfo.push_back( str );
    pthread_mutex_unlock( &gMutex );
@@ -308,4 +308,3 @@ int main( int argc, const char **argv )
 
    return 0;
 }
-

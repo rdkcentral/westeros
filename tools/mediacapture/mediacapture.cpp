@@ -1246,8 +1246,22 @@ static void generateSPSandPPS( MediaCapContext *ctx, SrcInfo *si )
          {
             i= 6;
             spsLen= (data[i] << 8)|data[i+1];
+            if ( 8 + spsLen + 3 > len )
+            {
+               ERROR("generateSPSandPPS: spsLen %d exceeds codec_data len %d", spsLen, len);
+               ctx->canCapture= false;
+               free( data );
+               return;
+            }
             i += (spsLen + 2 +1);
             ppsLen= (data[i] << 8)|data[i+1];
+            if ( 8 + spsLen + 3 + ppsLen > len )
+            {
+               ERROR("generateSPSandPPS: spsLen %d + ppsLen %d exceeds codec_data len %d", spsLen, ppsLen, len);
+               ctx->canCapture= false;
+               free( data );
+               return;
+            }
             neededLen= 3 + spsLen + 3 + ppsLen;
             spspps= (unsigned char*)calloc( 1, neededLen );
             if ( spspps )
@@ -1304,6 +1318,13 @@ static void generateAudioAACPESHeader( MediaCapContext *ctx, SrcInfo *si )
       data= getBinaryCodecData( si->codecData, len );
       if ( data )
       {
+         if ( len < 2 )
+         {
+            ERROR("generateAudioAACPESHeader: codec_data len %d too short", len);
+            ctx->canCapture= false;
+            free( data );
+            return;
+         }
          aot= (data[0] >> 3);
          if ( (aot == AOT_SBR) || (aot == AOT_PS) )
          {
@@ -3645,4 +3666,3 @@ void MediaCaptureDestroyContext( void *context )
 }
 
 }
-
