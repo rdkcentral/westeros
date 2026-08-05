@@ -1050,6 +1050,36 @@ static void wstRendererGLCommitShm( WstRendererGL *rendererGL, WstRenderSurface 
 
       if ( formatGL != GL_NONE )
       {
+         // Validate dimensions
+         if ( (width <= 0) || (height <= 0) || (stride <= 0) )
+         {
+            printf("wstRendererGLCommitShm: invalid dimensions width %d height %d stride %d\n",
+                   width, height, stride);
+            return;
+         }
+
+         if ( type == GL_UNSIGNED_BYTE ) 
+         {
+            const size_t minStride = (size_t)width * 4u;
+            if ((size_t)stride < minStride)
+            {
+               printf("wstRendererGLCommitShm: invalid stride %d for width %d (minimum %zu required)\n",
+                     stride, width, minStride);
+               return;
+            }
+         }
+         else if ( type == GL_UNSIGNED_SHORT_5_6_5 || type == GL_UNSIGNED_SHORT_4_4_4_4 ) 
+         {
+            const size_t rowBytes = (size_t)width * 2u;
+            const size_t minStride = (rowBytes + 3u) & ~3u;
+            if ((size_t)stride < minStride)
+            {
+               printf("wstRendererGLCommitShm: invalid stride %d for width %d (minimum %zu required)\n",
+                     stride, width, minStride);
+               return;
+            }
+         }
+
          wl_shm_buffer_begin_access(shmBuffer);
          data= wl_shm_buffer_get_data(shmBuffer);
          
@@ -1076,35 +1106,40 @@ static void wstRendererGLCommitShm( WstRendererGL *rendererGL, WstRenderSurface 
             
             if ( transformPixelsA )
             {
-               // transform ARGB to RGBA
+               // Transform ARGB to RGBA
+               // Use strideInPixels instead of width to handle padding
                unsigned int pixel, alpha;
                unsigned int *pixdata= (unsigned int*)surface->mem;
+               size_t strideInPixels= stride / 4; 
                for( int y= 0; y < height; ++y )
                {
                   for( int x= 0; x < width; ++x )
                   {
-                     pixel= pixdata[y*width+x];
+                     const size_t offset = (size_t)y * strideInPixels + (size_t)x;
+                     pixel= pixdata[offset]; 
                      alpha= (fillAlpha ? 0xFF : (pixel>>24));
                      pixel= (pixel<<8)|alpha;
-                     pixdata[y*width+x]= pixel;
+                     pixdata[offset]= pixel;
                   }
                }
             }
             else if ( transformPixelsB )
             {
-               // transform BGRA to RGBA
+               // Transform BGRA to RGBA
+               // Use stride to handle padding
                unsigned char *pixdata= (unsigned char*)surface->mem;
                for( int y= 0; y < height; ++y )
                {
                   for( int x= 0; x < width; ++x )
                   {
+                     const size_t offset = (size_t)y * stride + (size_t)x * 4;
                      if ( fillAlpha )
                      {
-                        pixdata[y*width*4 + x*4 +3]= 0xFF;
+                        pixdata[offset + 3]= 0xFF;
                      }
-                     unsigned char temp= pixdata[y*width*4 + x*4 +2];
-                     pixdata[y*width*4 + x*4 +2]= pixdata[y*width*4 + x*4 +0];
-                     pixdata[y*width*4 + x*4 +0]= temp;
+                     unsigned char temp= pixdata[offset + 2];
+                     pixdata[offset + 2]= pixdata[offset + 0];
+                     pixdata[offset + 0]= temp;
                   }
                }
             }
@@ -1117,7 +1152,8 @@ static void wstRendererGLCommitShm( WstRendererGL *rendererGL, WstRenderSurface 
                   {
                      for( int x= 0; x < width; ++x )
                      {
-                        pixdata[y*width*4 + x*4 +3]= 0xFF;
+                        const size_t offset = (size_t)y * stride + (size_t)x * 4;
+                        pixdata[offset + 3]= 0xFF;
                      }
                   }
                }
