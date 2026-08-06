@@ -21,13 +21,17 @@
 #define _WESTEROS_LINUX_EXPSYNC_H
 
 #include <unistd.h>
+#include "wayland-server.h"
 
 struct wl_lexpsync;
+struct _WstSurface;
 
 typedef struct _WstExplicitSyncBufferRelease
 {
    struct wl_resource *resource;
    int renderFenceFd;
+   struct _WstSurface *surface;
+   struct wl_listener surfaceDestroyListener;
 } WstExplicitSyncBufferRelease;
 
 typedef struct _WstExplicitSync
