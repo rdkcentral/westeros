@@ -1760,6 +1760,10 @@ void draw( WstCompositor *wctx, void *userData )
                       appCtx->eglSurface, 
                       appCtx->eglContext );
 
+      glViewport( 0, 0,
+                  appCtx->useFBO ? appCtx->fboWidth : appCtx->outputWidth,
+                  appCtx->useFBO ? appCtx->fboHeight : appCtx->outputHeight );
+
       // Fill with opaque color to show that hole punch is working
       glClearColor( 0.0f, 0.0f, 0.0f, 1.0f );
       glClear( GL_COLOR_BUFFER_BIT );
