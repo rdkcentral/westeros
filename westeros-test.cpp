@@ -1635,7 +1635,11 @@ static bool setupEGL( AppCtx *ctx )
       printf("error: unable to initialize EGL display\n" );
       goto exit;
    }
+
    printf("eglInitiialize: major: %d minor: %d\n", major, minor );
+   printf("EGL vendor: %s\n", eglQueryString(ctx->eglDisplay, EGL_VENDOR));
+   printf("EGL version string: %s\n", eglQueryString(ctx->eglDisplay, EGL_VERSION));
+   printf("EGL client APIs: %s\n", eglQueryString(ctx->eglDisplay, EGL_CLIENT_APIS));
     
    /*
     * Get number of available configurations
@@ -2152,6 +2156,11 @@ static bool setupGL( AppCtx *ctx )
 
    ctx->gl.mvp= glGetUniformLocation(program, "mvp");
    glUseProgram(program);
+
+   printf("GLES vendor: %s\n", glGetString(GL_VENDOR));
+   printf("GLES renderer: %s\n", glGetString(GL_RENDERER));
+   printf("GLES version: %s\n", glGetString(GL_VERSION));
+   printf("GLES shading language: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
    result= true;
 
