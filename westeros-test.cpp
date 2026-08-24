@@ -1636,10 +1636,12 @@ static bool setupEGL( AppCtx *ctx )
       goto exit;
    }
 
-   printf("eglInitiialize: major: %d minor: %d\n", major, minor );
    printf("EGL vendor: %s\n", eglQueryString(ctx->eglDisplay, EGL_VENDOR));
    printf("EGL version string: %s\n", eglQueryString(ctx->eglDisplay, EGL_VERSION));
    printf("EGL client APIs: %s\n", eglQueryString(ctx->eglDisplay, EGL_CLIENT_APIS));
+   printf("EGL selected client API: OpenGL ES\n");
+
+   printf(" chirag eglInitiialize: major: %d minor: %d\n", major, minor );
     
    /*
     * Get number of available configurations
@@ -1719,9 +1721,17 @@ static bool setupEGL( AppCtx *ctx )
    }
    ctx->eglConfig= eglConfigs[i];
 
+   {
+      EGLint renderableType;
+      eglGetConfigAttrib(ctx->eglDisplay, ctx->eglConfig, EGL_RENDERABLE_TYPE, &renderableType);
+      printf("chirag EGL selected config: red=%d green=%d blue=%d alpha=%d depth=%d renderable=0x%X\n",
+             redSize, greenSize, blueSize, alphaSize, depthSize, renderableType);
+   }
+
    ctxAttrib[0]= EGL_CONTEXT_CLIENT_VERSION;
    ctxAttrib[1]= 2; // ES2
    ctxAttrib[2]= EGL_NONE;
+   printf("EGL context request: client=OpenGL ES version=2\n");
     
    /*
     * Create an EGL context
@@ -1732,7 +1742,18 @@ static bool setupEGL( AppCtx *ctx )
       printf( "eglCreateContext failed: %X\n", eglGetError() );
       goto exit;
    }
-   printf("eglCreateContext: eglContext %p\n", ctx->eglContext );
+   printf("chirag eglCreateContext: eglContext %p\n", ctx->eglContext );
+
+   {
+      EGLint contextClientVersion;
+      EGLint contextClientType;
+      eglQueryContext(ctx->eglDisplay, ctx->eglContext, EGL_CONTEXT_CLIENT_VERSION, &contextClientVersion);
+      eglQueryContext(ctx->eglDisplay, ctx->eglContext, EGL_CONTEXT_CLIENT_TYPE, &contextClientType);
+      printf("EGL context created: client=%s version=%d type=0x%X\n",
+             (contextClientType == EGL_OPENGL_ES_API) ? "OpenGL ES" : "unknown",
+             contextClientVersion,
+             contextClientType);
+   }
 
    result= true;
     
@@ -1833,6 +1854,11 @@ static AppSurface* createWindowSurface( AppCtx *ctx, int width, int height )
       destroySurface( ctx, surface );
       return NULL;
    }
+
+   printf("eglMakeCurrent succeeded: display=%p surface=%p context=%p\n",
+         ctx->eglDisplay, surface->eglSurface, ctx->eglContext);
+   printf("GLES context current: version=%s renderer=%s\n",
+         glGetString(GL_VERSION), glGetString(GL_RENDERER));
 
    if (!ctx->shell)
    {
