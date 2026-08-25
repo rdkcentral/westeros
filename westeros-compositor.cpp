@@ -3813,19 +3813,6 @@ static void simpleShellGetStatus( void* userData, uint32_t surfaceId, bool *visi
    }
 }
 
-static struct wl_client* simpleShellGetSurfaceClient( void* userData, uint32_t surfaceId )
-{
-   WstContext *ctx= (WstContext*)userData;
-   WstSurface *surface= wstGetSurfaceFromSurfaceId(ctx, surfaceId);
-   
-   if ( surface && surface->resource )
-   {
-      return wl_resource_get_client(surface->resource);
-   }
-   
-   return NULL;
-}
-
 struct wayland_simple_shell_callbacks simpleShellCallbacks= {
    simpleShellSetName,
    simpleShellSetVisible,
@@ -3837,8 +3824,7 @@ struct wayland_simple_shell_callbacks simpleShellCallbacks= {
    simpleShellSetFocus,
    simpleShellSetScale,
    simpleShellGetPopup,
-   simpleShellIsSurfacePopup,
-   simpleShellGetSurfaceClient
+   simpleShellIsSurfacePopup
 };
 
 static void* wstCompositorThread( void *arg )

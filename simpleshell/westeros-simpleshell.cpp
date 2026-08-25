@@ -35,7 +35,6 @@
 #define DEFAULT_NAME "noname"
 #define BROADCAST_DELAY (2000)
 
-static bool wstSimpleShellCheckAuthorization(struct wl_client *client, struct wl_simple_shell *shell, uint32_t surfaceId);
 static void destroy_shell(struct wl_resource *resource);
 static void wstSimpleShellBroadcastCreation( struct wl_simple_shell *shell, uint32_t surfaceId );
 
@@ -73,26 +72,6 @@ static long long getCurrentTimeMillis()
    utcCurrentTimeMillis= tv.tv_sec*1000LL+(tv.tv_usec/1000LL);
 
    return utcCurrentTimeMillis;
-}
-
-static bool wstSimpleShellCheckAuthorization(struct wl_client *client, struct wl_simple_shell *shell, uint32_t surfaceId)
-{
-   if (!shell || !shell->callbacks || !shell->callbacks->get_surface_client)
-   {
-      // If callback not implemented, deny access for security
-      return false;
-   }
-
-   struct wl_client *surfaceOwner = shell->callbacks->get_surface_client(shell->userData, surfaceId);
-   
-   // Allow if surface exists and client owns it
-   if (surfaceOwner != NULL && surfaceOwner == client)
-   {
-      return true;
-   }
-
-   // Deny all other cases
-   return false;
 }
 
 static void wstISimpleShellSetName(struct wl_client *client, struct wl_resource *resource, 
@@ -176,13 +155,6 @@ static void wstISimpleShellSetName(struct wl_client *client, struct wl_resource 
 
    if ( shell )
    {
-      if (!wstSimpleShellCheckAuthorization(client, shell, surfaceId))
-      {
-         wl_resource_post_error(resource, WL_DISPLAY_ERROR_INVALID_OBJECT,
-                               "not authorized to control surface %u", surfaceId);
-         return;
-      }
-
       shell->callbacks->set_name( shell->userData, surfaceId, name );
 
       for( std::vector<PendingBroadcastInfo>::iterator it= shell->pendingCreateBroadcast.begin();
@@ -210,13 +182,6 @@ static void wstISimpleShellSetVisible(struct wl_client *client, struct wl_resour
 
    if ( shell )
    {
-      if (!wstSimpleShellCheckAuthorization(client, shell, surfaceId))
-      {
-         wl_resource_post_error(resource, WL_DISPLAY_ERROR_INVALID_OBJECT,
-                               "not authorized to control surface %u", surfaceId);
-         return;
-      }
-
       shell->callbacks->set_visible( shell->userData, surfaceId, (visible != 0) );
 
       wstSimpleShellBroadcastSurfaceUpdate(client, shell, surfaceId );
@@ -230,13 +195,6 @@ static void wstISimpleShellSetGeometry(struct wl_client *client, struct wl_resou
 
    if ( shell )
    {
-      if (!wstSimpleShellCheckAuthorization(client, shell, surfaceId))
-      {
-         wl_resource_post_error(resource, WL_DISPLAY_ERROR_INVALID_OBJECT,
-                               "not authorized to control surface %u", surfaceId);
-         return;
-      }
-
       shell->callbacks->set_geometry( shell->userData, surfaceId, x, y, width, height );
 
       wstSimpleShellBroadcastSurfaceUpdate(client, shell, surfaceId );
@@ -249,13 +207,6 @@ static void wstISimpleShellSetOpacity(struct wl_client *client, struct wl_resour
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
    if ( shell )
    {
-      if (!wstSimpleShellCheckAuthorization(client, shell, surfaceId))
-      {
-         wl_resource_post_error(resource, WL_DISPLAY_ERROR_INVALID_OBJECT,
-                               "not authorized to control surface %u", surfaceId);
-         return;
-      }
-
       float opacityLevel= wl_fixed_to_double( opacity );
 
       if ( opacityLevel < 0.0 ) opacityLevel= 0.0;
@@ -273,13 +224,6 @@ static void wstISimpleShellSetZOrder(struct wl_client *client, struct wl_resourc
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
    if ( shell )
    {
-      if (!wstSimpleShellCheckAuthorization(client, shell, surfaceId))
-      {
-         wl_resource_post_error(resource, WL_DISPLAY_ERROR_INVALID_OBJECT,
-                               "not authorized to control surface %u", surfaceId);
-         return;
-      }
-
       float zOrderLevel= wl_fixed_to_double( zorder );
 
       if ( zOrderLevel < 0.0 ) zOrderLevel= 0.0;
@@ -296,11 +240,6 @@ static void wstISimpleShellGetStatus(struct wl_client *client, struct wl_resourc
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
    if ( shell )
    {
-      if (!wstSimpleShellCheckAuthorization(client, shell, surfaceId))
-      {
-         return;
-      }
-
       const char *name= 0;
       bool visible= false;
       int x= 0, y= 0, width= 0, height= 0;
@@ -351,13 +290,6 @@ static void wstISimpleShellSetFocus(struct wl_client *client, struct wl_resource
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
    if ( shell )
    {
-      if (!wstSimpleShellCheckAuthorization(client, shell, surfaceId))
-      {
-         wl_resource_post_error(resource, WL_DISPLAY_ERROR_INVALID_OBJECT,
-                               "not authorized to control surface %u", surfaceId);
-         return;
-      }
-
       shell->callbacks->set_focus(shell->userData, surfaceId);
    }
 }
@@ -366,22 +298,12 @@ static void wstISimpleShellSetScale(struct wl_client *client, struct wl_resource
                                      uint32_t surfaceId, wl_fixed_t scaleX, wl_fixed_t scaleY)
 {
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
-   if ( shell )
-   {
-      if (!wstSimpleShellCheckAuthorization(client, shell, surfaceId))
-      {
-         wl_resource_post_error(resource, WL_DISPLAY_ERROR_INVALID_OBJECT,
-                               "not authorized to control surface %u", surfaceId);
-         return;
-      }
+   float fScaleX= wl_fixed_to_double(scaleX);
+   float fScaleY= wl_fixed_to_double(scaleY);
 
-      float fScaleX= wl_fixed_to_double(scaleX);
-      float fScaleY= wl_fixed_to_double(scaleY);
-
-      printf("westeros-simpleshell: wstSimpleShellSetScale: surfaceId %u scaleX %f scaleY %f\n",
-              surfaceId, fScaleX, fScaleY);
-      shell->callbacks->set_scale(shell->userData, surfaceId, fScaleX, fScaleY);
-   }
+   printf("westeros-simpleshell: wstSimpleShellSetScale: surfaceId %u scaleX %f scaleY %f\n",
+           surfaceId, fScaleX, fScaleY);
+   shell->callbacks->set_scale(shell->userData, surfaceId, fScaleX, fScaleY);
 }
 
 static void wstISimpleShellGetPopup(struct wl_client *client, struct wl_resource *resource,
@@ -391,14 +313,6 @@ static void wstISimpleShellGetPopup(struct wl_client *client, struct wl_resource
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
    if ( shell && shell->callbacks && shell->callbacks->get_popup )
    {
-      if ( !wstSimpleShellCheckAuthorization(client, shell, surfaceId) ||
-           (parentSurfaceId != 0 && !wstSimpleShellCheckAuthorization(client, shell, parentSurfaceId)) )
-      {
-         wl_resource_post_error(resource, WL_DISPLAY_ERROR_INVALID_OBJECT,
-                               "not authorized to control surface %u", surfaceId);
-         return;
-      }
-
       shell->callbacks->get_popup(shell->userData, surfaceId, parentSurfaceId, x, y, width, height);
       wstSimpleShellBroadcastSurfaceUpdate(client, shell, surfaceId );
    }
