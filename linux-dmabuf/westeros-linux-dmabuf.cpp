@@ -56,7 +56,7 @@ static void wstLDBBufferDestroy(struct wl_ldb_buffer *buffer)
 {
    int i;
 
-   for (i= 0; i < buffer->info.planeCount; i++)
+   for (i= 0; i < WST_LDB_MAX_PLANES; i++)
    {
       if ( buffer->info.fd[i] >= 0 )
       {
