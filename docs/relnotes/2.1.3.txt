@@ -1,0 +1,36 @@
+Westeros Release Notes
+======================
+ 
+Westeros 2.1.3 Release Notes
+------------------------------
+ 
+Date: 01 September 2026
+Tag: 2.1.3
+Changes:
+
+* Fix: appsserviced crash during the CDL migration test
+* Fix: Address FD leak vulnerability in SimpleBuffer
+* Handle malformed/oversized codec_data
+* Fix possible double free in wstLDBParamsCreate
+* Fix dangling surface map entry on creation failure
+* Prevent TOCTOU race by opening procfs fd instead of pathname
+* Cleanup close calls to match code.rdkcentral
+* Fix sprintf formatting
+* Security fixes from Broadcom
+* Fix use-after-free in explicit-sync
+* Ensure westeros-main calls glViewport and doesn't rely on a default viewport setting. Fixes an issue with the new westeros-gl-rdk.
+* Base viewport on fbo size if in embedded mode.
+* Update westeros-main to call glViewport which is will be required when switching to the new westeros-gl-rdk
+* mem heap overflow via wl_shm stride
+* adding protect code 'formatGL = GL_NONE' before allocation
+* Missing glflush calls e.g. SWRDKV-4549
+ 
+Dependencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+

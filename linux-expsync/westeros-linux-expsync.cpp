@@ -56,9 +56,32 @@ static bool wstLExpSyncFileIsValid(int fd)
    return result;
 }
 
+/*
+ * Invoked when the owning wl_surface's resource is destroyed while this buffer_release is still alive
+ */
+static void wstLExpSyncSurfaceDestroyed(struct wl_listener *listener, void *data)
+{
+   WstExplicitSyncBufferRelease *bufferRelease= wl_container_of(listener, bufferRelease, surfaceDestroyListener);
+   bufferRelease->surface= NULL;
+   wl_list_remove(&bufferRelease->surfaceDestroyListener.link);
+}
+
 static void wstLExpSyncBufferRelease(struct wl_resource *resource)
 {
    WstExplicitSyncBufferRelease *bufferRelease= (WstExplicitSyncBufferRelease*)wl_resource_get_user_data(resource);
+   WstSurface *surface= bufferRelease->surface;
+
+   /*
+    * If the owning surface is still alive, clear its back reference to this
+    * buffer_release and stop listening for the surface's destruction.
+    */
+   if (surface)
+   {
+      if (surface->createdBufferSync.bufferRelease == bufferRelease)  surface->createdBufferSync.bufferRelease= NULL;
+      if (surface->attachedBufferSync.bufferRelease == bufferRelease) surface->attachedBufferSync.bufferRelease= NULL;
+      if (surface->detachedBufferSync.bufferRelease == bufferRelease) surface->detachedBufferSync.bufferRelease= NULL;
+      wl_list_remove(&bufferRelease->surfaceDestroyListener.link);
+   }
 
    WstLExpSyncFdClear(&bufferRelease->renderFenceFd);
    free(bufferRelease);
@@ -159,12 +182,22 @@ static void wstILExpSyncSurfaceSyncGetRelease(struct wl_client *client,
    }
 
    bufferRelease->renderFenceFd= -1; // render fence provided by server to client
+   bufferRelease->surface= surface;
    bufferRelease->resource= wl_resource_create(client,
                                                &zwp_linux_buffer_release_v1_interface,
                                                wl_resource_get_version(resource), id);
    if (!bufferRelease->resource)
    {
       goto err_create;
+   }
+   /*
+    * Track destruction of the owning surface so this buffer_release never dereferences a freed surface
+    */
+   wl_list_init(&bufferRelease->surfaceDestroyListener.link);
+   bufferRelease->surfaceDestroyListener.notify= wstLExpSyncSurfaceDestroyed;
+   if (surface->resource)
+   {
+      wl_resource_add_destroy_listener(surface->resource, &bufferRelease->surfaceDestroyListener);
    }
 
    wl_resource_set_implementation(bufferRelease->resource,
