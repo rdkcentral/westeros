@@ -6,7 +6,7 @@ case $1 in
   pushd brcm/external/install/bin ;;
   drm)
   pushd drm/external/install/bin
-  export LD_PRELOAD=../lib/libwesteros_gl.so.0.0.0 ;;
+  export LD_PRELOAD=../lib/libwesteros_gl.so ;;
   *)
   echo "bad platform"
   exit ;;

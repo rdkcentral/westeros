@@ -216,7 +216,7 @@ bool WstCompositorSetNativeWindow( WstCompositor *wctx, void *nativeWindow );
  *
  * Specify the name of the module the compositor will use for rendering.  This
  * will be a shared library file name without path.  An example module 
- * name might be libwesteros_render_gl.so.0.  This must be called prior
+ * name might be libwesteros_render_gl.so.  This must be called prior
  * to WstCompositorStart.
  */
 bool WstCompositorSetRendererModule( WstCompositor *wctx, const char *rendererModule );
@@ -252,7 +252,7 @@ bool WstCompositorSetIsRepeater( WstCompositor *wctx, bool isRepeater );
  * as an embedded compositor, the compositor will create a wayland display that
  * clients can connect and render to, but the compositor will only compose
  * its scene when WstCompositorComposeEmbedded is called.  An embedded
- * compositor should use libwesteros_render_embedded.so.0 as its
+ * compositor should use libwesteros_render_embedded.so as its
  * renderer module (or some other module that supports embedded composition).
  * Note that multi-threaded applications that use embedded composition must
  * call WstCompositorStart and WstCompositorComposeEmbedded on the same thread.

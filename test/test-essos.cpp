@@ -806,7 +806,7 @@ bool testCaseEssosSetWindowPosition( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -1077,7 +1077,7 @@ bool testCaseEssosGetEGLDisplayType( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -1205,7 +1205,7 @@ bool testCaseEssosCreateNativeWindow( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -1340,7 +1340,7 @@ bool testCaseEssosDestroyNativeWindow( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -1471,7 +1471,7 @@ bool testCaseEssosGetWaylandDisplay( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -1590,7 +1590,7 @@ bool testCaseEssosStart( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -2299,7 +2299,7 @@ bool testCaseEssosDisplaySizeChangeWayland( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -2465,7 +2465,7 @@ bool testCaseEssosDisplaySafeAreaChangeWayland( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -2714,7 +2714,7 @@ bool testCaseEssosKeyboardBasicKeyInputWayland( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -2999,7 +2999,7 @@ bool testCaseEssosKeyboardRepeatKeyInputWayland( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -3166,7 +3166,7 @@ bool testCaseEssosPointerBasicPointerInputWayland( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -3363,7 +3363,7 @@ bool testCaseEssosTerminateListener( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );

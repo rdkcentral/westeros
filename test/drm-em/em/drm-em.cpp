@@ -558,7 +558,7 @@ bool EMStart( EMCTX *ctx )
    if ( ctx )
    {
       void *module= 0;
-      module= dlopen( "libwesteros_gl.so.0.0.0", RTLD_NOW );
+      module= dlopen( "libwesteros_gl.so", RTLD_NOW );
       if ( module )
       {
          // Create a WstGLCtx here so that a context has been created

@@ -74,6 +74,8 @@ endif
 
 AM_CFLAGS = $(AM_CXXFLAGS) -Wno-deprecated-declarations
 
+WESTEROS_LIBRARY_VERSION_FLAGS = -version-number $(WESTEROS_LT_VERSION)
+
 if ENABLE_WESTEROS_LDBPROTOCOL
 BUILT_SOURCES += libwesteros_linux_dmabuf_server.la
 endif
@@ -172,6 +174,7 @@ libwesteros_compositor_la_LDFLAGS= \
    $(WAYLAND_EGL_LIBS) \
    $(XKBCOMMON_LIBS) \
    $(WESTEROS_COMPOSITOR_EXTRA_LIBS) \
+   $(WESTEROS_LIBRARY_VERSION_FLAGS) \
    -lxkbcommon \
    -lwesteros_simpleshell_server \
    -lpthread \
@@ -210,9 +213,9 @@ libwesteros_render_gl_la_SOURCES = westeros-render-gl.cpp
 libwesteros_render_gl_la_includedir = $(includedir)
 libwesteros_render_gl_la_DEPENDENCIES =
 if !ENABLE_PLATFORM_EMBEDDED
-libwesteros_render_gl_la_LDFLAGS= $(WSTEGL_LIBS) -lEGL -lGL -lGLEW $(WAYLAND_SERVER_LIBS)
+libwesteros_render_gl_la_LDFLAGS= $(WSTEGL_LIBS) -lEGL -lGL -lGLEW $(WAYLAND_SERVER_LIBS) $(WESTEROS_LIBRARY_VERSION_FLAGS)
 else
-libwesteros_render_gl_la_LDFLAGS= $(WSTEGL_LIBS) -lEGL -lwesteros_gl $(WESTEROS_PLATFORM_LIBS) $(WAYLAND_SERVER_LIBS)
+libwesteros_render_gl_la_LDFLAGS= $(WSTEGL_LIBS) -lEGL -lwesteros_gl $(WESTEROS_PLATFORM_LIBS) $(WAYLAND_SERVER_LIBS) $(WESTEROS_LIBRARY_VERSION_FLAGS)
 endif
 if ENABLE_WESTEROS_SBPROTOCOL
 libwesteros_render_gl_la_LDFLAGS += -lwesteros_simplebuffer_server
@@ -227,9 +230,9 @@ libwesteros_render_embedded_la_SOURCES = westeros-render-embedded.cpp
 libwesteros_render_embedded_la_DEPENDENCIES =
 libwesteros_render_embedded_la_includedir = $(includedir)
 if !ENABLE_PLATFORM_EMBEDDED
-libwesteros_render_embedded_la_LDFLAGS= -lEGL -lglut -lGL -lGLEW $(WAYLAND_SERVER_LIBS)
+libwesteros_render_embedded_la_LDFLAGS= -lEGL -lglut -lGL -lGLEW $(WAYLAND_SERVER_LIBS) $(WESTEROS_LIBRARY_VERSION_FLAGS)
 else
-libwesteros_render_embedded_la_LDFLAGS= $(WSTEGL_LIBS) -lEGL -lwesteros_gl $(WESTEROS_PLATFORM_LIBS) $(WAYLAND_SERVER_LIBS)
+libwesteros_render_embedded_la_LDFLAGS= $(WSTEGL_LIBS) -lEGL -lwesteros_gl $(WESTEROS_PLATFORM_LIBS) $(WAYLAND_SERVER_LIBS) $(WESTEROS_LIBRARY_VERSION_FLAGS)
 endif
 if ENABLE_WESTEROS_SBPROTOCOL
 libwesteros_render_embedded_la_LDFLAGS += -lwesteros_simplebuffer_server
@@ -248,6 +251,7 @@ libwesteros_linux_dmabuf_server_la_CXXFLAGS = $(AM_CXXFLAGS) \
                                              -I${srcdir}/linux-dmabuf/protocol
 libwesteros_linux_dmabuf_server_la_LDFLAGS= \
    $(AM_LDFLAGS) \
+   $(WESTEROS_LIBRARY_VERSION_FLAGS) \
    $(WAYLAND_SERVER_LIBS)
 endif
 

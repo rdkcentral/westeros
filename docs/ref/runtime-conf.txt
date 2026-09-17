@@ -14,7 +14,7 @@ devices using an Amlogic SOC this process should include the following in its
 env:
 
 export XDG_RUNTIME_DIR=<path>
-export LD_PRELOAD=libwesteros_gl.so.0.0.0
+export LD_PRELOAD=libwesteros_gl.so
 export WESTEROS_GL_GRAPHICS_MAX_SIZE=1920x1080
 export WESTEROS_GL_MODE=3840x2160x60
 export WESTEROS_GL_USE_REFRESH_LOCK=1
