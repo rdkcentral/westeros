@@ -36,7 +36,7 @@ fi
 if [ -f /usr/lib/libwesteros_render_dispmanx.so.0 ]; then
     RENDERER="/usr/lib/libwesteros_render_dispmanx.so.0 --enableCursor"
 else
-    RENDERER="/usr/lib/libwesteros_render_gl.so.0"
+    RENDERER="/usr/lib/libwesteros_render_gl.so"
 fi
 
 if [ -f "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then

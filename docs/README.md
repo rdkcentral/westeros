@@ -378,7 +378,7 @@ systemctl restart westeros
 The frame rate and display name can also be passed on the command line when invoking the `westeros` binary directly:
 
 ```bash
-westeros --renderer /usr/lib/libwesteros_render_gl.so.0 --framerate 60 --display wayland-0
+westeros --renderer /usr/lib/libwesteros_render_gl.so --framerate 60 --display wayland-0
 ```
 
 ##Dependencies

@@ -517,7 +517,7 @@ bool testCaseTouchBasicTouchInput( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -910,7 +910,7 @@ bool testCaseTouchBasicTouchInputRepeater( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -1335,7 +1335,7 @@ bool testCaseTouchBasicFocus( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -1706,7 +1706,7 @@ bool testCaseTouchBasicFocusRepeater( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
