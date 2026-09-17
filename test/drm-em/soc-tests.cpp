@@ -1802,7 +1802,7 @@ static bool testCaseSocSinkInitWithCompositor( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRenderedModule failed" );
@@ -1852,7 +1852,7 @@ static bool testCaseSocSinkBasicPipelineWithCompositor( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRenderedModule failed" );
@@ -1902,7 +1902,7 @@ static bool testCaseSocSinkFirstFrameSignalWithCompositor( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRenderedModule failed" );
@@ -1952,7 +1952,7 @@ static bool testCaseSocSinkUnderflowSignalWithCompositor( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRenderedModule failed" );
@@ -2002,7 +2002,7 @@ static bool testCaseSocSinkElementRecycleWithCompositor( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRenderedModule failed" );
@@ -2054,7 +2054,7 @@ static bool testCaseSocSinkBasicPositionReportingWithCompositor( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRenderedModule failed" );
@@ -2104,7 +2104,7 @@ static bool testCaseSocSinkBasicPauseResumeWithCompositor( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRenderedModule failed" );
@@ -2154,7 +2154,7 @@ static bool testCaseSocSinkBasicSeekWithCompositor( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRenderedModule failed" );
@@ -2204,7 +2204,7 @@ static bool testCaseSocSinkBasicSeekZeroBasedWithCompositor( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRenderedModule failed" );
@@ -2254,7 +2254,7 @@ static bool testCaseSocSinkFrameAdvanceWithCompositor( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRenderedModule failed" );
@@ -2344,7 +2344,7 @@ static bool testCaseSocSinkBasicPipelineGfx( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_embedded.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_embedded.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRenderedModule failed" );
@@ -2734,7 +2734,7 @@ bool testCaseSocEssosDualMediaPlayback( EMCTX *emctx )
       goto exit;
    }
 
-   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+   result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
    if ( result == false )
    {
       EMERROR( "WstCompositorSetRendererModule failed" );
@@ -3527,7 +3527,7 @@ static bool testCaseSocSinkVideoPosition( EMCTX *emctx )
 
          eglSwapInterval( ctx->eglCtx.eglDisplay, 1 );
 
-         result= WstCompositorSetRendererModule( wctx, "libwesteros_render_embedded.so.0.0.0" );
+         result= WstCompositorSetRendererModule( wctx, "libwesteros_render_embedded.so" );
          if ( result == false )
          {
             EMERROR( "WstCompositorSetRenderedModule failed" );
@@ -3543,7 +3543,7 @@ static bool testCaseSocSinkVideoPosition( EMCTX *emctx )
       }
       else
       {
-         result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so.0.0.0" );
+         result= WstCompositorSetRendererModule( wctx, "libwesteros_render_gl.so" );
          if ( result == false )
          {
             EMERROR( "WstCompositorSetRenderedModule failed" );
@@ -3591,7 +3591,7 @@ static bool testCaseSocSinkVideoPosition( EMCTX *emctx )
             goto exit;
          }
 
-         result= WstCompositorSetRendererModule( wctx2, "libwesteros_render_embedded.so.0.0.0" );
+         result= WstCompositorSetRendererModule( wctx2, "libwesteros_render_embedded.so" );
          if ( result == false )
          {
             EMERROR( "WstCompositorSetRenderedModule failed" );
@@ -3662,7 +3662,7 @@ static bool testCaseSocSinkVideoPosition( EMCTX *emctx )
             goto exit;
          }
 
-         result= WstCompositorSetRendererModule( wctx3, "libwesteros_render_gl.so.0.0.0" );
+         result= WstCompositorSetRendererModule( wctx3, "libwesteros_render_gl.so" );
          if ( result == false )
          {
             EMERROR( "WstCompositorSetRenderedModule failed" );

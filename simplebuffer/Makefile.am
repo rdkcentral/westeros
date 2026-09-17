@@ -25,6 +25,7 @@ AM_CXXFLAGS= \
 AM_CXXFLAGS += $(WAYLAND_CLIENT_CFLAGS) $(WAYLAND_SERVER_CFLAGS)   
 AM_LDFLAGS=$(WAYLANDLIB)
 AM_CFLAGS = $(AM_CXXFLAGS)
+WESTEROS_LIBRARY_VERSION_FLAGS = -version-number $(WESTEROS_LT_VERSION)
 
 lib_LTLIBRARIES = libwesteros_simplebuffer_server.la libwesteros_simplebuffer_client.la
 
@@ -34,11 +35,13 @@ libwesteros_simplebuffer_server_la_includedir = $(includedir)
 
 libwesteros_simplebuffer_server_la_LDFLAGS= \
    $(AM_LDFLAGS) \
+   $(WESTEROS_LIBRARY_VERSION_FLAGS) \
    $(WAYLAND_SERVER_LIBS)
 
 libwesteros_simplebuffer_client_la_SOURCES = ${srcdir}/protocol/simplebuffer-protocol.c
 libwesteros_simplebuffer_client_la_LDFLAGS= \
    $(AM_LDFLAGS) \
+   $(WESTEROS_LIBRARY_VERSION_FLAGS) \
    $(WAYLAND_CLIENT_LIBS)
    
 distcleancheck_listfiles = *-libtool

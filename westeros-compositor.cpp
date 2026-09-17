@@ -1083,7 +1083,7 @@ WstCompositor* WstCompositorGetMasterEmbedded()
       if ( wctx )
       {
          bool error= false;
-         if ( !WstCompositorSetRendererModule( wctx, "libwesteros_render_embedded.so.0.0.0" ) )
+         if ( !WstCompositorSetRendererModule( wctx, "libwesteros_render_embedded.so" ) )
          {
             ERROR("WstCompositorGetMasterEmbedded: WstCompositorSetRendererModule failed");
             error= true;
@@ -1410,7 +1410,7 @@ bool WstCompositorSetIsRepeater( WstCompositor *wctx, bool isRepeater )
                free( (void*)ctx->rendererModule );
                ctx->rendererModule= 0;
             }
-            ctx->rendererModule= strdup("libwesteros_render_gl.so.0");
+            ctx->rendererModule= strdup("libwesteros_render_gl.so");
             WARNING("WstCompositorSetIsRepeater: cannot repeat with this wayland-egl: configuring nested with gl renderer");
          }
       }
@@ -2706,7 +2706,7 @@ bool WstCompositorStart( WstCompositor *wctx )
       
       if ( !ctx->rendererModule && ctx->isEmbedded )
       {
-         ctx->rendererModule= strdup("libwesteros_render_embedded.so.0");
+         ctx->rendererModule= strdup("libwesteros_render_embedded.so");
       }
 
       if ( !ctx->rendererModule && !ctx->isRepeater )
@@ -4329,7 +4329,7 @@ static bool wstCompositorCheckForRepeaterSupport( WstContext *ctx )
          free( (void*)ctx->rendererModule );
          ctx->rendererModule= 0;
       }
-      ctx->rendererModule= strdup("libwesteros_render_gl.so.0");
+      ctx->rendererModule= strdup("libwesteros_render_gl.so");
    }
    ctx->getDeviceBufferFromResource= (PFNGETDEVICEBUFFERFROMRESOURCE)vc_dispmanx_get_handle_from_wl_buffer;
    #else

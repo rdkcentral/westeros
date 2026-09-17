@@ -42,6 +42,16 @@ AC_CHECK_HEADERS([stdlib.h string.h unistd.h])
 AC_TYPE_SIZE_T
 AC_HEADER_STDBOOL
 
+WESTEROS_VERSION_MAJOR=`sed -n 's/^#define WESTEROS_VERSION_MAJOR (\([0-9][0-9]*\))$/\1/p' "$srcdir/../westeros-version.h"`
+WESTEROS_VERSION_MINOR=`sed -n 's/^#define WESTEROS_VERSION_MINOR (\([0-9][0-9]*\))$/\1/p' "$srcdir/../westeros-version.h"`
+WESTEROS_VERSION_PATCH=`sed -n 's/^#define WESTEROS_VERSION_PATCH (\([0-9][0-9]*\))$/\1/p' "$srcdir/../westeros-version.h"`
+
+if test -z "$WESTEROS_VERSION_MAJOR" -o -z "$WESTEROS_VERSION_MINOR" -o -z "$WESTEROS_VERSION_PATCH"; then
+	AC_MSG_ERROR([failed to extract WESTEROS_VERSION_* values from ../westeros-version.h])
+fi
+
+WESTEROS_LT_VERSION="$WESTEROS_VERSION_MAJOR:$WESTEROS_VERSION_MINOR:$WESTEROS_VERSION_PATCH"
+
 IARM_CFLAGS=" "
 
 # Checks for library functions.
@@ -63,4 +73,5 @@ AC_SUBST(WAYLANDLIB)
 AC_CONFIG_FILES([Makefile])
 AC_SUBST(WAYLAND_CFLAGS)
 AC_SUBST(GUPNP_VERSION)
+AC_SUBST(WESTEROS_LT_VERSION)
 AC_OUTPUT
