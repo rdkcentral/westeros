@@ -2324,8 +2324,7 @@ static void wstRendererUpdateScene( WstRenderer *renderer )
          WstRenderSurface *surface= rendererGL->surfaces[i];
          if ( surface->visible && (surface->bufferSync.bufferRelease != NULL) )
          {
-            assert( surface->bufferSync.bufferRelease->renderFenceFd == -1 );
-            surface->bufferSync.bufferRelease->renderFenceFd= dup(renderFenceFd);
+            WstLExpSyncFdUpdate( &surface->bufferSync.bufferRelease->renderFenceFd, dup(renderFenceFd) );
          }
       }
       close(renderFenceFd);
