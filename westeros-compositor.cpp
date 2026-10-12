@@ -35,11 +35,15 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/eventfd.h>
 
 #include <map>
 #include <vector>
 
 #include <xkbcommon/xkbcommon.h>
+
+#include <sys/prctl.h>
+#include <time.h>
 
 #if defined (WESTEROS_HAVE_WAYLAND_EGL)
 #include <EGL/egl.h>
@@ -329,7 +333,7 @@ typedef struct _WstSurface
    uint32_t popupParentSurfaceId;
    const char *name;   
    int refCount;
-   
+
    pthread_mutex_t renderMutex;
    bool needsRender;
 
@@ -339,7 +343,7 @@ typedef struct _WstSurface
    int attachedY;
    bool vpcBridgeSignal;
    int commitCount;
-   
+
    struct wl_list frameCallbackList;
    struct wl_listener attachedBufferDestroyListener;
    struct wl_listener detachedBufferDestroyListener;
@@ -470,7 +474,11 @@ typedef struct _WstContext
    struct wl_lexpsync *lexpsync;
    #endif
    struct wl_simple_shell *simpleShell;
+   struct wl_event_loop *eventLoop;
    struct wl_event_source *displayTimer;
+   struct wl_event_source *idleEventSourc;
+   struct wl_event_source *finishFrameSource;
+   int finishFrameFd;
 
    #if defined (WESTEROS_HAVE_WAYLAND_EGL)
    EGLDisplay eglDisplay;
@@ -513,7 +521,12 @@ typedef struct _WstContext
 
    WstCompositor *wctx;
    std::vector<WstCompositor*> virt;
-   
+   bool betterBufferSync;
+   bool betterInvalidate;
+   bool betterFrameDone;
+   bool betterBufferHandling;
+   bool traceMonarch;
+   bool traceMonarchCheck;
 } WstContext;
 
 typedef struct _WstCompositor
@@ -565,12 +578,17 @@ static void wstCompositorDestroyVirtual( WstCompositor *wctx );
 static void wstCompositorProcessEvents( WstCompositor *wctx );
 static void wstContextProcessEvents( WstContext *ctx );
 static void wstCompositorComposeFrame( WstContext *ctx, uint32_t frameTime );
+static void wstCompositorSendFrameDone( WstContext *ctx, uint32_t frameTime );
 static void wstContextInvokeDispatchCB( WstContext *ctx );
 static void wstContextInvokeInvalidateCB( WstContext *ctx );
 static void wstContextInvokeHidePointerCB( WstContext *ctx, bool hidePointer );
 static int wstCompositorDisplayTimeOut( void *data );
+static int wstCompositorFinishFrame( int fd, uint32_t mask, void *data );
+static void WstCompositorFinishFrame( WstCompositor *wctx );
 static void wstCompositorScheduleRepaint( WstContext *ctx );
 static void wstCompositorReleaseDetachedBuffers( WstContext *ctx );
+static void wstReleaseDetachBuffer( WstContext *ctx, WstSurface *surface );
+static void wstCompositorSendBufferRelease( WstContext *ctx, struct wl_resource *resource );
 static void wstShmBind( struct wl_client *client, void *data, uint32_t version, uint32_t id);
 static bool wstShmInit( WstContext *ctx );
 static void wstShmTerm( WstContext *ctx );
@@ -881,15 +899,222 @@ static pthread_mutex_t g_mutexMasterEmbedded= PTHREAD_MUTEX_INITIALIZER;
 static WstCompositor *g_masterEmbedded= 0;
 static int g_activeLevel= 3;
 
-static void wstLog( int level, const char *fmt, ... )
+//TS_LOG stuff
+static bool g_TSLOGEnabled= false;
+static FILE* g_TSLOGFile= NULL;
+static long long g_TSLOGLastTime= 0;
+static pthread_mutex_t g_TSLOGMutex = PTHREAD_MUTEX_INITIALIZER;
+
+static long long GetTimeUS()
+{
+   struct timespec ts;
+   clock_gettime(CLOCK_MONOTONIC, &ts);
+   return (long long)ts.tv_sec * 1000000LL + (long long)ts.tv_nsec / 1000LL;
+}
+
+static int GetTimeUTC(char* buf, size_t sz)
+{
+    time_t now = time(NULL);
+    struct tm utc_tm;
+
+    if (gmtime_r(&now, &utc_tm) == NULL) {
+        perror("gmtime_r");
+        return 1;
+    }
+
+    if (strftime(buf, sz, "%a %b %d %H:%M:%S UTC %Y", &utc_tm) == 0) {
+        fprintf(stderr, "strftime failed\n");
+        return 1;
+    }
+    return 0;
+}
+
+void TS_LOGV(const char *format, va_list argptr )
+{
+   if ( !g_TSLOGEnabled )
+      return;
+   pthread_mutex_lock(&g_TSLOGMutex);
+   if (!g_TSLOGFile)
+   {
+      char filepath[100];
+      sprintf(filepath, "/tmp/westeros_compositor_%d.log", getpid());
+      g_TSLOGFile = fopen(filepath, "w");
+      if (!g_TSLOGFile)
+      {
+         pthread_mutex_unlock(&g_TSLOGMutex);
+         return;
+      }
+   }
+   long long curTime= GetTimeUS();
+   fprintf(g_TSLOGFile, "TS_LOG %09lld %09lld %d ", curTime, curTime - g_TSLOGLastTime, gettid());
+   g_TSLOGLastTime= curTime;
+   vfprintf(g_TSLOGFile, format, argptr);
+   fflush(g_TSLOGFile);
+   pthread_mutex_unlock(&g_TSLOGMutex);
+}
+
+void TS_LOG(const char *format, ... )
+{
+   if ( !g_TSLOGEnabled )
+      return;
+   va_list argptr;
+   va_start(argptr, format);
+   TS_LOGV(format, argptr);
+   va_end(argptr);
+}
+
+class ScopeTrace
+{
+public:
+   ScopeTrace( WstContext *ctxIn, const char* format, ... ) : ctx(ctxIn)
+   {
+      if (ctx->traceMonarch)
+      {
+        int sz= 0;
+        memcpy(buff, "ENTER ", 6);
+
+        va_list ap;
+        va_start(ap, format);
+        sz= vsnprintf(buff + 6, FTRACE_BUF_SIZE - 7, format, ap );
+        va_end(ap);
+        if (buff[sz+5] != '\n')
+        {
+            buff[sz+6]= '\n';
+            buff[sz+7]= 0;
+        }
+        prctl(PR_SET_FTRACE_MARKER, buff, 0, 0, 0);
+      }
+   }
+
+   ~ScopeTrace()
+   {
+      if (ctx->traceMonarch)
+      {
+        memcpy(buff, "EXIT  ", 6);
+        prctl(PR_SET_FTRACE_MARKER, buff, 0, 0, 0);
+      }
+   }
+private:
+   WstContext *ctx;
+   char buff[FTRACE_BUF_SIZE];
+   int szBase;
+};
+
+#define TRACE_MONARCH_SCOPE(...) ScopeTrace my_monarch_scope_trace(ctx, __VA_ARGS__);
+
+#if 1
+#define TRACE_MONARCH(...) \
+if ( ctx->traceMonarch ) \
+{ \
+   char mybuf__[FTRACE_BUF_SIZE]; \
+   snprintf(mybuf__, FTRACE_BUF_SIZE, __VA_ARGS__); \
+   prctl(PR_SET_FTRACE_MARKER, mybuf__, 0, 0, 0); \
+}
+#else
+void TRACE_MONARCH(const char *format, ...)
+{
+   va_list argptr;
+   va_start(argptr, format);
+   TS_LOGV(format, argptr);
+   va_end(argptr);
+}
+#endif
+
+static void wstLog( int level, const char *format, ... )
 {
    if ( level <= g_activeLevel )
    {
       va_list argptr;
-      va_start( argptr, fmt );
-      vfprintf( stderr, fmt, argptr );
+      va_start( argptr, format );
+      if (g_TSLOGEnabled)
+         TS_LOGV(format, argptr);
+      else
+         vfprintf( stderr, format, argptr );
       va_end( argptr );
    }
+}
+
+void WstCheckRuntimeControls(WstContext *ctx)
+{
+   struct stat fileinfo;
+
+   if ( stat("/opt/westerosBetterBufferSyncEnabled", &fileinfo) == 0 )
+   {
+      ctx->betterBufferSync= true;
+   }
+   else if ( stat("/opt/westerosBetterBufferSyncDisabled", &fileinfo) == 0 )
+   {
+      ctx->betterBufferSync= false;
+   }
+   else
+   {
+      ctx->betterBufferSync= true;
+   }
+
+   if ( stat("/opt/westerosBetterInvalidateEnabled", &fileinfo) == 0 )
+   {
+      ctx->betterInvalidate= true;
+   }
+   else if ( stat("/opt/westerosBetterInvalidateDisabled", &fileinfo) == 0 )
+   {
+      ctx->betterInvalidate= false;
+   }
+   else
+   {
+      ctx->betterInvalidate= true;
+   }
+
+   if ( stat("/opt/westerosBetterFrameDoneEnabled", &fileinfo) == 0 )
+   {
+      ctx->betterFrameDone= true;
+   }
+   else if ( stat("/opt/westerosBetterFrameDoneDisabled", &fileinfo) == 0 )
+   {
+      ctx->betterFrameDone= false;
+   }
+   else
+   {
+      ctx->betterFrameDone= true;
+   }
+
+   if ( stat("/opt/westerosBetterBufferHandlingEnabled", &fileinfo) == 0 )
+   {
+      ctx->betterBufferHandling= true;
+   }
+   else if ( stat("/opt/westerosBetterBufferHandlingDisabled", &fileinfo) == 0 )
+   {
+      ctx->betterBufferHandling= false;
+   }
+   else
+   {
+      ctx->betterBufferHandling= true;
+   }
+
+   if ( stat("/opt/westerosTraceMonarch", &fileinfo) == 0 )
+   {
+      ctx->traceMonarch= true;
+      ctx->traceMonarchCheck= false;
+   }
+   else
+   {
+      ctx->traceMonarch= false;
+   }
+
+   if ( stat("/opt/westerosTSLOG", &fileinfo) == 0 )
+   {
+      g_TSLOGEnabled= true;
+   }
+   else
+   {
+      g_TSLOGEnabled= false;
+   }
+
+   INFO("%s TSLOGEnabled=%d\n", __func__, g_TSLOGEnabled);
+   INFO("%s traceMonarch=%d\n", __func__, ctx->traceMonarch);
+   INFO("%s betterBufferSync=%d\n", __func__, ctx->betterBufferSync);
+   INFO("%s betterInvalidate=%d\n", __func__, ctx->betterInvalidate);
+   INFO("%s betterFrameDone=%d\n", __func__, ctx->betterFrameDone);
+   INFO("%s betterBufferHandling=%d\n", __func__, ctx->betterBufferHandling);
 }
 
 WstCompositor* WstCompositorCreate()
@@ -951,6 +1176,8 @@ WstCompositor* WstCompositorCreate()
 
          ctx->wctx= wctx;
          wctx->ctx= ctx;
+
+         WstCheckRuntimeControls(ctx);
       }
       else
       {
@@ -967,7 +1194,7 @@ void WstCompositorDestroy( WstCompositor *wctx )
    if ( wctx && wctx->ctx )
    {
       WstContext *ctx= wctx->ctx;
-
+      TRACE_MONARCH_SCOPE("WstCompositorDestroy\n");
       if ( wctx->isVirtual )
       {
          pthread_mutex_lock( &ctx->mutex );
@@ -2520,11 +2747,12 @@ bool WstCompositorComposeEmbedded( WstCompositor *wctx,
                                    bool *needHolePunch, std::vector<WstRect> &rects )
 {
    bool result= false;
-
    if ( wctx && wctx->ctx )
    {
       WstContext *ctx= wctx->ctx;
       bool possibleFirstFrame= !wctx->isVirtual;
+      struct wl_resource* detachedBufferResource= NULL;
+      TRACE_MONARCH_SCOPE("WstCompositorComposeEmbedded");
 
       pthread_mutex_lock( &ctx->mutex );
 
@@ -2536,6 +2764,7 @@ bool WstCompositorComposeEmbedded( WstCompositor *wctx,
             TRACE1("compositor: display %s surface drop %d", ctx->displayName, surface->commitCount-1);
          }
          surface->commitCount= 0;
+         detachedBufferResource= surface->detachedBufferResource;
       }
 
       if ( !ctx->isEmbedded )
@@ -2591,7 +2820,31 @@ bool WstCompositorComposeEmbedded( WstCompositor *wctx,
 
          if ( !(hints & WstHints_hidden) )
          {
-            WstRendererUpdateScene( ctx->renderer );
+            //FPS
+            static float fps= 0;
+            if (ctx->traceMonarch)
+            {
+               static int frameCount= 0;
+               static long long logTime= 0;
+               if ( logTime == 0 )
+                  logTime= GetTimeUS();
+               long long elapsedMicros= GetTimeUS() - logTime;
+               frameCount++;
+               if ( elapsedMicros >= 1000000LL )
+               {
+                  fps= frameCount / (float)(elapsedMicros / 1000000.0);
+                  //INFO("FPS=%f\n", fps);
+                  frameCount= 0;
+                  logTime= GetTimeUS();
+               }
+            }
+            //END FPS
+
+            {
+               TRACE_MONARCH_SCOPE("WstRendererUpdateScene res=%p fps=%0.2f", detachedBufferResource, fps);
+               WstRendererUpdateScene( ctx->renderer );
+            }
+
             #ifdef ENABLE_LEXPSYNCPROTOCOL
             wstInvalidateImportedSync( ctx );
             #endif
@@ -2636,25 +2889,46 @@ bool WstCompositorComposeEmbedded( WstCompositor *wctx,
       }
 
       #ifndef ENABLE_LEXPSYNCPROTOCOL
-      for (std::vector<WstSurface *>::iterator it = ctx->surfaces.begin(); it != ctx->surfaces.end(); ++it)
+      if (!ctx->betterBufferSync)
       {
-         WstSurface *surface= (*it);
-         if ( surface->needsRender )
+         for (std::vector<WstSurface *>::iterator it = ctx->surfaces.begin(); it != ctx->surfaces.end(); ++it)
          {
-            surface->needsRender= false;
-            pthread_mutex_unlock( &surface->renderMutex );
+            WstSurface *surface= (*it);
+            if ( surface->needsRender )
+            {
+               surface->needsRender= false;
+               pthread_mutex_unlock( &surface->renderMutex );
+            }
          }
       }
       #endif
 
+      if ( ctx->finishFrameSource )
+      {
+         TRACE_MONARCH("FinishFrame res=%p BEGIN", detachedBufferResource);
+         WstCompositorFinishFrame( wctx );
+      }
+
       pthread_mutex_unlock( &ctx->mutex );
-      
+
       result= true;
    }
 
 exit:
-   
+
    return result;
+}
+
+//signal the wayland main loop so that surface frame done callbacks can be sent
+//must be called with locked ctx->mutex
+static void WstCompositorFinishFrame( WstCompositor *wctx )
+{
+   if ( wctx && wctx->ctx )
+   {
+      WstContext *ctx= wctx->ctx;
+      uint64_t frameTime = (uint64_t)wstGetCurrentTimeMillis();
+      write( ctx->finishFrameFd, &frameTime, sizeof(frameTime) );
+   }
 }
 
 void WstCompositorInvalidateScene( WstCompositor *wctx )
@@ -2830,7 +3104,7 @@ void WstCompositorStop( WstCompositor *wctx )
    if ( wctx && wctx->ctx && !wctx->isVirtual )
    {
       WstContext *ctx= wctx->ctx;
-
+      TRACE_MONARCH_SCOPE("WstCompositorStop\n");
       pthread_mutex_lock( &ctx->mutex );
 
       if ( ctx->running || ctx->compositorThreadStarted )
@@ -2849,9 +3123,12 @@ void WstCompositorStop( WstCompositor *wctx )
             wl_display_terminate( ctx->display );
          }
 
+         {
+         TRACE_MONARCH_SCOPE("thread join");
          pthread_mutex_unlock( &ctx->mutex );
          pthread_join( ctx->compositorThreadId, NULL );
          pthread_mutex_lock( &ctx->mutex );
+         }
 
          ctx->compositorThreadStarted= false;
          wstCompositorReleaseResources( ctx );
@@ -3588,7 +3865,6 @@ static void simpleShellSetGeometry( void* userData, uint32_t surfaceId, int x, i
 static void simpleShellSetOpacity( void* userData, uint32_t surfaceId, float opacity )
 {
    WstContext *ctx= (WstContext*)userData;
-
    WstSurface *surface= wstGetSurfaceFromSurfaceId(ctx, surfaceId);
    if ( surface )
    {
@@ -4052,6 +4328,22 @@ static void* wstCompositorThread( void *arg )
    wl_event_source_timer_update( ctx->displayTimer, ctx->framePeriodMillis );
    pthread_mutex_unlock( &ctx->mutex );
 
+   if ( ctx->betterFrameDone )
+   {
+      ctx->finishFrameFd = eventfd( 0, EFD_CLOEXEC | EFD_NONBLOCK );
+      if ( ctx->finishFrameFd != -1 )
+      {
+         ctx->finishFrameSource = wl_event_loop_add_fd( loop, ctx->finishFrameFd,
+            WL_EVENT_READABLE, wstCompositorFinishFrame, ctx);
+      }
+      else
+      {
+         ERROR("unable to create finish frame event: %d\n", errno);
+         ctx->finishFrameSource= NULL;
+      }
+      ctx->eventLoop = loop;
+   }
+
    for ( std::vector<WstModule*>::iterator it= ctx->modules.begin();
          it != ctx->modules.end();
          ++it )
@@ -4074,6 +4366,7 @@ static void* wstCompositorThread( void *arg )
 
    DEBUG("calling wl_display_run for display: %s", ctx->displayName );
    wl_display_run(ctx->display);
+   TRACE_MONARCH("wstCompositorThread wl_display_run exit\n");
    DEBUG("done calling wl_display_run for display: %s", ctx->displayName );
 
    for ( std::vector<WstModule*>::iterator it= ctx->modules.begin();
@@ -4153,7 +4446,7 @@ exit:
       wl_event_source_remove( ctx->displayTimer );
       ctx->displayTimer= 0;
    }
-      
+   TRACE_MONARCH("wstCompositorThread exit\n");
    return NULL;
 }
 
@@ -4711,26 +5004,17 @@ static void wstCompositorComposeFrame( WstContext *ctx, uint32_t frameTime )
       #ifdef ENABLE_LEXPSYNCPROTOCOL
       wstInvalidateImportedSync( ctx );
       #endif
-      wstCompositorReleaseDetachedBuffers( ctx );
-   }
-   
-   for( std::map<struct wl_resource*, WstSurfaceInfo*>::iterator it= ctx->surfaceInfoMap.begin(); it != ctx->surfaceInfoMap.end(); ++it )
-   {
-      WstSurfaceFrameCallback *fcb;
-      WstSurface *surface;
-      WstSurfaceInfo *surfaceInfo= it->second;
-      
-      surface= surfaceInfo->surface;
-      while( !wl_list_empty( &surface->frameCallbackList ) )
+      if ( !ctx->betterBufferHandling )
       {
-         fcb= wl_container_of( surface->frameCallbackList.next, fcb, link);
-         wl_list_remove( surface->frameCallbackList.next );
-         wl_callback_send_done( fcb->resource, frameTime );
-         wl_resource_destroy( fcb->resource );
-         free(fcb);
+         wstCompositorReleaseDetachedBuffers( ctx );
       }
    }
    
+   if ( !ctx->betterFrameDone )
+   {
+      wstCompositorSendFrameDone( ctx, frameTime );
+   }
+
    pthread_mutex_unlock( &ctx->mutex );
 }
 
@@ -4770,6 +5054,7 @@ static void wstContextInvokeInvalidateCB( WstContext *ctx )
    wctx= ctx->wctx;
    if ( wctx->invalidateCB )
    {
+      TRACE_MONARCH("invalidateCB");
       wctx->invalidateCB( wctx, wctx->invalidateUserData );
    }
 }
@@ -4799,20 +5084,23 @@ static int wstCompositorDisplayTimeOut( void *data )
    WstContext *ctx= (WstContext*)data;
    long long frameTime, now;
    long long nextFrameDelay;
-   
+
    frameTime= wstGetCurrentTimeMillis();   
    
    wstContextProcessEvents( ctx );
 
    wstContextInvokeDispatchCB( ctx );
-   
+
    if ( ctx->needRepaint )
    {
       ctx->allowImmediateRepaint= false;
 
       wstCompositorComposeFrame( ctx, (uint32_t)frameTime );
       
-      wstContextInvokeInvalidateCB( ctx );
+      if ( !ctx->betterInvalidate )
+      {
+         wstContextInvokeInvalidateCB( ctx );
+      }
    }
    else
    {
@@ -4831,12 +5119,71 @@ static int wstCompositorDisplayTimeOut( void *data )
    pthread_mutex_lock( &ctx->mutex );
    wl_event_source_timer_update( ctx->displayTimer, nextFrameDelay );
    pthread_mutex_unlock( &ctx->mutex );
-   
+
    return 0;
+}
+
+static int wstCompositorFinishFrame( int fd, uint32_t mask, void *data )
+{
+   WstContext *ctx = (WstContext*)data;
+	uint64_t frameTime64;
+   uint32_t frameTime;
+
+	if (read(fd, &frameTime64, sizeof(frameTime64)) < 0 && errno != EAGAIN)
+   {
+      ERROR("wstCompositorFinishFrame read err %d\n", errno);
+		return -1;
+   }
+   frameTime = (uint32_t)frameTime64;
+
+   if ( ctx )
+   {
+      pthread_mutex_lock( &ctx->mutex );
+      if (ctx->betterFrameDone)
+      {
+         wstCompositorSendFrameDone( ctx, frameTime );
+      }
+      TRACE_MONARCH("FinishFrame END");
+      pthread_mutex_unlock( &ctx->mutex );
+      return 0;
+   }
+   else
+   {
+      ERROR("wstCompositorFinishFrame invalid context\n");
+      return -1;
+   }
+}
+
+static void wstCompositorSendFrameDone( WstContext *ctx, uint32_t frameTime )
+{
+   for( std::map<struct wl_resource*, WstSurfaceInfo*>::iterator it= ctx->surfaceInfoMap.begin(); it != ctx->surfaceInfoMap.end(); ++it )
+   {
+      WstSurfaceFrameCallback *fcb;
+      WstSurface *surface;
+      WstSurfaceInfo *surfaceInfo= it->second;
+
+      surface= surfaceInfo->surface;
+      while( !wl_list_empty( &surface->frameCallbackList ) )
+      {
+         fcb= wl_container_of( surface->frameCallbackList.next, fcb, link);
+         wl_list_remove( surface->frameCallbackList.next );
+         TRACE_MONARCH("wl_callback_send_done\n");
+         wl_callback_send_done( fcb->resource, frameTime );
+         wl_resource_destroy( fcb->resource );
+         free(fcb);
+      }
+   }
 }
 
 static void wstCompositorScheduleRepaint( WstContext *ctx )
 {
+   if ( ctx->betterInvalidate )
+   {
+      ctx->needRepaint= true;
+      wstContextInvokeInvalidateCB( ctx );
+      return;
+   }
+
    if ( !ctx->needRepaint )
    {
       ctx->needRepaint= true;
@@ -4859,6 +5206,7 @@ static void wstCompositorReleaseDetachedBuffers( WstContext *ctx )
       WstSurface *surface= (*it);
       if ( surface->detachedBufferResource )
       {
+         TRACE_MONARCH("wstCompositorReleaseDetachedBuffers res=%p", surface->detachedBufferResource);
          #ifdef ENABLE_LEXPSYNCPROTOCOL
          WstLExpSyncFireRelease(&surface->detachedBufferSync);
          #endif
@@ -4867,6 +5215,31 @@ static void wstCompositorReleaseDetachedBuffers( WstContext *ctx )
          surface->detachedBufferResource= 0;
       }
    }
+}
+
+static void wstCompositorSendBufferRelease( WstContext *ctx, struct wl_resource *resource )
+{
+   TRACE_MONARCH("wl_buffer_send_release res=%p\n", resource);
+   wl_buffer_send_release( resource );
+}
+
+static void wstCompositorMoveBufferResource( WstContext *ctx,
+   struct wl_resource **fromResource, struct wl_listener *fromListener, WstExplicitSync* fromSync,
+   struct wl_resource **toResource, struct wl_listener *toListener, WstExplicitSync* toSync )
+{
+   if ( *fromResource )
+   {
+      wl_list_remove(&fromListener->link);
+   }
+   *toResource= *fromResource;
+   #ifdef ENABLE_LEXPSYNCPROTOCOL
+   WstLExpSyncMove(toSync, fromSync);
+   #endif
+   if ( *toResource )
+   {
+      wl_resource_add_destroy_listener( *toResource, toListener );
+   }
+   *fromResource= 0;
 }
 
 static const struct wl_shm_interface shm_interface=
@@ -5469,7 +5842,7 @@ static void wstICompositorCreateSurface( struct wl_client *client, struct wl_res
    WstCompositor *wctx= 0;
    WstSurface *surface;
    WstSurfaceInfo *surfaceInfo;
-   
+
    pthread_mutex_lock( &ctx->mutex );
 
    wctx= wstGetCompositorFromClient( ctx, client );
@@ -5565,12 +5938,16 @@ static void wstAttachedBufferDestroyCallback(struct wl_listener *listener, void 
 {
    WstSurface *surface= wl_container_of(listener, surface, attachedBufferDestroyListener );
    surface->attachedBufferResource= 0;
+   WstContext *ctx= surface->compositor->ctx;
+   TRACE_MONARCH("destroy attachedBufferResource=%p", surface->attachedBufferResource);
 }
 
 static void wstDetachedBufferDestroyCallback(struct wl_listener *listener, void *data )
 {
    WstSurface *surface= wl_container_of(listener, surface, detachedBufferDestroyListener );
    surface->detachedBufferResource= 0;
+   WstContext *ctx= surface->compositor->ctx;
+   TRACE_MONARCH("destroy detachedBufferResource=%p", surface->detachedBufferResource);
 }
 
 static void wstDestroySurfaceCallback(struct wl_resource *resource)
@@ -5616,7 +5993,8 @@ static WstSurface* wstSurfaceCreate( WstCompositor *wctx)
    {
       surface->compositor= wctx;
       surface->refCount= 1;
-      pthread_mutex_init( &surface->renderMutex, 0 );
+      if (!ctx->betterBufferSync)
+         pthread_mutex_init( &surface->renderMutex, 0 );
       
       float zorder = 0.5f;
       if ( !ctx->surfaceMap.empty() )
@@ -5650,7 +6028,8 @@ static WstSurface* wstSurfaceCreate( WstCompositor *wctx)
          if ( !surface->surfaceNested )
          {
             ctx->surfaceMap.erase( surface->surfaceId );
-            pthread_mutex_destroy( &surface->renderMutex );
+            if (!ctx->betterBufferSync)
+               pthread_mutex_destroy( &surface->renderMutex );
             free( surface );
             surface= 0;
          }
@@ -5663,7 +6042,8 @@ static WstSurface* wstSurfaceCreate( WstCompositor *wctx)
          if ( !surface->surface )
          {
             ctx->surfaceMap.erase( surface->surfaceId );
-            pthread_mutex_destroy( &surface->renderMutex );
+            if (!ctx->betterBufferSync)
+               pthread_mutex_destroy( &surface->renderMutex );
             free( surface );
             surface= 0;
          }
@@ -5733,7 +6113,7 @@ static void wstSurfaceDestroy( WstSurface *surface )
          WstLExpSyncFireRelease(&surface->detachedBufferSync);
          #endif
          wl_list_remove(&surface->detachedBufferDestroyListener.link);
-         wl_buffer_send_release( surface->detachedBufferResource );
+         wstCompositorSendBufferRelease( ctx, surface->detachedBufferResource );
       }
       if ( surface->attachedBufferResource )
       {
@@ -5741,7 +6121,7 @@ static void wstSurfaceDestroy( WstSurface *surface )
          WstLExpSyncFireRelease(&surface->attachedBufferSync);
          #endif
          wl_list_remove(&surface->attachedBufferDestroyListener.link);
-         wl_buffer_send_release( surface->attachedBufferResource );
+         wstCompositorSendBufferRelease( ctx, surface->attachedBufferResource );
       }
       surface->attachedBufferResource= 0;
       surface->detachedBufferResource= 0;
@@ -5891,8 +6271,10 @@ static void wstSurfaceDestroy( WstSurface *surface )
    }
 
    assert(surface->resource == NULL);
-   
-   pthread_mutex_destroy( &surface->renderMutex );
+
+   if (!ctx->betterBufferSync)
+      pthread_mutex_destroy( &surface->renderMutex );
+
    free(surface);
 
    //mrolli - added new focus checks for keyboard/touch.
@@ -6197,6 +6579,63 @@ static void wstISurfaceDestroy(struct wl_client *client, struct wl_resource *res
    }
 }
 
+static void wstCheckMonarchThread( WstContext *ctx )
+{
+   if ( !ctx->traceMonarchCheck )
+   {
+      char threadName[16];
+      int result;
+
+      ctx->traceMonarchCheck= true;
+      result = pthread_getname_np(pthread_self(), threadName, sizeof(threadName));
+      if ( result == 0 && strstr(threadName, "wl_com.entos") != nullptr )
+      {
+         ctx->traceMonarch= true;
+      }
+      else
+      {
+         ctx->traceMonarch= false;
+      }
+      INFO("wstCheckMonarchThread name='%s' isMonarch=%d\n", threadName, ctx->traceMonarch);
+   }
+}
+
+#ifndef ENABLE_LEXPSYNCPROTOCOL
+static void wstSurfaceSyncBuffers( WstContext *ctx, WstSurface *surface )
+{
+   /* Attempt to keep buffer processing synced to
+      * app rendering for embedded compositors
+      */
+   bool gotLock= true;
+   if ( pthread_mutex_trylock( &surface->renderMutex ) )
+   {
+         int framePeriodMillis;
+         pthread_mutex_lock(&ctx->mutex);
+         framePeriodMillis = ctx->framePeriodMillis;
+         pthread_mutex_unlock(&ctx->mutex);
+         int retryLimit= framePeriodMillis*2;
+         gotLock= false;
+         while( retryLimit-- > 0 )
+         {
+            if ( !pthread_mutex_trylock( &surface->renderMutex ) )
+            {
+            gotLock= true;
+            break;
+         }
+         usleep( 500 );
+      }
+      if ( !gotLock )
+      {
+         TRACE2("display %s is not being rendered by app", ctx->displayName);
+      }
+   }
+   if ( gotLock )
+   {
+      surface->needsRender= true;
+   }
+}
+#endif
+
 static void wstISurfaceAttach(struct wl_client *client,
                               struct wl_resource *resource,
                               struct wl_resource *bufferResource, int32_t sx, int32_t sy)
@@ -6204,71 +6643,69 @@ static void wstISurfaceAttach(struct wl_client *client,
    WstSurface *surface= (WstSurface*)wl_resource_get_user_data(resource);
    WstContext *ctx= surface->compositor->ctx;
 
-   #ifndef ENABLE_LEXPSYNCPROTOCOL
-   if ( ctx->isEmbedded && bufferResource )
+   if ( ctx->traceMonarch && !ctx->traceMonarchCheck )
    {
-      /* Attempt to keep buffer processing synced to
-       * app rendering for embedded compositors
-       */
-      bool gotLock= true;
-      if ( pthread_mutex_trylock( &surface->renderMutex ) )
-      {
-          int framePeriodMillis;
-          pthread_mutex_lock(&ctx->mutex);
-          framePeriodMillis = ctx->framePeriodMillis;
-          pthread_mutex_unlock(&ctx->mutex);
-          int retryLimit= framePeriodMillis*2;
-          gotLock= false;
-          while( retryLimit-- > 0 )
-          {
-             if ( !pthread_mutex_trylock( &surface->renderMutex ) )
-             {
-               gotLock= true;
-               break;
-            }
-            usleep( 500 );
-         }
-         if ( !gotLock )
-         {
-            TRACE2("display %s is not being rendered by app", ctx->displayName);
-         }
-      }
-      if ( gotLock )
-      {
-         surface->needsRender= true;
-      }
+      wstCheckMonarchThread( ctx );
+   }
+   TRACE_MONARCH_SCOPE("wstISurfaceAttach res=%p\n", bufferResource);
+
+   #ifndef ENABLE_LEXPSYNCPROTOCOL
+   if ( !ctx->betterBufferSync && ctx->isEmbedded && bufferResource )
+   {
+      wstSurfaceSyncBuffers( ctx, surface );
    }
    #endif
 
    pthread_mutex_lock( &ctx->mutex );
-   if ( surface->attachedBufferResource != bufferResource )
+
+   if ( ctx->betterBufferHandling )
    {
-      if ( surface->detachedBufferResource )
+      //Update attachedBufferResource here and detachedBufferResource in wstISurfaceCommit
+      if ( surface->attachedBufferResource && surface->attachedBufferResource != bufferResource )
       {
+         TRACE_MONARCH("wstISurfaceAttach releasing attachedBufferResource=%p\n", surface->attachedBufferResource);
+
          #ifdef ENABLE_LEXPSYNCPROTOCOL
-         WstLExpSyncFireRelease(&surface->detachedBufferSync);
+         //Its unclear if we should fire expsync since the previous attached buffer was never committed
+         WstLExpSyncFireRelease(&surface->attachedBufferSync);
          #endif
-         wl_list_remove(&surface->detachedBufferDestroyListener.link);
-         wl_buffer_send_release( surface->detachedBufferResource );
-      }
-      if ( surface->attachedBufferResource )
-      {
          wl_list_remove(&surface->attachedBufferDestroyListener.link);
+         wstCompositorSendBufferRelease( ctx, surface->attachedBufferResource );
+         surface->attachedBufferResource= 0;
       }
-      surface->detachedBufferResource= surface->attachedBufferResource;
-      #ifdef ENABLE_LEXPSYNCPROTOCOL
-      WstLExpSyncMove(&surface->detachedBufferSync, &surface->attachedBufferSync);
-      #endif
-      if ( surface->detachedBufferResource )
+   }
+   else
+   {
+      if ( surface->attachedBufferResource != bufferResource )
       {
-         wl_resource_add_destroy_listener( surface->detachedBufferResource, &surface->detachedBufferDestroyListener );
+         if ( surface->detachedBufferResource )
+         {
+            #ifdef ENABLE_LEXPSYNCPROTOCOL
+            WstLExpSyncFireRelease(&surface->detachedBufferSync);
+            #endif
+            wl_list_remove(&surface->detachedBufferDestroyListener.link);
+            wstCompositorSendBufferRelease( ctx, surface->detachedBufferResource );
+         }
+         if ( surface->attachedBufferResource )
+         {
+            wl_list_remove(&surface->attachedBufferDestroyListener.link);
+         }
+         surface->detachedBufferResource= surface->attachedBufferResource;
+         #ifdef ENABLE_LEXPSYNCPROTOCOL
+         WstLExpSyncMove(&surface->detachedBufferSync, &surface->attachedBufferSync);
+         #endif
+         if ( surface->detachedBufferResource )
+         {
+            wl_resource_add_destroy_listener( surface->detachedBufferResource, &surface->detachedBufferDestroyListener );
+         }
+         surface->attachedBufferResource= 0;
       }
-      surface->attachedBufferResource= 0;
    }
    if ( bufferResource )
    {
       if ( surface->attachedBufferResource != bufferResource )
       {
+         TRACE_MONARCH("wstISurfaceAttach setting attachedBufferResource=%p\n", bufferResource);
          surface->attachedBufferResource= bufferResource;
          #ifdef ENABLE_LEXPSYNCPROTOCOL
          WstLExpSyncMove(&surface->attachedBufferSync, &surface->createdBufferSync);
@@ -6290,6 +6727,9 @@ static void wstISurfaceDamage(struct wl_client *client,
                               struct wl_resource *resource,
                               int32_t x, int32_t y, int32_t width, int32_t height)
 {
+   WstSurface *surface= (WstSurface*)wl_resource_get_user_data(resource);
+   WstContext *ctx= surface->compositor->ctx;
+
    WESTEROS_UNUSED(client);
    WESTEROS_UNUSED(resource);
    WESTEROS_UNUSED(x);
@@ -6352,6 +6792,8 @@ static void wstISurfaceCommit(struct wl_client *client, struct wl_resource *reso
    struct wl_resource *committedBufferResource;
 
    pthread_mutex_lock( &ctx->mutex );
+
+   TRACE_MONARCH_SCOPE("wstISurfaceCommit res=%p\n", surface->attachedBufferResource);
 
    committedBufferResource= surface->attachedBufferResource;
    if ( surface->attachedBufferResource )
@@ -6568,6 +7010,57 @@ static void wstISurfaceCommit(struct wl_client *client, struct wl_resource *reso
             wstCompositorReleaseDetachedBuffers( ctx );
          }
          #endif
+
+         if ( ctx->betterBufferHandling )
+         {
+            /*
+               Release the previous detachedBufferResource and move attachedBufferResource to detachedBufferResource
+               Without betterBufferHandling, a buffer is attached and then released after 2 more frames (a frame is a attach/commit sequence):
+
+               wstiSurfaceAttach(buf=1) attachedBufferResource=1
+               wstiSurfaceCommit
+               wstiSurfaceAttach(buf=2) attachedBufferResource=2, detachedBufferResource=1
+               wstiSurfaceCommit
+               wstiSurfaceAttach(buf=3) attachedBufferResource=3, detachedBufferResource=2, release 1
+               wstiSurfaceCommit
+
+               With betterBufferHandling, the buffer is released on the next frame:
+               wstiSurfaceAttach(buf=1) attachedBufferResource=1
+               wstiSurfaceCommit        detachedBufferResource=1, attachedBufferResource=NULL
+               wstiSurfaceAttach(buf=2) attachedBufferResource=2
+               wstiSurfaceCommit        detachedBufferResource=2, attachedBufferResource=NULL, release 1
+
+               TODO: implement the proper method where the buffer is released after its actually composed.
+                     this is more complex and risky as we need to marshal from render thread back to wayland thread to do the release
+            */
+
+            //release the previous detachedBufferResource from the previous commit
+            if ( surface->detachedBufferResource )
+            {
+               TRACE_MONARCH("wstISurfaceCommit releasing detachedBufferResource=%p\n", surface->detachedBufferResource);
+               #ifdef ENABLE_LEXPSYNCPROTOCOL
+               WstLExpSyncFireRelease(&surface->detachedBufferSync);
+               #endif
+               wl_list_remove(&surface->detachedBufferDestroyListener.link);
+               wstCompositorSendBufferRelease( ctx, surface->detachedBufferResource );
+            }
+
+            //move the incoming attachedBufferResource to detachedBufferResource
+            TRACE_MONARCH("wstISurfaceCommit moving attachedBufferResource=%p to detachedBufferResource\n", surface->attachedBufferResource);
+            if ( surface->attachedBufferResource )
+            {
+               wl_list_remove(&surface->attachedBufferDestroyListener.link);
+            }
+            surface->detachedBufferResource= surface->attachedBufferResource;
+            #ifdef ENABLE_LEXPSYNCPROTOCOL
+            WstLExpSyncMove(&surface->detachedBufferSync, &surface->attachedBufferSync);
+            #endif
+            if ( surface->detachedBufferResource )
+            {
+               wl_resource_add_destroy_listener( surface->detachedBufferResource, &surface->detachedBufferDestroyListener );
+            }
+            surface->attachedBufferResource= 0;
+         }
       }      
    }
    else
