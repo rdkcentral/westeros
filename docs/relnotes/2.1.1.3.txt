@@ -1,0 +1,21 @@
+Westeros Release Notes
+======================
+ 
+Westeros 2.1.1.3 Release Notes
+------------------------------
+ 
+Date: 12 October 2026
+Tag: 2.1.1.3
+Changes:
+
+* Fix render fence assert crash by closing stale FD before reuse
+ 
+Depedencies
+------------
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
