@@ -8,6 +8,14 @@ on:
   workflow_dispatch:  # Allow manual trigger from GitHub UI
 
 jobs:
+  security-regression:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    - name: Verify released memory ownership
+      run: python3 -m unittest test/security/test_wst006.py
+
   build-ubuntu:
     runs-on: ubuntu-latest
     
