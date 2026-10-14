@@ -334,6 +334,7 @@ typedef struct _WstSurface
    bool needsRender;
 
    struct wl_resource *attachedBufferResource;
+   struct wl_resource *committedBufferResource; /* from commit to the next commit */
    struct wl_resource *detachedBufferResource;
    int attachedX;
    int attachedY;
@@ -5745,6 +5746,7 @@ static void wstSurfaceDestroy( WstSurface *surface )
       }
       surface->attachedBufferResource= 0;
       surface->detachedBufferResource= 0;
+      surface->committedBufferResource= 0;
       #ifdef ENABLE_LEXPSYNCPROTOCOL
       WstLExpSyncClear(&surface->attachedBufferSync);
       WstLExpSyncClear(&surface->detachedBufferSync);
@@ -6354,6 +6356,14 @@ static void wstISurfaceCommit(struct wl_client *client, struct wl_resource *reso
    pthread_mutex_lock( &ctx->mutex );
 
    committedBufferResource= surface->attachedBufferResource;
+
+   // Check whether it has been committed such as wl_surface::frame and commit case
+   if ( committedBufferResource && surface->committedBufferResource == committedBufferResource) {
+       wstCompositorScheduleRepaint( ctx );
+       pthread_mutex_unlock( &ctx->mutex );
+       return;
+   }
+
    if ( surface->attachedBufferResource )
    {
       if ( !surface->compositor->clientCommit )
@@ -6621,6 +6631,7 @@ static void wstISurfaceCommit(struct wl_client *client, struct wl_resource *reso
    }
 
    ++surface->commitCount;
+   surface->committedBufferResource = committedBufferResource;
 
    wstCompositorScheduleRepaint( ctx );
 
