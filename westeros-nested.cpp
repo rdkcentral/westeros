@@ -36,6 +36,8 @@
 
 #define WST_UNUSED(x) ((void)(x))
 
+typedef struct bufferInfo bufferInfo;
+
 typedef struct _WstNestedSurfaceInfo
 {
    struct wl_surface *surface;
@@ -46,6 +48,7 @@ typedef struct _WstNestedBufferInfo
 {
    struct wl_surface *surface;
    struct wl_resource *bufferRemote;
+   bufferInfo *binfo;
 } WstNestedBufferInfo;
 
 typedef struct _WstNestedConnection
@@ -1049,7 +1052,30 @@ typedef struct bufferInfo
    WstNestedConnection *nc;
    struct wl_surface *surface;
    struct wl_resource *bufferRemote;
+   struct wl_listener bufferRemoteDestroyListener;
 } bufferInfo;
+
+static void buffer_remote_destroy_notify( struct wl_listener *listener, void *data )
+{
+   bufferInfo *binfo= wl_container_of( listener, binfo, bufferRemoteDestroyListener );
+   if ( binfo )
+   {
+      if ( binfo->nc )
+      {
+         pthread_mutex_lock( &binfo->nc->buffersToReleaseMutex );
+      }
+      
+      binfo->bufferRemote= NULL;
+      wl_list_remove( &binfo->bufferRemoteDestroyListener.link );
+      // Re-initialize link to prevent list corruption
+      wl_list_init( &binfo->bufferRemoteDestroyListener.link );
+      
+      if ( binfo->nc )
+      {
+         pthread_mutex_unlock( &binfo->nc->buffersToReleaseMutex );
+      }
+   }
+}
 
 static void buffer_release( void *data, struct wl_buffer *buffer )
 {
@@ -1070,12 +1096,34 @@ static void buffer_release( void *data, struct wl_buffer *buffer )
             WstNestedBufferInfo bufferInfo;
             bufferInfo.surface= binfo->surface;
             bufferInfo.bufferRemote= bufferRemote;
+            bufferInfo.binfo= binfo;
+            pthread_mutex_lock( &binfo->nc->buffersToReleaseMutex );
+            binfo->nc->buffersToRelease.push_back( bufferInfo );
+            pthread_mutex_unlock( &binfo->nc->buffersToReleaseMutex );
+         }
+         else
+         {
+            // Defer cleanup to the compositor thread (WstNestedConnectionReleaseRemoteBuffers)
+            WstNestedBufferInfo bufferInfo;
+            bufferInfo.surface= binfo->surface;
+            bufferInfo.bufferRemote= NULL;
+            bufferInfo.binfo= binfo;
             pthread_mutex_lock( &binfo->nc->buffersToReleaseMutex );
             binfo->nc->buffersToRelease.push_back( bufferInfo );
             pthread_mutex_unlock( &binfo->nc->buffersToReleaseMutex );
          }
       }
-      free(binfo);
+      else
+      {
+         // Defer cleanup to the compositor thread (WstNestedConnectionReleaseRemoteBuffers)
+         WstNestedBufferInfo bufferInfo;
+         bufferInfo.surface= binfo->surface;
+         bufferInfo.bufferRemote= bufferRemote;
+         bufferInfo.binfo= binfo;
+         pthread_mutex_lock( &binfo->nc->buffersToReleaseMutex );
+         binfo->nc->buffersToRelease.push_back( bufferInfo );
+         pthread_mutex_unlock( &binfo->nc->buffersToReleaseMutex );
+      }
    }
 }
 
@@ -1116,6 +1164,8 @@ void WstNestedConnectionAttachAndCommitDevice( WstNestedConnection *nc,
                binfo->nc= nc;
                binfo->surface= surface;
                binfo->bufferRemote= bufferRemote;
+               binfo->bufferRemoteDestroyListener.notify= buffer_remote_destroy_notify;
+               wl_resource_add_destroy_listener( bufferRemote, &binfo->bufferRemoteDestroyListener );
                wl_buffer_add_listener( buffer, &wl_buffer_listener, binfo );
 
                std::map<struct wl_surface*,WstNestedSurfaceInfo*>::iterator it= nc->surfaceInfoMap.find( surface );
@@ -1156,6 +1206,8 @@ void WstNestedConnectionAttachAndCommitClone( WstNestedConnection *nc,
          binfo->nc= nc;
          binfo->surface= surface;
          binfo->bufferRemote= bufferRemote;
+         binfo->bufferRemoteDestroyListener.notify= buffer_remote_destroy_notify;
+         wl_resource_add_destroy_listener( bufferRemote, &binfo->bufferRemoteDestroyListener );
          wl_buffer_add_listener( bufferClone, &wl_buffer_listener, binfo );
 
          std::map<struct wl_surface*,WstNestedSurfaceInfo*>::iterator it= nc->surfaceInfoMap.find( surface );
@@ -1178,9 +1230,21 @@ void WstNestedConnectionReleaseRemoteBuffers( WstNestedConnection *nc )
    while( nc->buffersToRelease.size() )
    {
       std::vector<WstNestedBufferInfo>::iterator it= nc->buffersToRelease.begin();
-      struct wl_resource *bufferResource= (*it).bufferRemote;
-      wl_buffer_send_release( bufferResource );
+      bufferInfo *binfo= (*it).binfo;
+      if ( binfo )
+      {
+         if ( binfo->bufferRemote )
+         {
+            wl_buffer_send_release( binfo->bufferRemote );
+            binfo->bufferRemote= NULL;
+         }
+         wl_list_remove( &binfo->bufferRemoteDestroyListener.link );
+      }
       nc->buffersToRelease.erase(it);
+      if ( binfo )
+      {
+         free( binfo );
+      }
    }
    pthread_mutex_unlock( &nc->buffersToReleaseMutex );
 }
