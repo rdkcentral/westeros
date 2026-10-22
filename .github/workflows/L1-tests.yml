@@ -1,0 +1,70 @@
+name: L1-tests
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  westeros-l1:
+    name: Westeros L1 tests and coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            pkg-config \
+            libwayland-dev \
+            wayland-protocols \
+            libegl1-mesa-dev \
+            libgles2-mesa-dev \
+            libgbm-dev \
+            libdrm-dev \
+            libxkbcommon-dev \
+            libxkbcommon-x11-dev \
+            libgtest-dev \
+            libgmock-dev \
+            lcov
+
+      - name: Configure coverage build
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DENABLE_COVERAGE=ON \
+            -DWESTEROS_MAIN_SRC_ROOT="${GITHUB_WORKSPACE}" \
+            -DBUILD_WESTEROS_MAIN_TESTS=ON \
+            -DBUILD_SIMPLESHELL_TESTS=OFF \
+            -DBUILD_SIMPLEBUFFER_TESTS=OFF \
+            -DBUILD_LINUX_DMABUF_TESTS=OFF \
+            -DBUILD_LINUX_EXPSYNC_TESTS=OFF
+
+      - name: Build L1 tests
+        run: cmake --build build --parallel "$(nproc)"
+
+      - name: Run Westeros L1 tests
+        run: ctest --test-dir build -L WesterosMain --output-on-failure
+
+      - name: Generate Westeros coverage report
+        run: cmake --build build --target coverage-westeros-main --parallel
+
+      - name: Upload L1 coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-L1-westeros
+          path: |
+            build/coverage_html_westeros_main/
+            build/coverage_westeros_main_filtered.info
+            build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+          retention-days: 30

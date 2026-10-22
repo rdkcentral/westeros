@@ -1,10 +1,7 @@
-name: Build Westeros
+name: westeros-main-build
 
 on:
-  push:
-    branches: [ main, master, develop ]  # Run on main branches only
-  pull_request:
-    branches: [ main, master, develop ]
+  workflow_call:
   workflow_dispatch:  # Allow manual trigger from GitHub UI
 
 jobs:
