@@ -1,7 +1,11 @@
 name: tests-trigger
 
 on:
-  workflow_call:
+  push:
+    branches: [main, develop, 'sprint/**', 'release/**']
+  pull_request:
+    branches: [main, develop, 'sprint/**', 'release/**']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -10,9 +14,13 @@ jobs:
   westeros-build:
     name: Build Westeros
     uses: ./.github/workflows/westeros-main-build.yml
+    with:
+      caller_source: local
 
   l1-tests:
-    name: L1 tests (westeros)
+    name: L1 tests (Westeros)
     uses: ./.github/workflows/L1-tests.yml
+    with:
+      caller_source: local
 
   # L2 is intentionally not invoked until its workflow is ready.

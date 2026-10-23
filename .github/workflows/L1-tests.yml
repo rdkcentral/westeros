@@ -2,6 +2,11 @@ name: L1-tests
 
 on:
   workflow_call:
+    inputs:
+      caller_source:
+        description: "Specifies the source type (e.g., local or test framework) for the workflow."
+        required: true
+        type: string
 
 permissions:
   contents: read
