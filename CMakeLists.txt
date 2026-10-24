@@ -206,7 +206,7 @@ if(ENABLE_COVERAGE)
             
             # Capture coverage from all component directories
             # Use --base-directory to ensure source files are found correctly
-            COMMAND ${LCOV_PATH} --directory . --base-directory ${CMAKE_SOURCE_DIR} --capture --exclude '*/tests/*' --exclude '*/test/*' --exclude '*/mocks/*' --exclude '*/mock/*' --output-file coverage_all.info --rc branch_coverage=1 --no-external
+            COMMAND ${LCOV_PATH} --directory . --base-directory ${CMAKE_SOURCE_DIR} --capture --exclude '*/tests/*' --output-file coverage_all.info --rc branch_coverage=1 --no-external
             
             # Remove unwanted files (system headers, test files, mock files)
             COMMAND ${LCOV_PATH} --remove coverage_all.info 
@@ -248,8 +248,7 @@ if(ENABLE_COVERAGE)
         add_custom_target(coverage-westeros-main
             COMMAND ${LCOV_PATH} --directory L1/westeros-main --zerocounters
             COMMAND ${CMAKE_CTEST_COMMAND} -L "WesterosMain" --output-on-failure || true
-            COMMAND ${LCOV_PATH} --directory L1/westeros-main --capture --exclude '*/tests/*' --exclude '*/test/*' --exclude '*/mocks/*' --exclude '*/mock/*' --output-file coverage_westeros_main.info --rc branch_coverage=1
-            COMMAND ${LCOV_PATH} --extract coverage_westeros_main.info '*/westeros-compositor.cpp' '*/westeros-render.cpp' '*/westeros-nested.cpp' --output-file coverage_westeros_main_filtered.info
+            COMMAND ${LCOV_PATH} --directory L1/westeros-main --capture --include '*/westeros-compositor.cpp' --include '*/westeros-render.cpp' --include '*/westeros-nested.cpp' --output-file coverage_westeros_main_filtered.info --rc branch_coverage=1
             COMMAND ${GENHTML_PATH} -o coverage_html_westeros_main coverage_westeros_main_filtered.info --title "Westeros Main Coverage" --legend --branch-coverage
             COMMAND ${LCOV_PATH} --list coverage_westeros_main_filtered.info
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -259,8 +258,7 @@ if(ENABLE_COVERAGE)
         add_custom_target(coverage-simpleshell
             COMMAND ${LCOV_PATH} --directory L1/simpleshell --zerocounters
             COMMAND ${CMAKE_CTEST_COMMAND} -L "SimpleShell" --output-on-failure || true
-            COMMAND ${LCOV_PATH} --directory L1/simpleshell --capture --exclude '*/tests/*' --exclude '*/test/*' --exclude '*/mocks/*' --exclude '*/mock/*' --output-file coverage_simpleshell.info --rc branch_coverage=1
-            COMMAND ${LCOV_PATH} --extract coverage_simpleshell.info '*/westeros-simpleshell.cpp' --output-file coverage_simpleshell_filtered.info
+            COMMAND ${LCOV_PATH} --directory L1/simpleshell --capture --include '*/westeros-simpleshell.cpp' --output-file coverage_simpleshell_filtered.info --rc branch_coverage=1
             COMMAND ${GENHTML_PATH} -o coverage_html_simpleshell coverage_simpleshell_filtered.info --title "SimpleShell Coverage" --legend --branch-coverage
             COMMAND ${LCOV_PATH} --list coverage_simpleshell_filtered.info
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -270,8 +268,7 @@ if(ENABLE_COVERAGE)
         add_custom_target(coverage-simplebuffer
             COMMAND ${LCOV_PATH} --directory L1/simplebuffer --zerocounters
             COMMAND ${CMAKE_CTEST_COMMAND} -L "SimpleBuffer" --output-on-failure || true
-            COMMAND ${LCOV_PATH} --directory L1/simplebuffer --capture --exclude '*/tests/*' --exclude '*/test/*' --exclude '*/mocks/*' --exclude '*/mock/*' --output-file coverage_simplebuffer.info --rc branch_coverage=1
-            COMMAND ${LCOV_PATH} --extract coverage_simplebuffer.info '*/westeros-simplebuffer.cpp' --output-file coverage_simplebuffer_filtered.info
+            COMMAND ${LCOV_PATH} --directory L1/simplebuffer --capture --include '*/westeros-simplebuffer.cpp' --output-file coverage_simplebuffer_filtered.info --rc branch_coverage=1
             COMMAND ${GENHTML_PATH} -o coverage_html_simplebuffer coverage_simplebuffer_filtered.info --title "SimpleBuffer Coverage" --legend --branch-coverage
             COMMAND ${LCOV_PATH} --list coverage_simplebuffer_filtered.info
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -281,8 +278,7 @@ if(ENABLE_COVERAGE)
         add_custom_target(coverage-linux-dmabuf
             COMMAND ${LCOV_PATH} --directory L1/linux-dmabuf --zerocounters
             COMMAND ${CMAKE_CTEST_COMMAND} -L "LinuxDMABuf" --output-on-failure || true
-            COMMAND ${LCOV_PATH} --directory L1/linux-dmabuf --capture --exclude '*/tests/*' --exclude '*/test/*' --exclude '*/mocks/*' --exclude '*/mock/*' --output-file coverage_dmabuf.info --rc branch_coverage=1
-            COMMAND ${LCOV_PATH} --extract coverage_dmabuf.info '*/westeros-linux-dmabuf.cpp' --output-file coverage_dmabuf_filtered.info
+            COMMAND ${LCOV_PATH} --directory L1/linux-dmabuf --capture --include '*/westeros-linux-dmabuf.cpp' --output-file coverage_dmabuf_filtered.info --rc branch_coverage=1
             COMMAND ${GENHTML_PATH} -o coverage_html_dmabuf coverage_dmabuf_filtered.info --title "Linux DMA-BUF Coverage" --legend --branch-coverage
             COMMAND ${LCOV_PATH} --list coverage_dmabuf_filtered.info
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -292,8 +288,7 @@ if(ENABLE_COVERAGE)
         add_custom_target(coverage-linux-expsync
             COMMAND ${LCOV_PATH} --directory L1/linux-explicit-sync --zerocounters
             COMMAND ${CMAKE_CTEST_COMMAND} -L "LinuxExplicitSync" --output-on-failure || true
-            COMMAND ${LCOV_PATH} --directory L1/linux-explicit-sync --capture --exclude '*/tests/*' --exclude '*/test/*' --exclude '*/mocks/*' --exclude '*/mock/*' --output-file coverage_expsync.info --rc branch_coverage=1
-            COMMAND ${LCOV_PATH} --extract coverage_expsync.info '*/westeros-linux-expsync.cpp' --output-file coverage_expsync_filtered.info
+            COMMAND ${LCOV_PATH} --directory L1/linux-explicit-sync --capture --include '*/westeros-linux-expsync.cpp' --output-file coverage_expsync_filtered.info --rc branch_coverage=1
             COMMAND ${GENHTML_PATH} -o coverage_html_expsync coverage_expsync_filtered.info --title "Linux Explicit Sync Coverage" --legend --branch-coverage
             COMMAND ${LCOV_PATH} --list coverage_expsync_filtered.info
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
