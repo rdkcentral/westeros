@@ -71,6 +71,13 @@ if(GTest_FOUND OR GTEST_FOUND)
     if(ENABLE_COVERAGE)
         target_compile_options(test_westeros_main_l1 PRIVATE --coverage -fprofile-arcs -ftest-coverage)
         target_link_options(test_westeros_main_l1 PRIVATE --coverage)
+        # GoogleTest translation-unit metadata can produce mismatched function
+        # end-line records in gcov data; keep coverage on production sources,
+        # but do not instrument the test source itself.
+        set_source_files_properties(
+            ${WESTEROS_MAIN_TEST_DIR}/westeros_main_test.cpp
+            PROPERTIES COMPILE_OPTIONS "-fno-profile-arcs;-fno-test-coverage"
+        )
     endif()
     
     add_test(NAME WesterosMainL1Tests COMMAND test_westeros_main_l1)
@@ -126,6 +133,10 @@ if(GTest_FOUND OR GTEST_FOUND)
     if(ENABLE_COVERAGE)
         target_compile_options(test_westeros_nested_l1 PRIVATE --coverage -fprofile-arcs -ftest-coverage)
         target_link_options(test_westeros_nested_l1 PRIVATE --coverage)
+        set_source_files_properties(
+            ${WESTEROS_MAIN_TEST_DIR}/westeros_nested_test.cpp
+            PROPERTIES COMPILE_OPTIONS "-fno-profile-arcs;-fno-test-coverage"
+        )
     endif()
     
     add_test(NAME WesterosNestedL1Tests COMMAND test_westeros_nested_l1)
