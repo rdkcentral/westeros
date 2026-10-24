@@ -1,6 +1,10 @@
 /*
- * GLEW Mock Header for L1 Testing
- * Copyright 2024 RDK Management
+ * SPDX-FileCopyrightText: Copyright 2024 RDK Management
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * This is a minimal in-house mock header used only for L1 test builds.
+ * It is not a redistributed upstream GLEW implementation and is shipped
+ * as part of the project test harness under the repository Apache-2.0 license.
  */
 #ifndef __GLEW_H__
 #define __GLEW_H__

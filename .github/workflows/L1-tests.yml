@@ -41,8 +41,20 @@ jobs:
             libgmock-dev \
             lcov
 
+      - name: Verify coverage tool versions
+        run: |
+          lcov_version="$(lcov --version)"
+          geninfo_version="$(geninfo --version)"
+          printf '%s\n' "$lcov_version" "$geninfo_version"
+          printf '%s\n' "$lcov_version" | grep -Eq 'LCOV version 2\.' &&
+            printf '%s\n' "$geninfo_version" | grep -Eq 'LCOV version 2\.' || {
+            echo "Expected compatible lcov and geninfo 2.x versions"
+            exit 1
+          }
+
       - name: Configure coverage build
         run: |
+          rm -rf build
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Debug \
             -DENABLE_COVERAGE=ON \

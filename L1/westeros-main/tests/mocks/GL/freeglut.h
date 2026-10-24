@@ -1,6 +1,10 @@
 /*
- * FreeGLUT Mock Header for L1 Testing
- * Copyright 2024 RDK Management
+ * SPDX-FileCopyrightText: Copyright 2024 RDK Management
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * This is a minimal in-house mock header used only for L1 test builds.
+ * It is not a redistributed upstream FreeGLUT implementation and is shipped
+ * as part of the project test harness under the repository Apache-2.0 license.
  */
 #ifndef __FREEGLUT_H__
 #define __FREEGLUT_H__
