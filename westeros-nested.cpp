@@ -662,6 +662,11 @@ WstNestedConnection* WstNestedConnectionCreate( WstCompositor *wctx,
    WstNestedConnection *nc= 0;
    bool error= false;
    int rc;
+
+   if ( !wctx )
+   {
+      return 0;
+   }
    
    nc= (WstNestedConnection*)calloc( 1, sizeof(WstNestedConnection) );
    if ( nc )
@@ -1174,6 +1179,11 @@ void WstNestedConnectionAttachAndCommitClone( WstNestedConnection *nc,
 
 void WstNestedConnectionReleaseRemoteBuffers( WstNestedConnection *nc )
 {
+   if ( !nc )
+   {
+      return;
+   }
+
    pthread_mutex_lock( &nc->buffersToReleaseMutex );
    while( nc->buffersToRelease.size() )
    {

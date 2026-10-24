@@ -1,0 +1,6 @@
+#ifndef WESTEROS_L1_EXPSYNC_WAYLAND_STUBS_WRAPPER_H
+#define WESTEROS_L1_EXPSYNC_WAYLAND_STUBS_WRAPPER_H
+
+#include "../../../tests/mocks/wayland-stubs.h"
+
+#endif /* WESTEROS_L1_EXPSYNC_WAYLAND_STUBS_WRAPPER_H */

@@ -19,7 +19,11 @@
 #ifndef _WESTEROS_SIMPLESHELL_H
 #define _WESTEROS_SIMPLESHELL_H
 
+#ifdef UNIT_TEST
+#include "wayland-stubs.h"
+#else
 #include "wayland-server.h"
+#endif
 
 typedef struct _WstRenderer WstRenderer;
 typedef struct _WstRenderSurface WstRenderSurface;
@@ -52,6 +56,10 @@ void WstSimpleShellNotifySurfaceCreated( wl_simple_shell *shell, struct wl_clien
                                          struct wl_resource *surface_resource, uint32_t surfaceId );
 
 void WstSimpleShellNotifySurfaceDestroyed( wl_simple_shell *shell, struct wl_client *client, uint32_t surfaceId );
+
+void WstSimpleShellNotifySurfaceStatus( wl_simple_shell *shell, uint32_t surfaceId, const char *name,
+                                        bool visible, int32_t x, int32_t y, int32_t width, int32_t height,
+                                        float opacity, float zorder );
 
 #endif
 
