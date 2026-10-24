@@ -14,3 +14,5 @@ jobs:
   tests-trigger:
     name: Trigger build and L1 tests
     uses: ./.github/workflows/tests-trigger.yml
+    with:
+      caller_source: local
