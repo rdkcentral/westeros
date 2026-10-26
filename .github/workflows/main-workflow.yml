@@ -1,0 +1,18 @@
+name: main-workflow
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests-trigger:
+    name: Trigger build and L1 tests
+    uses: ./.github/workflows/tests-trigger.yml
+    with:
+      caller_source: local

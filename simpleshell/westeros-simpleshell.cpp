@@ -25,12 +25,22 @@
 
 #include "westeros-simpleshell.h"
 
+#ifdef UNIT_TEST
+#include "wayland-stubs.h"
+#else
 #include "wayland-server.h"
+#endif
 #include "simpleshell-server-protocol.h"
 
 #define WST_UNUSED( n ) ((void)n)
 
 #define MIN(x,y) (((x) < (y)) ? (x) : (y))
+
+#ifdef UNIT_TEST
+#define UNIT_TEST_STATIC
+#else
+#define UNIT_TEST_STATIC static
+#endif
 
 #define DEFAULT_NAME "noname"
 #define BROADCAST_DELAY (2000)
@@ -74,29 +84,34 @@ static long long getCurrentTimeMillis()
    return utcCurrentTimeMillis;
 }
 
-static void wstISimpleShellSetName(struct wl_client *client, struct wl_resource *resource, 
+UNIT_TEST_STATIC void wstISimpleShellSetName(struct wl_client *client, struct wl_resource *resource, 
                                       uint32_t surfaceId, const char *name);
-static void wstISimpleShellSetVisible(struct wl_client *client, struct wl_resource *resource, 
+UNIT_TEST_STATIC void wstISimpleShellSetVisible(struct wl_client *client, struct wl_resource *resource, 
                                       uint32_t surfaceId, uint32_t visible);
-static void wstISimpleShellSetGeometry(struct wl_client *client, struct wl_resource *resource,
+UNIT_TEST_STATIC void wstISimpleShellSetGeometry(struct wl_client *client, struct wl_resource *resource,
                                        uint32_t surfaceId, int32_t x, int32_t y, int32_t width, int32_t height);
-static void wstISimpleShellSetOpacity(struct wl_client *client, struct wl_resource *resource, 
+UNIT_TEST_STATIC void wstISimpleShellSetOpacity(struct wl_client *client, struct wl_resource *resource, 
                                       uint32_t surfaceId, wl_fixed_t opacity);
-static void wstISimpleShellSetZOrder(struct wl_client *client, struct wl_resource *resource, 
+UNIT_TEST_STATIC void wstISimpleShellSetZOrder(struct wl_client *client, struct wl_resource *resource, 
                                      uint32_t surfaceId, wl_fixed_t zorder);
-static void wstISimpleShellGetStatus(struct wl_client *client, struct wl_resource *resource, uint32_t surface);
-static void wstISimpleShellGetSurfaces(struct wl_client *client, struct wl_resource *resource);
-static void wstISimpleShellSetFocus(struct wl_client *client, struct wl_resource *resource,
+UNIT_TEST_STATIC void wstISimpleShellGetStatus(struct wl_client *client, struct wl_resource *resource, uint32_t surface);
+UNIT_TEST_STATIC void wstISimpleShellGetSurfaces(struct wl_client *client, struct wl_resource *resource);
+UNIT_TEST_STATIC void wstISimpleShellSetFocus(struct wl_client *client, struct wl_resource *resource,
                                      uint32_t surfaceId);
-static void wstISimpleShellSetScale(struct wl_client *client, struct wl_resource *resource,
+UNIT_TEST_STATIC void wstISimpleShellSetScale(struct wl_client *client, struct wl_resource *resource,
                                      uint32_t surfaceId, wl_fixed_t scaleX, wl_fixed_t scaleY);
-static void wstISimpleShellGetPopup(struct wl_client *client, struct wl_resource *resource,
+UNIT_TEST_STATIC void wstISimpleShellGetPopup(struct wl_client *client, struct wl_resource *resource,
                                     uint32_t surfaceId, uint32_t parentSurfaceId,
                                     int32_t x, int32_t y, int32_t width, int32_t height);
-static void wstISimpleShellIsSurfacePopup(struct wl_client *client, struct wl_resource *resource,
+UNIT_TEST_STATIC void wstISimpleShellIsSurfacePopup(struct wl_client *client, struct wl_resource *resource,
                                          uint32_t surfaceId);
 
-const static struct wl_simple_shell_interface simple_shell_interface = {
+#ifdef UNIT_TEST
+extern
+#else
+static
+#endif
+const struct wl_simple_shell_interface simple_shell_interface = {
    wstISimpleShellSetName,
    wstISimpleShellSetVisible,
    wstISimpleShellSetGeometry,
@@ -109,6 +124,60 @@ const static struct wl_simple_shell_interface simple_shell_interface = {
    wstISimpleShellGetPopup,
    wstISimpleShellIsSurfacePopup
 };
+
+#ifdef UNIT_TEST
+void wstSimpleShellSetName(struct wl_client *client, struct wl_resource *resource,
+                            uint32_t surfaceId, const char *name)
+{
+   wstISimpleShellSetName(client, resource, surfaceId, name);
+}
+
+void wstSimpleShellSetVisible(struct wl_client *client, struct wl_resource *resource,
+                               uint32_t surfaceId, uint32_t visible)
+{
+   wstISimpleShellSetVisible(client, resource, surfaceId, visible);
+}
+
+void wstSimpleShellSetGeometry(struct wl_client *client, struct wl_resource *resource,
+                                uint32_t surfaceId, int32_t x, int32_t y, int32_t width, int32_t height)
+{
+   wstISimpleShellSetGeometry(client, resource, surfaceId, x, y, width, height);
+}
+
+void wstSimpleShellSetOpacity(struct wl_client *client, struct wl_resource *resource,
+                               uint32_t surfaceId, wl_fixed_t opacity)
+{
+   wstISimpleShellSetOpacity(client, resource, surfaceId, opacity);
+}
+
+void wstSimpleShellSetZorder(struct wl_client *client, struct wl_resource *resource,
+                              uint32_t surfaceId, wl_fixed_t zorder)
+{
+   wstISimpleShellSetZOrder(client, resource, surfaceId, zorder);
+}
+
+void wstSimpleShellGetStatus(struct wl_client *client, struct wl_resource *resource, uint32_t surfaceId)
+{
+   wstISimpleShellGetStatus(client, resource, surfaceId);
+}
+
+void wstSimpleShellGetSurfaces(struct wl_client *client, struct wl_resource *resource)
+{
+   wstISimpleShellGetSurfaces(client, resource);
+}
+
+void wstSimpleShellSetFocus(struct wl_client *client, struct wl_resource *resource,
+                             uint32_t surfaceId)
+{
+   wstISimpleShellSetFocus(client, resource, surfaceId);
+}
+
+void wstSimpleShellSetScale(struct wl_client *client, struct wl_resource *resource,
+                             uint32_t surfaceId, wl_fixed_t scaleX, wl_fixed_t scaleY)
+{
+   wstISimpleShellSetScale(client, resource, surfaceId, scaleX, scaleY);
+}
+#endif
 
 static void wstSimpleShellBroadcastSurfaceUpdate(struct wl_client *client, struct wl_simple_shell *shell, uint32_t surfaceId )
 {
@@ -148,7 +217,7 @@ static void wstSimpleShellBroadcastSurfaceUpdate(struct wl_client *client, struc
    }
 }
 
-static void wstISimpleShellSetName(struct wl_client *client, struct wl_resource *resource, 
+UNIT_TEST_STATIC void wstISimpleShellSetName(struct wl_client *client, struct wl_resource *resource, 
                                       uint32_t surfaceId, const char *name)
 {
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
@@ -175,7 +244,7 @@ static void wstISimpleShellSetName(struct wl_client *client, struct wl_resource 
    }
 }
 
-static void wstISimpleShellSetVisible(struct wl_client *client, struct wl_resource *resource, 
+UNIT_TEST_STATIC void wstISimpleShellSetVisible(struct wl_client *client, struct wl_resource *resource, 
                                       uint32_t surfaceId, uint32_t visible)
 {
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
@@ -188,7 +257,7 @@ static void wstISimpleShellSetVisible(struct wl_client *client, struct wl_resour
    }
 }
 
-static void wstISimpleShellSetGeometry(struct wl_client *client, struct wl_resource *resource, 
+UNIT_TEST_STATIC void wstISimpleShellSetGeometry(struct wl_client *client, struct wl_resource *resource, 
                                        uint32_t surfaceId, int32_t x, int32_t y, int32_t width, int32_t height)
 {
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
@@ -201,7 +270,7 @@ static void wstISimpleShellSetGeometry(struct wl_client *client, struct wl_resou
    }
 }
 
-static void wstISimpleShellSetOpacity(struct wl_client *client, struct wl_resource *resource, 
+UNIT_TEST_STATIC void wstISimpleShellSetOpacity(struct wl_client *client, struct wl_resource *resource, 
                                       uint32_t surfaceId, wl_fixed_t opacity)
 {
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
@@ -218,7 +287,7 @@ static void wstISimpleShellSetOpacity(struct wl_client *client, struct wl_resour
    }
 }
 
-static void wstISimpleShellSetZOrder(struct wl_client *client, struct wl_resource *resource, 
+UNIT_TEST_STATIC void wstISimpleShellSetZOrder(struct wl_client *client, struct wl_resource *resource, 
                                      uint32_t surfaceId, wl_fixed_t zorder)
 {
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
@@ -235,7 +304,7 @@ static void wstISimpleShellSetZOrder(struct wl_client *client, struct wl_resourc
    }
 }
 
-static void wstISimpleShellGetStatus(struct wl_client *client, struct wl_resource *resource, uint32_t surfaceId )
+UNIT_TEST_STATIC void wstISimpleShellGetStatus(struct wl_client *client, struct wl_resource *resource, uint32_t surfaceId )
 {
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
    if ( shell )
@@ -266,7 +335,7 @@ static void wstISimpleShellGetStatus(struct wl_client *client, struct wl_resourc
    }
 }
 
-static void wstISimpleShellGetSurfaces(struct wl_client *client, struct wl_resource *resource)
+UNIT_TEST_STATIC void wstISimpleShellGetSurfaces(struct wl_client *client, struct wl_resource *resource)
 {
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
 
@@ -284,7 +353,7 @@ static void wstISimpleShellGetSurfaces(struct wl_client *client, struct wl_resou
    }
 }
 
-static void wstISimpleShellSetFocus(struct wl_client *client, struct wl_resource *resource,
+UNIT_TEST_STATIC void wstISimpleShellSetFocus(struct wl_client *client, struct wl_resource *resource,
                                     uint32_t surfaceId)
 {
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
@@ -294,7 +363,7 @@ static void wstISimpleShellSetFocus(struct wl_client *client, struct wl_resource
    }
 }
 
-static void wstISimpleShellSetScale(struct wl_client *client, struct wl_resource *resource,
+UNIT_TEST_STATIC void wstISimpleShellSetScale(struct wl_client *client, struct wl_resource *resource,
                                      uint32_t surfaceId, wl_fixed_t scaleX, wl_fixed_t scaleY)
 {
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
@@ -306,7 +375,7 @@ static void wstISimpleShellSetScale(struct wl_client *client, struct wl_resource
    shell->callbacks->set_scale(shell->userData, surfaceId, fScaleX, fScaleY);
 }
 
-static void wstISimpleShellGetPopup(struct wl_client *client, struct wl_resource *resource,
+UNIT_TEST_STATIC void wstISimpleShellGetPopup(struct wl_client *client, struct wl_resource *resource,
                                     uint32_t surfaceId, uint32_t parentSurfaceId,
                                     int32_t x, int32_t y, int32_t width, int32_t height)
 {
@@ -318,7 +387,7 @@ static void wstISimpleShellGetPopup(struct wl_client *client, struct wl_resource
    }
 }
 
-static void wstISimpleShellIsSurfacePopup(struct wl_client *client, struct wl_resource *resource,
+UNIT_TEST_STATIC void wstISimpleShellIsSurfacePopup(struct wl_client *client, struct wl_resource *resource,
                                          uint32_t surfaceId)
 {
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
@@ -351,7 +420,7 @@ static void destroy_shell(struct wl_resource *resource)
    }
 }
 
-static void wstSimpleShellBind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+UNIT_TEST_STATIC void wstSimpleShellBind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 {
    struct wl_simple_shell *shell= (struct wl_simple_shell*)data;
    if ( shell )
@@ -451,6 +520,11 @@ wl_simple_shell* WstSimpleShellInit( struct wl_display *display,
    struct wl_event_loop *loop= 0;
    
    printf("westeros-simpleshell: WstSimpleShellInit: enter: display %p\n", display );
+   if ( !display || !callbacks )
+   {
+      goto exit;
+   }
+
    shell= (struct wl_simple_shell*)calloc( 1, sizeof(struct wl_simple_shell) );
    if ( !shell )
    {
@@ -478,6 +552,12 @@ wl_simple_shell* WstSimpleShellInit( struct wl_display *display,
    }
   
    shell->wl_simple_shell_global= wl_global_create(display, &wl_simple_shell_interface, 1, shell, wstSimpleShellBind );
+   if ( !shell->wl_simple_shell_global )
+   {
+      wl_event_source_remove( shell->delayTimer );
+      free( shell );
+      shell= 0;
+   }
 
 exit:
    printf("westeros-simpleshell: WstSimpleShellInit: exit: display %p shell %p\n", display, shell);
@@ -579,6 +659,32 @@ void WstSimpleShellNotifySurfaceDestroyed( wl_simple_shell *shell, struct wl_cli
          shell->surfaces.erase(it);
          break;
       }
+   }
+}
+
+void WstSimpleShellNotifySurfaceStatus( wl_simple_shell *shell, uint32_t surfaceId, const char *name,
+                                        bool visible, int32_t x, int32_t y, int32_t width, int32_t height,
+                                        float opacity, float zorder )
+{
+   if ( !shell )
+   {
+      return;
+   }
+
+   wl_fixed_t fixedOpacity= wl_fixed_from_double( (double)opacity );
+   wl_fixed_t fixedZOrder= wl_fixed_from_double( (double)zorder );
+
+   const char *surfaceName = name ? name : DEFAULT_NAME;
+
+   for( std::vector<ShellInfo>::iterator it= shell->shells.begin(); 
+        it != shell->shells.end();
+        ++it )
+   {
+      struct wl_resource *shell_resource= (*it).resource;
+      
+      wl_simple_shell_send_surface_status( shell_resource, surfaceId,
+                                           surfaceName, (visible ? 1 : 0),
+                                           x, y, width, height, fixedOpacity, fixedZOrder );
    }
 }
 
