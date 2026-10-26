@@ -24,6 +24,16 @@
 
 set -e
 
+# Resolve the repository root so Jenkins can invoke this script from any cwd.
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+# Keep L1-only test code out of native and Coverity builds, even if the
+# invoking environment carries UNIT_TEST in its compiler flags.
+export CXXFLAGS="${CXXFLAGS:-} -UUNIT_TEST"
+export CFLAGS="${CFLAGS:-} -UUNIT_TEST"
+
 echo "Starting Westeros component build..."
 
 # Build simpleshell
@@ -67,7 +77,7 @@ autoreconf -fi
   --enable-ldbprotocol \
   --disable-embedded \
   --enable-xdgstable \
-  CXXFLAGS="-I/usr/include/libdrm"
+  CXXFLAGS="${CXXFLAGS} -I/usr/include/libdrm"
 # Build only the linux-dmabuf library target
 make -j$(nproc) libwesteros_linux_dmabuf_server.la
 # Install the library and its headers
@@ -90,7 +100,7 @@ echo "Building main project..."
   --enable-lexpsyncprotocol \
   --disable-embedded \
   --enable-xdgstable \
-  CXXFLAGS="-I/usr/include/libdrm"
+  CXXFLAGS="${CXXFLAGS} -I/usr/include/libdrm"
 make -j$(nproc)
 sudo make install
 sudo ldconfig
