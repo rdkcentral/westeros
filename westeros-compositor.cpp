@@ -3838,7 +3838,7 @@ static void* wstCompositorThread( void *arg )
 
    ctx->compositorThreadStarted= true;
 
-   DEBUG("calling wl_display_create");
+   DEBUG("calling wl_display_create CFTest");
    display= wl_display_create();
    DEBUG("wl_display=%p", display);
    if ( !display )

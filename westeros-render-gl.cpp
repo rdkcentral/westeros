@@ -1083,6 +1083,16 @@ static void wstRendererGLCommitShm( WstRendererGL *rendererGL, WstRenderSurface 
          wl_shm_buffer_begin_access(shmBuffer);
          data= wl_shm_buffer_get_data(shmBuffer);
          
+         // Compute buffer size with overflow detection
+         const size_t bufferSize= (size_t)stride * (size_t)height;
+         if ( height != 0 && bufferSize / (size_t)height != (size_t)stride )
+         {
+            printf("wstRendererGLCommitShm: buffer size overflow for stride %d height %d\n",
+                   stride, height);
+            wl_shm_buffer_end_access(shmBuffer);
+            return;
+         }
+         
          if ( surface->mem &&
               (
                 (surface->memWidth != width) ||
@@ -1098,11 +1108,11 @@ static void wstRendererGLCommitShm( WstRendererGL *rendererGL, WstRenderSurface 
          }
          if ( !surface->mem )
          {
-            surface->mem= (unsigned char*)malloc( stride*height );
+            surface->mem= (unsigned char*)malloc( bufferSize );
          }
          if ( surface->mem )
          {
-            memcpy( surface->mem, data, stride*height );
+            memcpy( surface->mem, data, bufferSize );
             
             if ( transformPixelsA )
             {

@@ -1085,7 +1085,11 @@ static void buffer_release( void *data, struct wl_buffer *buffer )
    
    if ( binfo )
    {
-      struct wl_resource *bufferRemote= binfo->bufferRemote;
+      struct wl_resource *bufferRemote= NULL;
+      pthread_mutex_lock( &binfo->nc->buffersToReleaseMutex );
+      bufferRemote= binfo->bufferRemote;
+      pthread_mutex_unlock( &binfo->nc->buffersToReleaseMutex );
+      
       std::map<struct wl_surface*,WstNestedSurfaceInfo*>::iterator it= binfo->nc->surfaceInfoMap.find( binfo->surface );
       if ( it != binfo->nc->surfaceInfoMap.end() )
       {
