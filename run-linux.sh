@@ -26,7 +26,6 @@ Options:
   --hw-client        run test client in hardware mode
   --force-gui        allow engine execution in non-tty sessions
   --allow-headless   do not fail when scanout evidence is missing
-  --internal-engine  internal flag used by wrapper mode (do not use directly)
 EOF
 }
 
@@ -50,10 +49,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --allow-headless)
       ALLOW_HEADLESS=1
-      shift
-      ;;
-    --internal-engine)
-      INTERNAL_ENGINE=1
       shift
       ;;
     -h|--help)
@@ -172,31 +167,24 @@ run_engine() {
   client_surface_count=$(grep -c 'createWindowSurface success' "$client_log" || true)
   client_log_lines=$(wc -l < "$client_log" 2>/dev/null || echo 0)
 
-  bad_surface_hard_fail=0
-  if [[ "$bad_surface_count" -gt 50 ]]; then
-    bad_surface_hard_fail=1
-  fi
-
-  no_surface_hard_fail=0
-  if [[ "$no_surface_count" -gt 0 && "$client_surface_count" -eq 0 ]]; then
-    no_surface_hard_fail=1
-  fi
-
   if [[ "$ALLOW_HEADLESS" != 1 ]]; then
-    if [[ "$master_state" != "1" || "$bad_surface_hard_fail" -eq 1 || "$no_surface_hard_fail" -eq 1 || "$open_card_fail_count" -gt 0 || "$egl_surface_count" -eq 0 || "$client_surface_count" -eq 0 || "$client_log_lines" -eq 0 ]]; then
+    gate_failures=()
+    [[ "$master_state" != "1" ]] && gate_failures+=("DRM master is not 1 (current: ${master_state:-unknown})")
+    [[ "$bad_surface_count" -gt 50 ]] && gate_failures+=("compositor log has excessive EGL_BAD_SURFACE ($bad_surface_count lines)")
+    [[ "$no_surface_count" -gt 0 && "$client_surface_count" -eq 0 ]] && gate_failures+=("client reports outputMode: no surfaces without any successful surface creation")
+    [[ "$open_card_fail_count" -gt 0 ]] && gate_failures+=("compositor could not open DRM card ($DRM_CARD)")
+    [[ "$egl_surface_count" -eq 0 ]] && gate_failures+=("compositor did not report EGL surface creation")
+    [[ "$client_surface_count" -eq 0 ]] && gate_failures+=("client did not report createWindowSurface success")
+    [[ "$client_log_lines" -eq 0 ]] && gate_failures+=("client produced no output")
+
+    if ((${#gate_failures[@]})); then
       echo "Run failed visible-render gate:" >&2
-      [[ "$master_state" != "1" ]] && echo "  - DRM master is not 1 (current: ${master_state:-unknown})" >&2
-      [[ "$bad_surface_hard_fail" -eq 1 ]] && echo "  - compositor log has excessive EGL_BAD_SURFACE ($bad_surface_count lines)" >&2
-      [[ "$no_surface_hard_fail" -eq 1 ]] && echo "  - client reports outputMode: no surfaces without any successful surface creation" >&2
-      [[ "$open_card_fail_count" -gt 0 ]] && echo "  - compositor could not open DRM card ($DRM_CARD)" >&2
-      [[ "$egl_surface_count" -eq 0 ]] && echo "  - compositor did not report EGL surface creation" >&2
-      [[ "$client_surface_count" -eq 0 ]] && echo "  - client did not report createWindowSurface success" >&2
-      [[ "$client_log_lines" -eq 0 ]] && echo "  - client produced no output" >&2
+      printf '  - %s\n' "${gate_failures[@]}" >&2
       exit 1
-    else
-      [[ "$bad_surface_count" -gt 0 ]] && echo "Warning: transient EGL_BAD_SURFACE seen ($bad_surface_count lines)" >&2
-      [[ "$no_surface_count" -gt 0 ]] && echo "Warning: transient outputMode: no surfaces seen before surface was created" >&2
     fi
+
+    [[ "$bad_surface_count" -gt 0 ]] && echo "Warning: transient EGL_BAD_SURFACE seen ($bad_surface_count lines)" >&2
+    [[ "$no_surface_count" -gt 0 ]] && echo "Warning: transient outputMode: no surfaces seen before surface was created" >&2
   fi
 
   exit "$client_rc"

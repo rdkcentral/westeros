@@ -10,14 +10,16 @@ DRM_REPO=${WESTEROS_DRM_REPO:-"$ROOT_DIR/../westeros-gl-drm"}
 BUILD_JOBS=${BUILD_JOBS:-$(nproc 2>/dev/null || echo 4)}
 CLEAN=0
 DEBUG=0
+RECONFIGURE=0
 
 usage() {
   cat <<'EOF'
-Usage: ./build-ubuntu.sh [--clean] [--debug]
+Usage: ./build-ubuntu.sh [--clean] [--debug] [--reconfigure]
 
 Options:
   --clean   Remove build output before building
   --debug   Build with -g -O0
+  --reconfigure  Regenerate Autotools files and rerun configure
 EOF
 }
 
@@ -25,6 +27,7 @@ for arg in "$@"; do
   case "$arg" in
     --clean) CLEAN=1 ;;
     --debug) DEBUG=1 ;;
+    --reconfigure) RECONFIGURE=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $arg" >&2; usage; exit 2 ;;
   esac
@@ -66,85 +69,45 @@ generate_protocols() {
   (cd "$ROOT_DIR" && SCANNER_TOOL="$SCANNER_TOOL" make -C linux-expsync/protocol)
 }
 
-build_main() {
-  echo "Preparing Westeros autotools..."
-  (cd "$ROOT_DIR" && autoreconf -fvi)
+build_component() {
+  local name=$1
+  local source_dir=$2
+  local build_dir=$3
+  local stamp_file="$build_dir/.config-signature"
+  local signature
+  shift 3
 
-  echo "Configuring Westeros embedded build..."
-  (cd "$MAIN_BUILD_DIR" && \
-    "$ROOT_DIR/configure" \
-      --srcdir="$ROOT_DIR" \
-      --prefix="$PREFIX" \
-      --enable-app \
-      --enable-test \
-      --enable-rendergl \
-      --enable-embedded \
-      --disable-essos \
-      --enable-xdgstable \
-      CPPFLAGS="$COMMON_CPPFLAGS" \
-      LDFLAGS="$COMMON_LDFLAGS" \
-      CFLAGS="$EXTRA_CFLAGS" \
-      CXXFLAGS="$EXTRA_CXXFLAGS")
+  mkdir -p "$build_dir"
+  signature=$(printf '%s\n' "$source_dir" "$PREFIX" "${CC:-cc}" "${CXX:-c++}" \
+    "$COMMON_CPPFLAGS" "$COMMON_LDFLAGS" "$EXTRA_CFLAGS" "$EXTRA_CXXFLAGS" "$@")
 
-  echo "Building Westeros..."
-  (cd "$MAIN_BUILD_DIR" && make -j"$BUILD_JOBS")
+  if [[ "$RECONFIGURE" == 1 || ! -x "$source_dir/configure" ]]; then
+    echo "Preparing Autotools for $name..."
+    (cd "$source_dir" && autoreconf -fvi)
+  fi
 
-  echo "Installing Westeros to $PREFIX..."
-  (cd "$MAIN_BUILD_DIR" && make install)
-}
+  if [[ "$RECONFIGURE" == 1 || ! -f "$build_dir/Makefile" || ! -f "$stamp_file" || "$(<"$stamp_file")" != "$signature" ]]; then
+    echo "Configuring $name..."
+    (cd "$build_dir" && "$source_dir/configure" --srcdir="$source_dir" --prefix="$PREFIX" \
+      "$@" CPPFLAGS="$COMMON_CPPFLAGS" LDFLAGS="$COMMON_LDFLAGS" \
+      CFLAGS="$EXTRA_CFLAGS" CXXFLAGS="$EXTRA_CXXFLAGS")
+    printf '%s' "$signature" > "$stamp_file"
+  else
+    echo "Reusing $name configuration"
+  fi
 
-build_simpleshell() {
-  local shell_src="$ROOT_DIR/simpleshell"
-  local shell_build="$BUILD_ROOT/simpleshell"
-
-  mkdir -p "$shell_build"
-
-  echo "Preparing simpleshell autotools..."
-  (cd "$shell_src" && autoreconf -fvi)
-
-  echo "Configuring simpleshell..."
-  (cd "$shell_build" && \
-    "$shell_src/configure" \
-      --srcdir="$shell_src" \
-      --prefix="$PREFIX" \
-      CPPFLAGS="$COMMON_CPPFLAGS" \
-      LDFLAGS="$COMMON_LDFLAGS" \
-      CFLAGS="$EXTRA_CFLAGS" \
-      CXXFLAGS="$EXTRA_CXXFLAGS")
-
-  echo "Building simpleshell..."
-  (cd "$shell_build" && make -j"$BUILD_JOBS")
-
-  echo "Installing simpleshell to $PREFIX..."
-  (cd "$shell_build" && make install)
-}
-
-build_drm_adapter() {
-  echo "Preparing DRM adapter autotools..."
-  (cd "$DRM_REPO" && autoreconf -fvi)
-
-  echo "Configuring westeros-gl-drm..."
-  (cd "$DRM_BUILD_DIR" && \
-    "$DRM_REPO/configure" \
-      --srcdir="$DRM_REPO" \
-      --prefix="$PREFIX" \
-      --enable-gbm-modifiers \
-      CPPFLAGS="$COMMON_CPPFLAGS" \
-      LDFLAGS="$COMMON_LDFLAGS" \
-      CFLAGS="$EXTRA_CFLAGS" \
-      CXXFLAGS="$EXTRA_CXXFLAGS")
-
-  echo "Building DRM adapter..."
-  (cd "$DRM_BUILD_DIR" && make -j"$BUILD_JOBS")
-
-  echo "Installing DRM adapter to $PREFIX..."
-  (cd "$DRM_BUILD_DIR" && make install)
+  echo "Building $name..."
+  (cd "$build_dir" && make -j"$BUILD_JOBS")
+  echo "Installing $name to $PREFIX..."
+  (cd "$build_dir" && make install)
 }
 
 generate_protocols
-build_simpleshell
-build_drm_adapter
-build_main
+build_component simpleshell "$ROOT_DIR/simpleshell" "$BUILD_ROOT/simpleshell"
+build_component westeros-gl-drm "$DRM_REPO" "$DRM_BUILD_DIR" --enable-gbm-modifiers
+build_component Westeros "$ROOT_DIR" "$MAIN_BUILD_DIR" \
+  --enable-app --enable-test --enable-rendergl --enable-embedded \
+  --disable-essos --enable-xdgstable
 
 echo "Build complete"
 echo "  compositor: $PREFIX/bin/westeros"
