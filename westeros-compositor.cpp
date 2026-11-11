@@ -23,6 +23,7 @@
 #include <string.h>
 #include <limits.h>
 #include <memory.h>
+#include <math.h>
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
@@ -1469,7 +1470,7 @@ bool WstCompositorSetDisplayName( WstCompositor *wctx, const char *displayName )
                   "Bad state.  Cannot set display name while compositor is running" );
          goto exit;
       }
-      
+
       pthread_mutex_lock( &ctx->mutex );
 
       if ( ctx->displayName )

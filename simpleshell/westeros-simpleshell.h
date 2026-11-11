@@ -19,7 +19,11 @@
 #ifndef _WESTEROS_SIMPLESHELL_H
 #define _WESTEROS_SIMPLESHELL_H
 
+#ifdef UNIT_TEST
+#include "wayland-stubs.h"
+#else
 #include "wayland-server.h"
+#endif
 
 typedef struct _WstRenderer WstRenderer;
 typedef struct _WstRenderSurface WstRenderSurface;
