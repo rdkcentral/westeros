@@ -5,6 +5,17 @@
 
 /* Global mock state */
 static int mock_resource_id_counter = 1000;
+static int mock_protocol_error_code = -1;
+
+void mock_reset_protocol_error(void)
+{
+    mock_protocol_error_code = -1;
+}
+
+int mock_get_protocol_error_code(void)
+{
+    return mock_protocol_error_code;
+}
 
 /* wl_global functions */
 struct wl_global* wl_global_create(struct wl_display *display,
@@ -59,7 +70,7 @@ void wl_resource_post_error(struct wl_resource *resource,
                            uint32_t code,
                            const char *msg, ...)
 {
-    // Mock: just print to stderr
+    mock_protocol_error_code = (int)code;
     fprintf(stderr, "Mock: wl_resource_post_error code=%u msg=%s\n", code, msg);
 }
 

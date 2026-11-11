@@ -1,233 +1,91 @@
-# Quick Start Guide - L1 Test Suite for Westeros
+# Quick Start: Westeros L1 Tests
 
-Get up and running with the unified L1 test suite in 5 minutes.
+This repository contains the Westeros source and its L1 tests. The build script can be launched from any directory; CTest and report commands below use paths relative to the repository root (the directory containing this file and `CMakeLists.txt`). Test executables and generated files are written to `build/`.
 
-## Prerequisites Check
+## Prerequisites (Ubuntu/Debian)
 
-```bash
-# Check if required tools are installed
-cmake --version          # Should be >= 3.14
-g++ --version            # Any C++11 compiler
-ls /usr/lib/*gtest*      # GoogleTest libraries
-lcov --version           # Coverage tool (optional)
-```
-
-## Installation (If Needed)
+From the repository root, install the tools and development packages used by the L1 build:
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y cmake build-essential libgtest-dev libgmock-dev lcov
+bash scripts/setup.sh
 ```
 
-## Directory Structure
+The setup helper installs the packages with `apt-get` on Debian/Ubuntu. `lcov` is only needed to generate coverage reports. For other distributions, install the equivalent CMake, compiler, Wayland/EGL development, GoogleTest/GoogleMock, and LCOV packages manually.
 
-Your workspace should look like:
-```
-Westeros/
-├── westeros-main/              # Original source (required)
-│   └── westeros-main/
-│       ├── westeros-compositor.cpp
-│       ├── westeros-nested.cpp
-│       └── westeros-render.cpp
-└── L1-TestSuiteWesteros/       # This test suite
-    ├── build.sh
-    ├── L1/
-    └── CMakeLists.txt
-```
+## Build and run all configured L1 tests
 
-## Build & Run (3 Steps)
-
-### Step 1: Build Tests
+The build script resolves the repository root from its own location, so it can be invoked from any directory:
 
 ```bash
-cd L1-TestSuiteWesteros
-./build.sh --coverage --clean
+bash /path/to/your/westeros-checkout/scripts/build.sh --clean
 ```
 
-### Step 2: Run Tests
+Then, from the repository root, run CTest:
 
 ```bash
-cd build
-ctest --output-on-failure
+ctest --test-dir build --output-on-failure
 ```
 
-### Step 3: View Coverage
+The build script uses the source files in this repository and configures all L1 components that are enabled in the top-level CMake configuration.
+
+To run only the Westeros tests (the current CTest label is `WesterosMain`):
 
 ```bash
-cmake --build . --target coverage
-xdg-open coverage_html/index.html  # Linux
-# or
-open coverage_html/index.html      # macOS
-# or
-start coverage_html/index.html     # Windows
+ctest --test-dir build -L WesterosMain --output-on-failure
 ```
 
-## Expected Output
-
-### Successful Build
-
-```
-==========================================
-L1 Test Suite for Westeros - Unified Build
-==========================================
-
-Source Paths:
-  Westeros Main: ../westeros-main/westeros-main
-
-========================================== Configuration Complete
-==========================================
-Components to test:
-  ✓ Westeros Main
-==========================================
-
-[100%] Built target test_westeros_main_l1
-[100%] Built target test_westeros_nested_l1
-
-==========================================
-Build Successful!
-==========================================
-```
-
-### Test Execution
-
-```
-Test project /path/to/L1-TestSuiteWesteros/build
-    Start 1: WesterosMainL1Tests
-1/2 Test #1: WesterosMainL1Tests ............   Passed    2.13 sec
-    Start 2: WesterosNestedL1Tests
-2/2 Test #2: WesterosNestedL1Tests ..........   Passed    3.47 sec
-
-100% tests passed, 0 tests failed out of 2
-
-Total Test time (real) =   5.60 sec
-```
-
-### Coverage Report
-
-```
-Overall coverage rate:
-  lines......: 60.6% (456 of 753 lines)
-  functions..: 73.7% (87 of 118 functions)
-
-File 'westeros-compositor.cpp':
-  lines......: 87.9% (124 of 141 lines)
-
-File 'westeros-nested.cpp':
-  lines......: 41.7% (198 of 475 lines)
-
-File 'westeros-render.cpp':
-  lines......: 97.8% (134 of 137 lines)
-```
-
-## Custom Source Paths
-
-If westeros-main is in a different location:
+List the tests discovered by CTest with:
 
 ```bash
-./build.sh --coverage --westeros-main /custom/path/to/westeros-main/westeros-main
+ctest --test-dir build -N
 ```
 
-## Windows Quick Start
+## Generate coverage
+
+From any directory, build with coverage enabled. The script builds the tests and runs the coverage target, which runs the configured tests and creates the report:
+
+```bash
+bash /path/to/your/westeros-checkout/scripts/build.sh --clean --coverage
+```
+
+The combined HTML report is at `build/coverage_html/index.html`. To generate just the Westeros coverage report, use the existing CMake target `coverage-westeros-main`:
+
+```bash
+cmake --build build --target coverage-westeros-main
+```
+
+That target writes the report to `build/coverage_html_westeros_main/index.html`. Open it with a browser on Linux, for example:
+
+```bash
+xdg-open build/coverage_html_westeros_main/index.html
+```
+
+Other component targets are `coverage-simpleshell`, `coverage-simplebuffer`, `coverage-linux-dmabuf`, and `coverage-linux-expsync`.
+
+## Run a specific GoogleTest case
+
+Run a test executable directly, or list its test cases first:
+
+```bash
+./build/L1/westeros-main/test_westeros_main_l1 --gtest_list_tests
+./build/L1/westeros-main/test_westeros_main_l1 --gtest_filter='TestSuiteName.TestName'
+```
+
+Executables are generated under their component build directories; use `find build -type f -executable` to locate them if your generator places them elsewhere.
+
+## Windows
+
+From PowerShell at the repository root, use the supplied build script:
 
 ```powershell
-cd L1-TestSuiteWesteros
-.\build.ps1 -Coverage -Clean
-cd build
-ctest --output-on-failure
-cmake --build . --target coverage
-start coverage_html\index.html
+.\build.ps1 -Clean
+ctest --test-dir build --output-on-failure
 ```
 
-## Running Individual Tests
+The PowerShell script also accepts `-Coverage` and `-Release`. Coverage reporting requires compatible `lcov` and `genhtml` tools, which are generally easiest to use in the Linux build environment.
 
-```bash
-# Run specific test executable
-./build/test_westeros_main_l1
+## CI scope
 
-# Run with filter
-./build/test_westeros_main_l1 --gtest_filter="*CreateContext*"
+The current GitHub Actions L1 workflow configures and runs the Westeros L1 tests and uploads the coverage artifact as `artifacts-L1-westeros`. Local builds can configure the additional component suites as well.
 
-# List all tests
-./build/test_westeros_main_l1 --gtest_list_tests
-```
-
-## Troubleshooting
-
-### Issue: Source not found
-
-```
-ERROR: Westeros Main source not found at: ../westeros-main/westeros-main
-```
-
-**Fix:** Specify the correct path:
-```bash
-./build.sh --westeros-main /correct/path/to/westeros-main/westeros-main
-```
-
-### Issue: GoogleTest not found
-
-```
-ERROR: GoogleTest not found. Tests cannot be built.
-```
-
-**Fix:**
-```bash
-sudo apt-get install libgtest-dev libgmock-dev
-```
-
-### Issue: Coverage at 0%
-
-**Cause:** Not using `--coverage` flag
-
-**Fix:**
-```bash
-./build.sh --coverage --clean
-```
-
-## Next Steps
-
-1. ✅ Tests passing? Great! Coverage report shows what's tested.
-2. 📊 Review coverage: Focus on files below 75% coverage
-3. 🧪 Add tests: See `L1/westeros-main/tests/L1/` for examples
-4. 🔄 Iterate: Modify → Build → Test → Coverage
-
-## Quick Commands Reference
-
-```bash
-# Clean build with coverage
-./build.sh -c -C
-
-# Build without coverage
-./build.sh
-
-# Run tests
-cd build && ctest
-
-# Generate coverage
-cmake --build build --target coverage
-
-# View specific test
-./build/test_westeros_nested_l1 --gtest_filter="*CreateSurface*"
-
-# Verbose build
-./build.sh -c -v
-
-# Release build
-./build.sh -r
-
-# Custom threads
-./build.sh -j 8
-```
-
-## Success Criteria
-
-✅ **Build completes without errors**
-✅ **All tests pass (136+ tests)**
-✅ **Coverage report generated**
-✅ **Overall coverage: 60.6%+ (target: >75%)**
-
----
-
-**Time to Complete:** ~5 minutes
-**Difficulty:** Beginner
-**Next:** See [README.md](README.md) for detailed documentation
+For coverage commands and report details, see [COVERAGE_GUIDE.md](COVERAGE_GUIDE.md).

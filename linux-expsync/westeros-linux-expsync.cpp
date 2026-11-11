@@ -269,22 +269,10 @@ WST_L_EXPSYNC_TESTABLE void wstILExpSyncGetSynchronization(struct wl_client *cli
 
    if (surface->syncRes)
    {
-   #ifdef ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_DUPLICATE_SYNCHRONIZATION
-         wl_resource_post_error( resource,
-                                 ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_DUPLICATE_SYNCHRONIZATION,
-                                 "wl_surface@%" PRIu32 " already has a synchronization object",
-                                 wl_resource_get_id(surface_resource));
-   #elif defined(ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_SYNCHRONIZATION_EXISTS)
-         wl_resource_post_error( resource,
-                                 ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_SYNCHRONIZATION_EXISTS,
-                                 "wl_surface@%" PRIu32 " already has a synchronization object",
-                                 wl_resource_get_id(surface_resource));
-   #else
-         wl_resource_post_error( resource,
-                                 1,
-                                 "wl_surface@%" PRIu32 " already has a synchronization object",
-                                 wl_resource_get_id(surface_resource));
-   #endif
+      wl_resource_post_error( resource,
+                  ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_SYNCHRONIZATION_EXISTS,
+                  "wl_surface@%" PRIu32 " already has a synchronization object",
+                  wl_resource_get_id(surface_resource));
        return;
    }
 
@@ -351,16 +339,6 @@ void WstLExpSyncFireRelease( WstExplicitSync *bufferSync )
 
    resource= bufferSync->bufferRelease->resource;
 
-   if ( !resource )
-   {
-      WstLExpSyncFdClear( &bufferSync->bufferRelease->renderFenceFd );
-      free( bufferSync->bufferRelease );
-      bufferSync->bufferRelease= NULL;
-      WstLExpSyncFdClear( &bufferSync->acquireFenceFd );
-      WstLExpSyncClear( bufferSync );
-      return;
-   }
-
    // render fence would have inserted by gl-render
    releaseFenceFd= bufferSync->bufferRelease->renderFenceFd;
 
@@ -385,11 +363,6 @@ wl_lexpsync* WstLExpSyncInit( struct wl_display *display, void *userData )
    WstContext *ctx= (WstContext*)userData;
 
    printf("westeros-lexpsync: WstLExpSyncInit: enter: display %p\n", (void*)display);
-   if ( !display )
-   {
-      goto exit;
-   }
-
    lexpsync= (struct wl_lexpsync*)calloc( 1, sizeof(struct wl_lexpsync) );
    if ( !lexpsync )
    {
@@ -399,11 +372,6 @@ wl_lexpsync* WstLExpSyncInit( struct wl_display *display, void *userData )
    lexpsync->display= display;
 
    lexpsync->wl_lexpsync_global= wl_global_create(display, &zwp_linux_explicit_synchronization_v1_interface, 2, ctx, wstExplicitSyncBind);
-   if ( !lexpsync->wl_lexpsync_global )
-   {
-      free( lexpsync );
-      lexpsync= 0;
-   }
 
 exit:
    printf("westeros-lexpsync: WstLExpSyncInit: exit: display %p lexpsync %p\n", (void*)display, (void*)lexpsync);

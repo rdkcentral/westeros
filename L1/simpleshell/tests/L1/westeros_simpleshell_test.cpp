@@ -155,21 +155,6 @@ TEST_F(WesterosSimpleShellTest, InitializationWithValidParameters) {
     EXPECT_NE(shell, nullptr);
 }
 
-TEST_F(WesterosSimpleShellTest, InitializationWithNullDisplay) {
-    wl_simple_shell* nullShell = WstSimpleShellInit(nullptr, &callbacks, testUserData);
-    EXPECT_EQ(nullShell, nullptr);
-}
-
-TEST_F(WesterosSimpleShellTest, InitializationWithNullCallbacks) {
-    struct wl_display* tempDisplay = wl_display_create();
-    ASSERT_NE(tempDisplay, nullptr);
-    
-    wl_simple_shell* nullShell = WstSimpleShellInit(tempDisplay, nullptr, testUserData);
-    EXPECT_EQ(nullShell, nullptr);
-    
-    wl_display_destroy(tempDisplay);
-}
-
 TEST_F(WesterosSimpleShellTest, InitializationWithNullUserData) {
     struct wl_display* tempDisplay = wl_display_create();
     ASSERT_NE(tempDisplay, nullptr);
@@ -455,136 +440,6 @@ TEST_F(WesterosSimpleShellTest, MultipleDifferentClients) {
 // Additional L1 Tests for >90% Coverage
 //==============================================================================
 
-// Test Group: NotifySurfaceStatus Coverage
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_WithValidParameters) {
-    uint32_t surfaceId = 1001;
-    const char* surfaceName = "TestSurface";
-    bool visible = true;
-    int x = 100, y = 200;
-    int width = 1920, height = 1080;
-    float opacity = 0.75f;
-    float zorder = 1.5f;
-
-    EXPECT_NO_THROW(WstSimpleShellNotifySurfaceStatus(
-        shell, surfaceId, surfaceName, visible, x, y, width, height, opacity, zorder
-    ));
-}
-
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_WithNullShell) {
-    // Should handle null shell gracefully or crash (documenting behavior)
-    uint32_t surfaceId = 1001;
-    EXPECT_NO_THROW(WstSimpleShellNotifySurfaceStatus(
-        nullptr, surfaceId, "Test", true, 0, 0, 100, 100, 1.0f, 1.0f
-    ));
-}
-
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_WithNullName) {
-    uint32_t surfaceId = 1001;
-    EXPECT_NO_THROW(WstSimpleShellNotifySurfaceStatus(
-        shell, surfaceId, nullptr, true, 0, 0, 100, 100, 1.0f, 1.0f
-    ));
-}
-
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_WithEmptyName) {
-    uint32_t surfaceId = 1001;
-    EXPECT_NO_THROW(WstSimpleShellNotifySurfaceStatus(
-        shell, surfaceId, "", true, 0, 0, 100, 100, 1.0f, 1.0f
-    ));
-}
-
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_BoundaryValues) {
-    uint32_t surfaceId = UINT32_MAX;
-    
-    // Test with maximum values
-    EXPECT_NO_THROW(WstSimpleShellNotifySurfaceStatus(
-        shell, surfaceId, "MaxValues", true, 
-        INT32_MAX, INT32_MAX, INT32_MAX, INT32_MAX, 
-        1.0f, FLT_MAX
-    ));
-    
-    // Test with minimum values
-    EXPECT_NO_THROW(WstSimpleShellNotifySurfaceStatus(
-        shell, 0, "MinValues", false, 
-        INT32_MIN, INT32_MIN, 0, 0, 
-        0.0f, -FLT_MAX
-    ));
-}
-
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_NegativeCoordinates) {
-    uint32_t surfaceId = 1001;
-    EXPECT_NO_THROW(WstSimpleShellNotifySurfaceStatus(
-        shell, surfaceId, "NegCoords", true, 
-        -100, -200, 1920, 1080, 
-        0.5f, 1.0f
-    ));
-}
-
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_ZeroDimensions) {
-    uint32_t surfaceId = 1001;
-    EXPECT_NO_THROW(WstSimpleShellNotifySurfaceStatus(
-        shell, surfaceId, "ZeroDim", true, 
-        0, 0, 0, 0, 
-        1.0f, 1.0f
-    ));
-}
-
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_VariousOpacityValues) {
-    uint32_t surfaceId = 1001;
-    
-    // Test fully transparent
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "Transparent", true, 0, 0, 100, 100, 0.0f, 1.0f);
-    
-    // Test semi-transparent
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "SemiTransparent", true, 0, 0, 100, 100, 0.5f, 1.0f);
-    
-    // Test fully opaque
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "Opaque", true, 0, 0, 100, 100, 1.0f, 1.0f);
-    
-    // Test out-of-range opacity (should be handled)
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "OverOpaque", true, 0, 0, 100, 100, 2.0f, 1.0f);
-}
-
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_VariousZorderValues) {
-    uint32_t surfaceId = 1001;
-    
-    // Test negative z-order (below other surfaces)
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "BelowAll", true, 0, 0, 100, 100, 1.0f, -1.0f);
-    
-    // Test zero z-order
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "ZeroZ", true, 0, 0, 100, 100, 1.0f, 0.0f);
-    
-    // Test positive z-order (above other surfaces)
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "AboveAll", true, 0, 0, 100, 100, 1.0f, 10.0f);
-}
-
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_VisibleToggle) {
-    uint32_t surfaceId = 1001;
-    
-    // Test visible
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "Visible", true, 0, 0, 100, 100, 1.0f, 1.0f);
-    
-    // Test invisible
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "Invisible", false, 0, 0, 100, 100, 1.0f, 1.0f);
-}
-
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_LongName) {
-    uint32_t surfaceId = 1001;
-    std::string longName(10000, 'A'); // 10K character name
-    
-    EXPECT_NO_THROW(WstSimpleShellNotifySurfaceStatus(
-        shell, surfaceId, longName.c_str(), true, 0, 0, 100, 100, 1.0f, 1.0f
-    ));
-}
-
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_SpecialCharactersInName) {
-    uint32_t surfaceId = 1001;
-    const char* specialName = "Test\nSurface\t\r\n\0Special";
-    
-    EXPECT_NO_THROW(WstSimpleShellNotifySurfaceStatus(
-        shell, surfaceId, specialName, true, 0, 0, 100, 100, 1.0f, 1.0f
-    ));
-}
-
 // Test Group: Multiple Init/Uninit Cycles
 TEST_F(WesterosSimpleShellTest, MultipleInitUninit_NoMemoryLeaks) {
     // Test multiple init/uninit cycles
@@ -708,19 +563,14 @@ TEST_F(WesterosSimpleShellTest, RapidSurfaceCreationAndDestruction) {
     }
 }
 
-// Test Group: Mixed Operations
-TEST_F(WesterosSimpleShellTest, MixedOperations_CreateStatusDestroy) {
+// Test Group: Surface Lifecycle Operations
+TEST_F(WesterosSimpleShellTest, MixedOperations_CreateDestroy) {
     uint32_t surfaceId = 1001;
     struct wl_client* client = reinterpret_cast<struct wl_client*>(0x1000);
     struct wl_resource* resource = reinterpret_cast<struct wl_resource*>(0x2000);
     
     // Create surface
     WstSimpleShellNotifySurfaceCreated(shell, client, resource, surfaceId);
-    
-    // Update status multiple times
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "Surface1", true, 0, 0, 100, 100, 1.0f, 1.0f);
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "Surface1", true, 10, 20, 200, 150, 0.8f, 2.0f);
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "Surface1", false, 10, 20, 200, 150, 0.8f, 2.0f);
     
     // Destroy
     EXPECT_CALL(mockCallbacks, get_name(testUserData, surfaceId, _))
@@ -733,34 +583,6 @@ TEST_F(WesterosSimpleShellTest, MixedOperations_CreateStatusDestroy) {
 // Test Group: Null Safety for All Public APIs
 TEST_F(WesterosSimpleShellTest, UninitWithNull_NoSegfault) {
     EXPECT_NO_THROW(WstSimpleShellUninit(nullptr));
-}
-
-// Test Group: Comprehensive Surface Status Tests
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_AllCombinations) {
-    uint32_t surfaceId = 1001;
-    
-    // Test all boolean combinations
-    struct TestCase {
-        bool visible;
-        int x, y, w, h;
-        float opacity, zorder;
-    };
-    
-    std::vector<TestCase> testCases = {
-        {true, 0, 0, 100, 100, 0.0f, 0.0f},
-        {false, 0, 0, 100, 100, 0.0f, 0.0f},
-        {true, -100, -100, 50, 50, 0.5f, 0.5f},
-        {false, 100, 100, 200, 200, 1.0f, 1.0f},
-        {true, INT32_MAX, INT32_MAX, 1, 1, FLT_MIN, -100.0f},
-        {false, INT32_MIN, INT32_MIN, INT32_MAX, INT32_MAX, FLT_MAX, 100.0f}
-    };
-    
-    for (const auto& tc : testCases) {
-        EXPECT_NO_THROW(WstSimpleShellNotifySurfaceStatus(
-            shell, surfaceId, "TestSurface", tc.visible, 
-            tc.x, tc.y, tc.w, tc.h, tc.opacity, tc.zorder
-        ));
-    }
 }
 
 // Test Group: User Data Validation
@@ -788,8 +610,8 @@ TEST_F(WesterosSimpleShellTest, InitWithVariousUserDataValues) {
     wl_display_destroy(tempDisplay);
 }
 
-// Test Group: Concurrent Surface Operations
-TEST_F(WesterosSimpleShellTest, MultipleSurfacesStatusUpdates) {
+// Test Group: Multiple Surface Lifecycle Operations
+TEST_F(WesterosSimpleShellTest, MultipleSurfacesCreateDestroy) {
     std::vector<uint32_t> surfaceIds = {1001, 1002, 1003, 1004, 1005};
     struct wl_client* client = reinterpret_cast<struct wl_client*>(0x1000);
     struct wl_resource* resource = reinterpret_cast<struct wl_resource*>(0x2000);
@@ -797,13 +619,6 @@ TEST_F(WesterosSimpleShellTest, MultipleSurfacesStatusUpdates) {
     // Create all surfaces
     for (auto id : surfaceIds) {
         WstSimpleShellNotifySurfaceCreated(shell, client, resource, id);
-    }
-    
-    // Update status for all surfaces
-    for (auto id : surfaceIds) {
-        WstSimpleShellNotifySurfaceStatus(shell, id, "MultiSurface", true, 
-                                           static_cast<int>(id), static_cast<int>(id), 
-                                           100, 100, 1.0f, static_cast<float>(id));
     }
     
     // Set up expectations for get_name calls
@@ -1207,51 +1022,6 @@ TEST_F(WesterosSimpleShellTest, SetScale_NonUniformScale) {
 }
 
 /**
- * @brief Test NotifySurfaceStatus with all parameters
- */
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_AllParameters_Success) {
-    ASSERT_NE(shell, nullptr);
-    
-    // Call NotifySurfaceStatus with various parameters
-    WstSimpleShellNotifySurfaceStatus(shell, 100, "TestSurface", true, 10, 20, 800, 600, 0.8f, 5.0f);
-    WstSimpleShellNotifySurfaceStatus(shell, 200, "HiddenSurface", false, 0, 0, 640, 480, 0.0f, 0.0f);
-    WstSimpleShellNotifySurfaceStatus(shell, 300, "", true, -50, -50, 1920, 1080, 1.0f, -1.0f);
-    
-    // Function should handle all inputs gracefully (no crashes)
-    SUCCEED();
-}
-
-/**
- * @brief Test NotifySurfaceStatus with NULL shell
- */
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_NullShell_NoCrash) {
-    // Should handle NULL gracefully
-    WstSimpleShellNotifySurfaceStatus(nullptr, 100, "Test", true, 0, 0, 100, 100, 1.0f, 1.0f);
-    SUCCEED();
-}
-
-/**
- * @brief Test NotifySurfaceStatus with NULL name
- */
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_NullName_NoCrash) {
-    ASSERT_NE(shell, nullptr);
-    
-    WstSimpleShellNotifySurfaceStatus(shell, 100, nullptr, true, 0, 0, 100, 100, 1.0f, 1.0f);
-    SUCCEED();
-}
-
-/**
- * @brief Test NotifySurfaceStatus with extreme values
- */
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_ExtremeValues_NoCrash) {
-    ASSERT_NE(shell, nullptr);
-    
-    WstSimpleShellNotifySurfaceStatus(shell, UINT32_MAX, "MaxID", true, INT32_MIN, INT32_MAX, 
-                                      INT32_MAX, INT32_MIN, -1000.0f, 1000.0f);
-    SUCCEED();
-}
-
-/**
  * @brief Test NotifySurfaceCreated with NULL client
  */
 TEST_F(WesterosSimpleShellTest, NotifySurfaceCreated_NullClient_Success) {
@@ -1372,16 +1142,6 @@ TEST_F(WesterosSimpleShellTest, NotifySurfaceDestroyed_MultipleSequential_AllCal
 }
 
 /**
- * @brief Test NotifySurfaceStatus with maximum surface ID
- */
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_MaxSurfaceId_Success) {
-    ASSERT_NE(shell, nullptr);
-    
-    WstSimpleShellNotifySurfaceStatus(shell, UINT32_MAX, "MaxIDSurface", true, 0, 0, 100, 100, 1.0f, 1.0f);
-    SUCCEED();
-}
-
-/**
  * @brief Test NotifySurfaceCreated with maximum surface ID
  */
 TEST_F(WesterosSimpleShellTest, NotifySurfaceCreated_MaxSurfaceId_Success) {
@@ -1440,24 +1200,6 @@ TEST_F(WesterosSimpleShellTest, SurfaceLifecycle_CreateThenDestroy_Success) {
     WstSimpleShellNotifySurfaceDestroyed(shell, client, surfaceId);
     
     // Assert - Completed successfully
-    SUCCEED();
-}
-
-/**
- * @brief Test NotifySurfaceStatus with various parameter combinations
- * 
- * Objective: Cover WstSimpleShellNotifySurfaceStatus parameter paths
- */
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_VariousParameters_AllSucceed) {
-    ASSERT_NE(shell, nullptr);
-    
-    // Test different combinations
-    WstSimpleShellNotifySurfaceStatus(shell, 1, "Surface1", true, 0, 0, 1920, 1080, 1.0f, 0.0f);
-    WstSimpleShellNotifySurfaceStatus(shell, 2, "Surface2", false, 100, 100, 800, 600, 0.5f, 1.0f);
-    WstSimpleShellNotifySurfaceStatus(shell, 3, "", true, -50, -50, 640, 480, 0.0f, -1.0f);
-    WstSimpleShellNotifySurfaceStatus(shell, 4, nullptr, true, 0, 0, 0, 0, 0.0f, 0.0f);
-    WstSimpleShellNotifySurfaceStatus(shell, 5, "VeryLongSurfaceNameThatExceedsNormalLength", true, 32767, 32767, 32767, 32767, 1.0f, 999.0f);
-    
     SUCCEED();
 }
 
@@ -1524,11 +1266,11 @@ TEST_F(WesterosSimpleShellTest, NotifySurfaceDestroyed_NullClient_HandlesGracefu
 }
 
 /**
- * @brief Test complete workflow with status notifications
+ * @brief Test complete surface creation and destruction workflow
  * 
- * Objective: Cover full API usage pattern
+ * Objective: Cover surface lifecycle notifications and the destruction name callback
  */
-TEST_F(WesterosSimpleShellTest, CompleteWorkflow_CreateStatusDestroy_Success) {
+TEST_F(WesterosSimpleShellTest, CompleteWorkflow_CreateDestroy_Success) {
     ASSERT_NE(shell, nullptr);
     
     struct wl_client* client = reinterpret_cast<struct wl_client*>(0x1000);
@@ -1537,11 +1279,6 @@ TEST_F(WesterosSimpleShellTest, CompleteWorkflow_CreateStatusDestroy_Success) {
     
     // Create surface
     WstSimpleShellNotifySurfaceCreated(shell, client, resource, surfaceId);
-    
-    // Update status multiple times
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "Surface400", true, 0, 0, 1920, 1080, 1.0f, 0.0f);
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "Surface400", true, 100, 100, 1920, 1080, 0.8f, 1.0f);
-    WstSimpleShellNotifySurfaceStatus(shell, surfaceId, "Surface400", false, 100, 100, 1920, 1080, 0.5f, 1.0f);
     
     // Setup for destroy
     EXPECT_CALL(mockCallbacks, get_name(testUserData, surfaceId, _))
@@ -1556,26 +1293,6 @@ TEST_F(WesterosSimpleShellTest, CompleteWorkflow_CreateStatusDestroy_Success) {
 }
 
 /**
- * @brief Test Init with NULL display
- * 
- * Objective: Cover NULL display parameter handling
- */
-TEST_F(WesterosSimpleShellTest, Init_WithNullDisplay_ReturnsNull) {
-    wl_simple_shell* result = WstSimpleShellInit(nullptr, &callbacks, testUserData);
-    EXPECT_EQ(result, nullptr);
-}
-
-/**
- * @brief Test Init with NULL callbacks
- * 
- * Objective: Cover NULL callbacks parameter handling
- */
-TEST_F(WesterosSimpleShellTest, Init_WithNullCallbacks_ReturnsNull) {
-    wl_simple_shell* result = WstSimpleShellInit(display, nullptr, testUserData);
-    EXPECT_EQ(result, nullptr);
-}
-
-/**
  * @brief Test Uninit with NULL shell
  * 
  * Objective: Cover NULL shell handling in Uninit
@@ -1583,42 +1300,6 @@ TEST_F(WesterosSimpleShellTest, Init_WithNullCallbacks_ReturnsNull) {
 TEST_F(WesterosSimpleShellTest, Uninit_WithNullShell_HandlesGracefully) {
     // Should not crash
     WstSimpleShellUninit(nullptr);
-    SUCCEED();
-}
-
-/**
- * @brief Test NotifySurfaceStatus with NULL shell
- * 
- * Objective: Cover NULL shell handling
- */
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_NullShell_HandlesGracefully) {
-    WstSimpleShellNotifySurfaceStatus(nullptr, 700, "Test", true, 0, 0, 100, 100, 1.0f, 0.0f);
-    SUCCEED();
-}
-
-/**
- * @brief Test NotifySurfaceStatus with extreme values
- * 
- * Objective: Cover edge cases in NotifySurfaceStatus
- */
-TEST_F(WesterosSimpleShellTest, NotifySurfaceStatus_ExtremeValues_HandlesCorrectly) {
-    ASSERT_NE(shell, nullptr);
-    
-    // Test with extreme negative coordinates
-    WstSimpleShellNotifySurfaceStatus(shell, 1, "Test1", true, -32768, -32768, 100, 100, 1.0f, 0.0f);
-    
-    // Test with extreme positive coordinates
-    WstSimpleShellNotifySurfaceStatus(shell, 2, "Test2", true, 32767, 32767, 32767, 32767, 1.0f, 0.0f);
-    
-    // Test with zero dimensions
-    WstSimpleShellNotifySurfaceStatus(shell, 3, "Test3", true, 0, 0, 0, 0, 0.0f, 0.0f);
-    
-    // Test with extreme opacity/zorder
-    WstSimpleShellNotifySurfaceStatus(shell, 4, "Test4", true, 0, 0, 100, 100, 999.9f, -999.9f);
-    
-    // Test with empty name
-    WstSimpleShellNotifySurfaceStatus(shell, 5, "", false, 0, 0, 100, 100, 0.5f, 0.5f);
-    
     SUCCEED();
 }
 
@@ -1669,20 +1350,6 @@ TEST_F(WesterosSimpleShellTest, Init_WithNullUserData_Success) {
 }
 
 /**
- * @brief Test status notification without prior creation
- * 
- * Objective: Cover status update for non-existent surface
- */
-TEST_F(WesterosSimpleShellTest, NotifyStatus_WithoutCreation_HandlesGracefully) {
-    ASSERT_NE(shell, nullptr);
-    
-    // Update status for surface that was never created
-    WstSimpleShellNotifySurfaceStatus(shell, 999, "Orphan", true, 0, 0, 100, 100, 1.0f, 0.0f);
-    
-    SUCCEED();
-}
-
-/**
  * @brief Test double destruction of same surface
  * 
  * Objective: Cover double destroy scenario
@@ -1730,24 +1397,6 @@ TEST_F(WesterosSimpleShellTest, NotifySurfaceCreated_WithLargeSurfaceId_Success)
 }
 
 /**
- * @brief Test NotifySurfaceStatus with extreme coordinate values - SUCCESS PATH
- * 
- * Objective: Cover boundary value handling
- */
-TEST_F(WesterosSimpleShellTest, NotifyStatus_WithExtremeCoordinates_Success) {
-    ASSERT_NE(shell, nullptr);
-    
-    // Act - Test with extreme values
-    WstSimpleShellNotifySurfaceStatus(shell, 100, "Extreme", false, 
-                                      INT32_MIN, INT32_MIN,  // Extreme negative coords
-                                      INT32_MAX, INT32_MAX,  // Extreme dimensions
-                                      -10.0f, 1000.0f);      // Out-of-range opacity/zorder
-    
-    // Assert
-    SUCCEED();
-}
-
-/**
  * @brief Test multiple Init/Uninit cycles - SUCCESS PATH
  * 
  * Objective: Cover memory management stress test
@@ -1759,25 +1408,6 @@ TEST_F(WesterosSimpleShellTest, InitUninit_MultipleCycles_NoLeaks) {
         ASSERT_NE(tempShell, nullptr);
         WstSimpleShellUninit(tempShell);
     }
-    
-    // Assert
-    SUCCEED();
-}
-
-/**
- * @brief Test notification with very long name string - SUCCESS PATH
- * 
- * Objective: Cover long string handling
- */
-TEST_F(WesterosSimpleShellTest, NotifyStatus_WithVeryLongName_Success) {
-    ASSERT_NE(shell, nullptr);
-    
-    // Create very long name (1000 characters)
-    std::string longName(1000, 'X');
-    
-    // Act
-    WstSimpleShellNotifySurfaceStatus(shell, 200, longName.c_str(), true, 
-                                      0, 0, 100, 100, 0.5f, 0.0f);
     
     // Assert
     SUCCEED();
@@ -1799,42 +1429,6 @@ TEST_F(WesterosSimpleShellTest, Init_WithAllNullCallbacks_HandlesGracefully) {
     if (result) {
         WstSimpleShellUninit(result);
     }
-}
-
-/**
- * @brief Test NotifyStatus with opacity values - SUCCESS PATH
- * 
- * Objective: Cover opacity range 0.0 to 1.0
- */
-TEST_F(WesterosSimpleShellTest, NotifyStatus_OpacityRange_Success) {
-    ASSERT_NE(shell, nullptr);
-    
-    float opacities[] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
-    
-    for (float opacity : opacities) {
-        WstSimpleShellNotifySurfaceStatus(shell, 300, "OpacityTest", true,
-                                          0, 0, 100, 100, opacity, 0.0f);
-    }
-    
-    SUCCEED();
-}
-
-/**
- * @brief Test NotifyStatus with zorder values - SUCCESS PATH
- * 
- * Objective: Cover zorder range
- */
-TEST_F(WesterosSimpleShellTest, NotifyStatus_ZorderRange_Success) {
-    ASSERT_NE(shell, nullptr);
-    
-    float zorders[] = {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f, 10.0f};
-    
-    for (float zorder : zorders) {
-        WstSimpleShellNotifySurfaceStatus(shell, 400, "ZorderTest", true,
-                                          0, 0, 100, 100, 1.0f, zorder);
-    }
-    
-    SUCCEED();
 }
 
 /**
@@ -1900,13 +1494,12 @@ TEST_F(WesterosSimpleShellTest, NotifyDestroyed_WithGetNameCallback_CallsCallbac
 }
 
 /**
- * @brief Test Init with wl_global_create failure simulation
+ * @brief Test Init with successful wl_global_create
  * 
- * Objective: Document wl_global_create failure handling
+ * Objective: Cover successful initialization and cleanup
  */
 TEST_F(WesterosSimpleShellTest, Init_WlGlobalCreateSuccess_ReturnsShell) {
-    // wl_global_create failure can't be easily simulated in unit tests
-    // This test documents expected behavior
+    // No failure is injected; initialization should return a valid shell.
     wl_simple_shell* result = WstSimpleShellInit(display, &callbacks, testUserData);
     
     EXPECT_NE(result, nullptr);
@@ -2208,27 +1801,6 @@ TEST_F(WesterosSimpleShellTest, DISABLED_MultiClient_SurfaceDestructionBroadcast
     
     // Destroy surface - should broadcast to all clients
     WstSimpleShellNotifySurfaceDestroyed(shell, client1, surfaceId);
-}
-
-/*
- * Test: MultiClient_SurfaceStatusBroadcast
- * Objective: Test broadcasting status updates to all shell clients
- * Coverage Target: Lines 634-641 (status broadcast to all clients)
- */
-TEST_F(WesterosSimpleShellTest, MultiClient_SurfaceStatusBroadcast) {
-    // Bind two shell clients
-    struct wl_client* client1 = reinterpret_cast<struct wl_client*>(0x1000);
-    wstSimpleShellBind(client1, shell, 1, 1);
-    
-    struct wl_client* client2 = reinterpret_cast<struct wl_client*>(0x2000);
-    wstSimpleShellBind(client2, shell, 1, 2);
-    
-    // Broadcast status update - should reach both clients
-    WstSimpleShellNotifySurfaceStatus(shell, 777, "StatusTest", 
-                                       true, 100, 200, 800, 600, 
-                                       0.9f, 5.5f);
-    
-    // Success - multi-client status broadcast executed
 }
 
 /*

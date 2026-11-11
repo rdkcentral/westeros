@@ -184,22 +184,6 @@ TEST_F(WesterosLinuxDmabufL1Test, Init_WithValidParameters_ReturnsNonNull) {
 }
 
 /**
- * @brief Test WstLDBInit with NULL display
- * 
- * Objective: Verify behavior when display parameter is NULL
- */
-TEST_F(WesterosLinuxDmabufL1Test, Init_WithNullDisplay_HandlesGracefully) {
-    // Act
-    struct wl_ldb *ldb = WstLDBInit(NULL, &callbacks, userData);
-    
-    // Assert - Implementation should handle NULL display
-    // Cleanup regardless of result
-    if (ldb) {
-        WstLDBUninit(ldb);
-    }
-}
-
-/**
  * @brief Test WstLDBUninit with valid ldb
  * 
  * Objective: Verify that WstLDBUninit properly cleans up resources
@@ -861,22 +845,6 @@ TEST_F(WesterosLinuxDmabufL1Test, MultiPlane_DifferentProperties_AllIndependent)
 }
 
 /**
- * @brief Test GetPlaneOffsetAndStride with NULL pointers
- * 
- * Objective: Verify null pointer safety
- */
-TEST_F(WesterosLinuxDmabufL1Test, GetPlaneOffsetAndStride_WithNullPointers_NoSegfault) {
-    // Arrange
-    struct wl_ldb_buffer buffer;
-    memset(&buffer, 0, sizeof(buffer));
-    buffer.info.offset[0] = 100;
-    buffer.info.stride[0] = 200;
-    
-    // Act & Assert - Should not crash
-    EXPECT_NO_THROW(WstLDBBufferGetPlaneOffsetAndStride(&buffer, 0, nullptr, nullptr));
-}
-
-/**
  * @brief Test buffer format with YUV formats
  * 
  * Objective: Verify YUV format support
@@ -1125,17 +1093,6 @@ TEST_F(WesterosLinuxDmabufL1Test, RealisticBuffer_NV12MultiPlane_AllPropertiesCo
 //==============================================================================
 // Additional Coverage Tests - Buffer Operations and Edge Cases
 //==============================================================================
-
-/**
- * @brief Test buffer getter functions with NULL buffer
- */
-TEST_F(WesterosLinuxDmabufL1Test, BufferGetters_WithNullBuffer_ReturnSafeDefaults) {
-    EXPECT_EQ(WstLDBBufferGetFormat(nullptr), 0);
-    EXPECT_EQ(WstLDBBufferGetWidth(nullptr), 0);
-    EXPECT_EQ(WstLDBBufferGetHeight(nullptr), 0);
-    EXPECT_EQ(WstLDBBufferGetFd(nullptr), -1);
-    EXPECT_EQ(WstLDBBufferGetBuffer(nullptr), nullptr);
-}
 
 /**
  * @brief Test all common DRM format retrievals
@@ -1657,14 +1614,6 @@ TEST_F(WesterosLinuxDmabufL1Test, Buffer_ResourceAndLdbPointers_ValidStates) {
 }
 
 /**
- * @brief Test Init with NULL callbacks structure
- */
-TEST_F(WesterosLinuxDmabufL1Test, Init_NullCallbacks_ReturnsNull) {
-    struct wl_ldb *ldb = WstLDBInit(display, nullptr, userData);
-    EXPECT_EQ(ldb, nullptr);
-}
-
-/**
  * @brief Test buffer with typical YUV420 configuration
  */
 TEST_F(WesterosLinuxDmabufL1Test, Buffer_TypicalYUV420_Success) {
@@ -1889,27 +1838,6 @@ TEST_F(WesterosLinuxDmabufL1Test, BufferMultiPlane_ThreePlanes_AllAccessible) {
 }
 
 /**
- * @brief Test buffer with NULL pointers
- * 
- * Objective: Cover NULL safety in buffer functions
- */
-TEST_F(WesterosLinuxDmabufL1Test, BufferAccessors_WithNullBuffer_HandlesGracefully) {
-    // All these should handle NULL gracefully
-    EXPECT_EQ(WstLDBBufferGetWidth(nullptr), 0);
-    EXPECT_EQ(WstLDBBufferGetHeight(nullptr), 0);
-    EXPECT_EQ(WstLDBBufferGetStride(nullptr), 0);
-    EXPECT_EQ(WstLDBBufferGetFormat(nullptr), 0U);
-    EXPECT_EQ(WstLDBBufferGetFd(nullptr), -1);
-    EXPECT_EQ(WstLDBBufferGetPlaneFd(nullptr, 0), -1);
-    EXPECT_EQ(WstLDBBufferGetPlaneModifier(nullptr, 0), DRM_FORMAT_MOD_INVALID);
-    EXPECT_EQ(WstLDBBufferGetBuffer(nullptr), nullptr);
-    
-    int32_t offset = 999, stride = 999;
-    WstLDBBufferGetPlaneOffsetAndStride(nullptr, 0, &offset, &stride);
-    // Should not crash
-}
-
-/**
  * @brief Test SetRenderer after Uninit scenario
  * 
  * Objective: Ensure SetRenderer handles invalid ldb gracefully
@@ -1946,135 +1874,6 @@ TEST_F(WesterosLinuxDmabufL1Test, Init_VariousCallbackConfigs_HandlesCorrectly) 
     struct wl_ldb *ldb2 = WstLDBInit(display, &cb2, userData);
     EXPECT_NE(ldb2, nullptr);
     if (ldb2) WstLDBUninit(ldb2);
-}
-
-/**
- * @brief Test Init with NULL callbacks - FAILURE PATH
- * 
- * Objective: Cover NULL callbacks parameter validation
- */
-TEST_F(WesterosLinuxDmabufL1Test, Init_WithNullCallbacks_ReturnsNull) {
-    // Act
-    struct wl_ldb *ldb = WstLDBInit(display, nullptr, userData);
-    
-    // Assert - Should return NULL
-    EXPECT_EQ(ldb, nullptr);
-}
-
-/**
- * @brief Test Init with both NULL display and callbacks - FAILURE PATH
- * 
- * Objective: Cover double NULL validation
- */
-TEST_F(WesterosLinuxDmabufL1Test, Init_WithNullDisplayAndCallbacks_ReturnsNull) {
-    // Act
-    struct wl_ldb *ldb = WstLDBInit(nullptr, nullptr, userData);
-    
-    // Assert
-    EXPECT_EQ(ldb, nullptr);
-}
-
-/**
- * @brief Test BufferGetFormat with NULL buffer - FAILURE PATH
- * 
- * Objective: Cover NULL buffer handling in format getter
- */
-TEST_F(WesterosLinuxDmabufL1Test, BufferGetFormat_WithNullBuffer_ReturnsZero) {
-    // Act
-    uint32_t format = WstLDBBufferGetFormat(nullptr);
-    
-    // Assert
-    EXPECT_EQ(format, 0U);
-}
-
-/**
- * @brief Test BufferGetBuffer with NULL - FAILURE PATH
- * 
- * Objective: Cover NULL handling in buffer getter
- */
-TEST_F(WesterosLinuxDmabufL1Test, BufferGetBuffer_WithNullBuffer_ReturnsNull) {
-    // Act
-    void *result = WstLDBBufferGetBuffer(nullptr);
-    
-    // Assert
-    EXPECT_EQ(result, nullptr);
-}
-
-/**
- * @brief Test BufferGetPlaneOffsetAndStride with NULL buffer - FAILURE PATH
- * 
- * Objective: Cover NULL buffer check
- */
-TEST_F(WesterosLinuxDmabufL1Test, BufferGetPlaneOffsetAndStride_WithNullBuffer_NoChange) {
-    // Arrange
-    int32_t offset = 12345;
-    int32_t stride = 67890;
-    
-    // Act
-    WstLDBBufferGetPlaneOffsetAndStride(nullptr, 0, &offset, &stride);
-    
-    // Assert - Values should NOT change
-    EXPECT_EQ(offset, 12345);
-    EXPECT_EQ(stride, 67890);
-}
-
-/**
- * @brief Test BufferGetPlaneOffsetAndStride with NULL offset pointer - SUCCESS PATH
- * 
- * Objective: Cover NULL offset pointer handling
- */
-TEST_F(WesterosLinuxDmabufL1Test, BufferGetPlaneOffsetAndStride_WithNullOffsetPointer_HandlesGracefully) {
-    // Arrange
-    struct wl_ldb_buffer buffer;
-    memset(&buffer, 0, sizeof(buffer));
-    buffer.info.offset[0] = 100;
-    buffer.info.stride[0] = 200;
-    int32_t stride = 0;
-    
-    // Act - NULL offset pointer
-    WstLDBBufferGetPlaneOffsetAndStride(&buffer, 0, nullptr, &stride);
-    
-    // Assert - Should not crash, stride should be set
-    EXPECT_EQ(stride, 200);
-}
-
-/**
- * @brief Test BufferGetPlaneOffsetAndStride with NULL stride pointer - SUCCESS PATH
- * 
- * Objective: Cover NULL stride pointer handling
- */
-TEST_F(WesterosLinuxDmabufL1Test, BufferGetPlaneOffsetAndStride_WithNullStridePointer_HandlesGracefully) {
-    // Arrange
-    struct wl_ldb_buffer buffer;
-    memset(&buffer, 0, sizeof(buffer));
-    buffer.info.offset[0] = 100;
-    buffer.info.stride[0] = 200;
-    int32_t offset = 0;
-    
-    // Act - NULL stride pointer
-    WstLDBBufferGetPlaneOffsetAndStride(&buffer, 0, &offset, nullptr);
-    
-    // Assert - Should not crash, offset should be set
-    EXPECT_EQ(offset, 100);
-}
-
-/**
- * @brief Test BufferGetPlaneOffsetAndStride with both NULL pointers - SUCCESS PATH
- * 
- * Objective: Cover both pointers NULL
- */
-TEST_F(WesterosLinuxDmabufL1Test, BufferGetPlaneOffsetAndStride_WithBothNullPointers_NoChange) {
-    // Arrange
-    struct wl_ldb_buffer buffer;
-    memset(&buffer, 0, sizeof(buffer));
-    buffer.info.offset[0] = 100;
-    buffer.info.stride[0] = 200;
-    
-    // Act - Both pointers NULL
-    WstLDBBufferGetPlaneOffsetAndStride(&buffer, 0, nullptr, nullptr);
-    
-    // Assert - Should not crash
-    SUCCEED();
 }
 
 /**
@@ -2330,23 +2129,6 @@ TEST_F(WesterosLinuxDmabufL1Test, BufferGetFd_WithFdZero_ReturnsZero) {
 }
 
 /**
- * @brief Test GetBuffer function - SUCCESS PATH
- * 
- * Objective: Cover WstLDBBufferGetBuffer
- */
-TEST_F(WesterosLinuxDmabufL1Test, BufferGetBuffer_WithValidBuffer_ReturnsBuffer) {
-    // Arrange
-    struct wl_ldb_buffer buffer;
-    memset(&buffer, 0, sizeof(buffer));
-    
-    // Act
-    void *result = WstLDBBufferGetBuffer(&buffer);
-    
-    // Assert - Should return the buffer itself
-    EXPECT_EQ(result, (void*)&buffer);
-}
-
-/**
  * @brief Test Init/Uninit stress test - SUCCESS PATH
  * 
  * Objective: Cover memory management under stress
@@ -2379,25 +2161,6 @@ TEST_F(WesterosLinuxDmabufL1Test, SetRenderer_MultipleNullCalls_HandlesGracefull
     
     // Assert - Should not crash
     SUCCEED();
-}
-
-/**
- * @brief Test all buffer accessors with NULL simultaneously - FAILURE PATH
- * 
- * Objective: Comprehensive NULL safety check
- */
-TEST_F(WesterosLinuxDmabufL1Test, AllBufferAccessors_WithNull_ReturnSafeValues) {
-    // Act & Assert - All should handle NULL safely
-    EXPECT_EQ(WstLDBBufferGetWidth(nullptr), 0);
-    EXPECT_EQ(WstLDBBufferGetHeight(nullptr), 0);
-    EXPECT_EQ(WstLDBBufferGetStride(nullptr), 0);
-    EXPECT_EQ(WstLDBBufferGetFormat(nullptr), 0U);
-    EXPECT_EQ(WstLDBBufferGetFd(nullptr), -1);
-    EXPECT_EQ(WstLDBBufferGetBuffer(nullptr), nullptr);
-    
-    for (int plane = -1; plane <= 5; plane++) {
-        EXPECT_EQ(WstLDBBufferGetPlaneFd(nullptr, plane), -1);
-    }
 }
 
 /**
@@ -2435,60 +2198,6 @@ TEST_F(WesterosLinuxDmabufL1Test, BufferGet_ValidWlBufferInstance_ReturnsBuffer)
     // WstLDBBufferGet checks: wl_resource_instance_of(resource, &wl_buffer_interface, &linux_dmabuf_buffer_interface)
     // Since we can't create real wayland resources in unit tests, we test the NULL path is already covered
     // The actual instance check is covered by integration tests
-    SUCCEED();
-}
-
-/**
- * @brief Test WstLDBBufferGetPlaneOffsetAndStride with NULL offset pointer
- * 
- * Objective: Cover NULL offset parameter handling
- */
-TEST_F(WesterosLinuxDmabufL1Test, BufferGetPlaneOffsetAndStride_NullOffsetPointer_HandlesGracefully) {
-    struct wl_ldb_buffer buffer;
-    memset(&buffer, 0, sizeof(buffer));
-    buffer.info.offset[0] = 100;
-    buffer.info.stride[0] = 200;
-    
-    int32_t stride = 0;
-    
-    // Act - NULL offset pointer
-    WstLDBBufferGetPlaneOffsetAndStride(&buffer, 0, nullptr, &stride);
-    
-    // Assert - Should handle gracefully and set stride
-    EXPECT_EQ(stride, 200);
-}
-
-/**
- * @brief Test WstLDBBufferGetPlaneOffsetAndStride with NULL stride pointer
- * 
- * Objective: Cover NULL stride parameter handling
- */
-TEST_F(WesterosLinuxDmabufL1Test, BufferGetPlaneOffsetAndStride_NullStridePointer_HandlesGracefully) {
-    struct wl_ldb_buffer buffer;
-    memset(&buffer, 0, sizeof(buffer));
-    buffer.info.offset[0] = 100;
-    buffer.info.stride[0] = 200;
-    
-    int32_t offset = 0;
-    
-    // Act - NULL stride pointer
-    WstLDBBufferGetPlaneOffsetAndStride(&buffer, 0, &offset, nullptr);
-    
-    // Assert - Should handle gracefully and set offset
-    EXPECT_EQ(offset, 100);
-}
-
-/**
- * @brief Test WstLDBBufferGetPlaneOffsetAndStride with both NULL pointers
- * 
- * Objective: Cover both NULL parameters handling
- */
-TEST_F(WesterosLinuxDmabufL1Test, BufferGetPlaneOffsetAndStride_BothNullPointers_HandlesGracefully) {
-    struct wl_ldb_buffer buffer;
-    memset(&buffer, 0, sizeof(buffer));
-    
-    // Act & Assert - Should not crash
-    WstLDBBufferGetPlaneOffsetAndStride(&buffer, 0, nullptr, nullptr);
     SUCCEED();
 }
 
@@ -3166,26 +2875,6 @@ TEST_F(WesterosLinuxDmabufL1Test, ProtocolSim_MaxPlaneBuffer_AllPlanesValid) {
 }
 
 /**
- * @brief Test buffer resource wrapping
- * 
- * Objective: Verify WstLDBBufferGetBuffer returns the buffer pointer as opaque handle.
- * 
- * Coverage Target: WstLDBBufferGetBuffer function
- */
-TEST_F(WesterosLinuxDmabufL1Test, ProtocolSim_BufferResourceWrapper_ReturnsCorrectResource) {
-    struct wl_ldb_buffer buffer;
-    memset(&buffer, 0, sizeof(buffer));
-    
-    buffer.bufferResource = wl_resource_create(client, &wl_buffer_interface, 1, 5000);
-    ASSERT_NE(buffer.bufferResource, nullptr);
-    
-    void *retrieved = WstLDBBufferGetBuffer(&buffer);
-    EXPECT_EQ(retrieved, &buffer) << "WstLDBBufferGetBuffer should return the buffer pointer itself";
-    
-    wl_resource_destroy(buffer.bufferResource);
-}
-
-/**
  * @brief Test modifier handling for protocol version < 3
  * 
  * Objective: Verify that for protocol version < 3, modifiers are set to INVALID.
@@ -3487,57 +3176,6 @@ TEST_F(WesterosLinuxDmabufL1Test, Protocol_BufferGet_ValidatesResourceType) {
 }
 
 /**
- * @brief Test buffer resource wrapper functionality
- * 
- * Objective: Verify WstLDBBufferGetBuffer returns the buffer pointer as opaque handle.
- * 
- * Coverage Target: WstLDBBufferGetBuffer function
- */
-TEST_F(WesterosLinuxDmabufL1Test, Protocol_BufferGetBuffer_ReturnsResource) {
-    struct wl_ldb_buffer buffer;
-    memset(&buffer, 0, sizeof(buffer));
-    
-    // Create a mock resource to represent the buffer's wl_buffer resource
-    buffer.bufferResource = wl_resource_create(client, &wl_buffer_interface, 1, 2001);
-    ASSERT_NE(buffer.bufferResource, nullptr);
-    
-    // Get the buffer pointer back (WstLDBBufferGetBuffer returns the buffer itself as opaque handle)
-    void *retrieved = WstLDBBufferGetBuffer(&buffer);
-    EXPECT_EQ(retrieved, &buffer) << "WstLDBBufferGetBuffer should return the buffer pointer itself";
-    
-    // Test with NULL buffer
-    EXPECT_EQ(WstLDBBufferGetBuffer(NULL), nullptr);
-    
-    // Cleanup
-    wl_resource_destroy(buffer.bufferResource);
-}
-
-/**
- * @brief Test all buffer getters with NULL buffer
- * 
- * Objective: Verify all getter functions handle NULL buffer gracefully.
- * 
- * Coverage Target: NULL checks in all getter functions
- */
-TEST_F(WesterosLinuxDmabufL1Test, Protocol_GettersWithNullBuffer_ReturnDefaults) {
-    EXPECT_EQ(WstLDBBufferGetFormat(NULL), 0u);
-    EXPECT_EQ(WstLDBBufferGetWidth(NULL), 0);
-    EXPECT_EQ(WstLDBBufferGetHeight(NULL), 0);
-    EXPECT_EQ(WstLDBBufferGetStride(NULL), 0);
-    EXPECT_EQ(WstLDBBufferGetFd(NULL), -1);
-    EXPECT_EQ(WstLDBBufferGetPlaneFd(NULL, 0), -1);
-    EXPECT_EQ(WstLDBBufferGetPlaneModifier(NULL, 0), DRM_FORMAT_MOD_INVALID);
-    EXPECT_EQ(WstLDBBufferGetBuffer(NULL), nullptr);
-    
-    // PlaneOffsetAndStride should not crash with NULL buffer
-    int32_t offset = 999, stride = 999;
-    WstLDBBufferGetPlaneOffsetAndStride(NULL, 0, &offset, &stride);
-    // Values should remain unchanged
-    EXPECT_EQ(offset, 999);
-    EXPECT_EQ(stride, 999);
-}
-
-/**
  * @brief Test buffer with maximum number of planes
  * 
  * Objective: Verify handling of buffers with WST_LDB_MAX_PLANES (4) planes.
@@ -3596,35 +3234,6 @@ TEST_F(WesterosLinuxDmabufL1Test, Protocol_BufferGetFd_ReturnsFirstPlaneFd) {
     if (buffer.info.fd[0] >= 0) {
         close(buffer.info.fd[0]);
     }
-}
-
-/**
- * @brief Test PlaneOffsetAndStride with NULL output pointers
- * 
- * Objective: Verify function handles NULL offset or stride pointers.
- * 
- * Coverage Target: NULL pointer checks in WstLDBBufferGetPlaneOffsetAndStride
- */
-TEST_F(WesterosLinuxDmabufL1Test, Protocol_PlaneOffsetAndStride_HandlesNullPointers) {
-    struct wl_ldb_buffer buffer;
-    memset(&buffer, 0, sizeof(buffer));
-    buffer.info.offset[0] = 100;
-    buffer.info.stride[0] = 200;
-    buffer.info.planeCount = 1;
-    
-    int32_t offset = 999, stride = 999;
-    
-    // Test with NULL stride
-    WstLDBBufferGetPlaneOffsetAndStride(&buffer, 0, &offset, NULL);
-    EXPECT_EQ(offset, 100);
-    
-    // Reset and test with NULL offset
-    offset = 999;
-    WstLDBBufferGetPlaneOffsetAndStride(&buffer, 0, NULL, &stride);
-    EXPECT_EQ(stride, 200);
-    
-    // Test with both NULL (should not crash)
-    EXPECT_NO_THROW(WstLDBBufferGetPlaneOffsetAndStride(&buffer, 0, NULL, NULL));
 }
 
 /**

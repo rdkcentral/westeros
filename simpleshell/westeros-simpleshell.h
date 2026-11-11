@@ -57,10 +57,6 @@ void WstSimpleShellNotifySurfaceCreated( wl_simple_shell *shell, struct wl_clien
 
 void WstSimpleShellNotifySurfaceDestroyed( wl_simple_shell *shell, struct wl_client *client, uint32_t surfaceId );
 
-void WstSimpleShellNotifySurfaceStatus( wl_simple_shell *shell, uint32_t surfaceId, const char *name,
-                                        bool visible, int32_t x, int32_t y, int32_t width, int32_t height,
-                                        float opacity, float zorder );
-
 #endif
 
 

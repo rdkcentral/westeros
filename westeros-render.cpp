@@ -19,10 +19,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <memory.h>
-#include <string.h>
 #include <pthread.h>
 #include <unistd.h>
+#ifdef UNIT_TEST
+#include <string.h>
 #include <new>
+#endif
 
 #include <dlfcn.h>
 
@@ -146,7 +148,11 @@ WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, s
    bool error= false;
    void *module= 0, *init;
 
+#ifdef UNIT_TEST
    WstRenderer *renderer= new (std::nothrow) WstRenderer{};
+#else
+   WstRenderer *renderer= (WstRenderer*)calloc( 1, sizeof(WstRenderer) );
+#endif
    if ( renderer )
    {
       int rc;
@@ -202,9 +208,6 @@ WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, s
       
       renderer->display= display;
       renderer->nc= nc;
-      renderer->outputWidth= width;
-      renderer->outputHeight= height;
-      renderer->nativeWindow= nativeWindow;
       if ( nc )
       {
          renderer->displayNested= WstNestedConnectionGetDisplay( nc );
@@ -214,11 +217,14 @@ WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, s
    #ifdef UNIT_TEST
       if ( moduleName && strcmp(moduleName, "mock") == 0 )
       {
+         renderer->outputWidth= width;
+         renderer->outputHeight= height;
+         renderer->nativeWindow= nativeWindow;
          wstTestRenderInit(renderer);
       }
       else
-   #endif
       {
+   #endif
       module= dlopen( moduleName, RTLD_NOW );
       if ( !module )
       {
@@ -237,6 +243,10 @@ WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, s
          goto exit;
       }
 
+      renderer->outputWidth= width;
+      renderer->outputHeight= height;
+      renderer->nativeWindow= nativeWindow;
+      
       rc= ((WSTMethodRenderInit)init)( renderer, argc, argv );
       if ( rc )
       {
@@ -246,7 +256,9 @@ WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, s
       }
       
       printf("WstRendererCreate: module (%s) loaded and intialized\n", moduleName );
+   #ifdef UNIT_TEST
       }
+   #endif
    }
    
 exit:
@@ -261,7 +273,9 @@ exit:
       {
          dlclose( module );
       }
+   #ifdef UNIT_TEST
       renderer= 0;
+   #endif
    }
    
    return renderer;
@@ -271,34 +285,42 @@ void WstRendererDestroy( WstRenderer *renderer )
 {
    if ( renderer )
    {
-   if ( renderer->renderer && renderer->renderTerm )
+   #ifdef UNIT_TEST
+      if ( renderer->renderer && renderer->renderTerm )
+   #else
+      if ( renderer->renderer )
+   #endif
       {
          renderer->renderTerm( renderer );
          renderer->renderer= 0;
       }
+   #ifdef UNIT_TEST
       delete renderer;
+   #else
+      free( renderer );      
+   #endif
    }
 }
 
 void WstRendererUpdateScene( WstRenderer *renderer )
 {
-   if ( renderer && renderer->updateScene ) renderer->updateScene( renderer );
+   renderer->updateScene( renderer );
 }
 
 WstRenderSurface* WstRendererSurfaceCreate( WstRenderer *renderer )
 {
-   return renderer && renderer->surfaceCreate ? renderer->surfaceCreate( renderer ) : 0;
+   return renderer->surfaceCreate( renderer );
 }
 
 void WstRendererSurfaceDestroy( WstRenderer *renderer, WstRenderSurface *surface )
 {
-   if ( renderer && renderer->surfaceDestroy ) renderer->surfaceDestroy( renderer, surface );
+   renderer->surfaceDestroy( renderer, surface );
 }
 
 #ifdef ENABLE_LEXPSYNCPROTOCOL
 void WstRendererSurfaceImportSync( WstRenderer *renderer, WstRenderSurface *surface, WstExplicitSync *sync)
 {
-   if( renderer && renderer->surfaceImportSync)
+   if( renderer->surfaceImportSync)
    {
       renderer->surfaceImportSync( renderer, surface, sync );
    }
@@ -307,52 +329,52 @@ void WstRendererSurfaceImportSync( WstRenderer *renderer, WstRenderSurface *surf
 
 void WstRendererSurfaceCommit( WstRenderer *renderer, WstRenderSurface *surface, struct wl_resource *resource )
 {
-   if ( renderer && renderer->surfaceCommit ) renderer->surfaceCommit( renderer, surface, resource );
+   renderer->surfaceCommit( renderer, surface, resource );
 }
 
 void WstRendererSurfaceSetVisible( WstRenderer *renderer, WstRenderSurface *surface, bool visible )
 {
-   if ( renderer && renderer->surfaceSetVisible ) renderer->surfaceSetVisible( renderer, surface, visible );
+   renderer->surfaceSetVisible( renderer, surface, visible );
 }
 
 bool WstRendererSurfaceGetVisible( WstRenderer *renderer, WstRenderSurface *surface, bool *visible )
 {
-   return renderer && renderer->surfaceGetVisible ? renderer->surfaceGetVisible( renderer, surface, visible ) : false;
+   return renderer->surfaceGetVisible( renderer, surface, visible );
 }
 
 void WstRendererSurfaceSetGeometry( WstRenderer *renderer, WstRenderSurface *surface, int x, int y, int width, int height )
 {
-   if ( renderer && renderer->surfaceSetGeometry ) renderer->surfaceSetGeometry( renderer, surface, x, y, width, height );
+   renderer->surfaceSetGeometry( renderer, surface, x, y, width, height );
 }
 
 void WstRendererSurfaceGetGeometry( WstRenderer *renderer, WstRenderSurface *surface, int *x, int *y, int *width, int *height )
 {
-   if ( renderer && renderer->surfaceGetGeometry ) renderer->surfaceGetGeometry( renderer, surface, x, y, width, height );
+   renderer->surfaceGetGeometry( renderer, surface, x, y, width, height );
 }
 
 void WstRendererSurfaceSetOpacity( WstRenderer *renderer, WstRenderSurface *surface, float opacity )
 {
-   if ( renderer && renderer->surfaceSetOpacity ) renderer->surfaceSetOpacity( renderer, surface, opacity );
+   renderer->surfaceSetOpacity( renderer, surface, opacity );
 }
 
 float WstRendererSurfaceGetOpacity( WstRenderer *renderer, WstRenderSurface *surface, float *opacity )
 {
-   return renderer && renderer->surfaceGetOpacity ? renderer->surfaceGetOpacity( renderer, surface, opacity ) : 0.0f;
+   return renderer->surfaceGetOpacity( renderer, surface, opacity );
 }
 
 void WstRendererSurfaceSetZOrder( WstRenderer *renderer, WstRenderSurface *surface, float z )
 {
-   if ( renderer && renderer->surfaceSetZOrder ) renderer->surfaceSetZOrder( renderer, surface, z );
+   renderer->surfaceSetZOrder( renderer, surface, z );
 }
 
 float WstRendererSurfaceGetZOrder( WstRenderer *renderer, WstRenderSurface *surface, float *z )
 {
-   return renderer && renderer->surfaceGetZOrder ? renderer->surfaceGetZOrder( renderer, surface, z ) : 0.0f;
+   return renderer->surfaceGetZOrder( renderer, surface, z );
 }
 
 void WstRendererSurfaceSetCrop( WstRenderer *renderer, WstRenderSurface *surface, float x, float y, float width, float height )
 {
-   if ( renderer && renderer->surfaceSetCrop )
+   if ( renderer->surfaceSetCrop )
    {
       renderer->surfaceSetCrop( renderer, surface, x, y, width, height );
    }
@@ -360,31 +382,31 @@ void WstRendererSurfaceSetCrop( WstRenderer *renderer, WstRenderSurface *surface
 
 void WstRendererQueryDmabufFormats( WstRenderer *renderer, int **formats, int *num_formats )
 {
-   if ( renderer && renderer->queryDmabufFormats )
+   if ( renderer->queryDmabufFormats )
    {
       renderer->queryDmabufFormats( renderer, formats, num_formats);
    }
    else
    {
-      if ( num_formats ) *num_formats= 0;
+      *num_formats= 0;
    }
 }
 
 void WstRendererQueryDmabufModifiers( WstRenderer *renderer, int format, uint64_t **modifiers, int *num_modifiers )
 {
-   if ( renderer && renderer->queryDmabufModifiers )
+   if ( renderer->queryDmabufModifiers )
    {
       renderer->queryDmabufModifiers( renderer, format, modifiers, num_modifiers );
    }
    else
    {
-      if ( num_modifiers ) *num_modifiers= 0;
+      *num_modifiers= 0;
    }
 }
 
 void WstRendererDelegateUpdateScene( WstRenderer *renderer, std::vector<WstRect> &rects )
 {
-   if ( renderer && renderer->delegateUpdateScene )
+   if ( renderer->delegateUpdateScene )
    {
       renderer->delegateUpdateScene( renderer, rects );
    }
@@ -392,7 +414,7 @@ void WstRendererDelegateUpdateScene( WstRenderer *renderer, std::vector<WstRect>
 
 void WstRendererResolutionChangeBegin( WstRenderer *renderer )
 {
-   if ( renderer && renderer->resolutionChangeBegin )
+   if ( renderer->resolutionChangeBegin )
    {
       renderer->resolutionChangeBegin( renderer );
    }
@@ -400,7 +422,7 @@ void WstRendererResolutionChangeBegin( WstRenderer *renderer )
 
 void WstRendererResolutionChangeEnd( WstRenderer *renderer )
 {
-   if ( renderer && renderer->resolutionChangeEnd )
+   if ( renderer->resolutionChangeEnd )
    {
       renderer->resolutionChangeEnd( renderer );
    }

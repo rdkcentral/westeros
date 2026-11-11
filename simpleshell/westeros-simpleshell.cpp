@@ -520,11 +520,6 @@ wl_simple_shell* WstSimpleShellInit( struct wl_display *display,
    struct wl_event_loop *loop= 0;
    
    printf("westeros-simpleshell: WstSimpleShellInit: enter: display %p\n", display );
-   if ( !display || !callbacks )
-   {
-      goto exit;
-   }
-
    shell= (struct wl_simple_shell*)calloc( 1, sizeof(struct wl_simple_shell) );
    if ( !shell )
    {
@@ -552,12 +547,6 @@ wl_simple_shell* WstSimpleShellInit( struct wl_display *display,
    }
   
    shell->wl_simple_shell_global= wl_global_create(display, &wl_simple_shell_interface, 1, shell, wstSimpleShellBind );
-   if ( !shell->wl_simple_shell_global )
-   {
-      wl_event_source_remove( shell->delayTimer );
-      free( shell );
-      shell= 0;
-   }
 
 exit:
    printf("westeros-simpleshell: WstSimpleShellInit: exit: display %p shell %p\n", display, shell);
@@ -659,32 +648,6 @@ void WstSimpleShellNotifySurfaceDestroyed( wl_simple_shell *shell, struct wl_cli
          shell->surfaces.erase(it);
          break;
       }
-   }
-}
-
-void WstSimpleShellNotifySurfaceStatus( wl_simple_shell *shell, uint32_t surfaceId, const char *name,
-                                        bool visible, int32_t x, int32_t y, int32_t width, int32_t height,
-                                        float opacity, float zorder )
-{
-   if ( !shell )
-   {
-      return;
-   }
-
-   wl_fixed_t fixedOpacity= wl_fixed_from_double( (double)opacity );
-   wl_fixed_t fixedZOrder= wl_fixed_from_double( (double)zorder );
-
-   const char *surfaceName = name ? name : DEFAULT_NAME;
-
-   for( std::vector<ShellInfo>::iterator it= shell->shells.begin(); 
-        it != shell->shells.end();
-        ++it )
-   {
-      struct wl_resource *shell_resource= (*it).resource;
-      
-      wl_simple_shell_send_surface_status( shell_resource, surfaceId,
-                                           surfaceName, (visible ? 1 : 0),
-                                           x, y, width, height, fixedOpacity, fixedZOrder );
    }
 }
 

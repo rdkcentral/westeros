@@ -164,14 +164,6 @@ TEST_F(WesterosMainL1Test, SetRendererModule_NullCompositor) {
     EXPECT_FALSE(result);
 }
 
-TEST_F(WesterosMainL1Test, SetRendererModule_NullModuleName) {
-    compositor = WstCompositorCreate();
-    ASSERT_NE(nullptr, compositor);
-    
-    bool result = WstCompositorSetRendererModule(compositor, nullptr);
-    EXPECT_FALSE(result);
-}
-
 // ========================================
 // Compositor Start/Stop Tests
 // ========================================
@@ -378,11 +370,6 @@ TEST_F(WesterosMainL1Test, UpdateScene_ValidRenderer) {
     WstRendererUpdateScene(renderer);
 }
 
-TEST_F(WesterosMainL1Test, UpdateScene_NullRenderer) {
-    // Should not crash
-    WstRendererUpdateScene(nullptr);
-}
-
 // ========================================
 // Render Surface Tests
 // ========================================
@@ -397,11 +384,6 @@ TEST_F(WesterosMainL1Test, SurfaceCreate_Success) {
     WstRendererSurfaceDestroy(renderer, surface);
 }
 
-TEST_F(WesterosMainL1Test, SurfaceCreate_NullRenderer) {
-    WstRenderSurface *surface = WstRendererSurfaceCreate(nullptr);
-    EXPECT_EQ(nullptr, surface);
-}
-
 TEST_F(WesterosMainL1Test, SurfaceDestroy_ValidSurface) {
     renderer = WstRendererCreate("mock", 0, nullptr, nullptr, nullptr);
     ASSERT_NE(nullptr, renderer);
@@ -410,11 +392,6 @@ TEST_F(WesterosMainL1Test, SurfaceDestroy_ValidSurface) {
     ASSERT_NE(nullptr, surface);
     
     WstRendererSurfaceDestroy(renderer, surface);
-}
-
-TEST_F(WesterosMainL1Test, SurfaceDestroy_NullRenderer) {
-    // Should not crash
-    WstRendererSurfaceDestroy(nullptr, nullptr);
 }
 
 TEST_F(WesterosMainL1Test, SurfaceCommit_ValidSurface) {
@@ -428,11 +405,6 @@ TEST_F(WesterosMainL1Test, SurfaceCommit_ValidSurface) {
     WstRendererSurfaceCommit(renderer, surface, nullptr);
     
     WstRendererSurfaceDestroy(renderer, surface);
-}
-
-TEST_F(WesterosMainL1Test, SurfaceCommit_NullRenderer) {
-    // Should not crash
-    WstRendererSurfaceCommit(nullptr, nullptr, nullptr);
 }
 
 // ========================================
@@ -473,26 +445,17 @@ TEST_F(WesterosMainL1Test, SurfaceSetVisible_False) {
     WstRendererSurfaceDestroy(renderer, surface);
 }
 
-TEST_F(WesterosMainL1Test, SurfaceSetVisible_NullRenderer) {
-    // Should not crash
-    WstRendererSurfaceSetVisible(nullptr, nullptr, true);
-}
-
-TEST_F(WesterosMainL1Test, SurfaceGetVisible_NullRenderer) {
-    bool visible = false;
-    bool result = WstRendererSurfaceGetVisible(nullptr, nullptr, &visible);
-    EXPECT_FALSE(result);
-}
-
-TEST_F(WesterosMainL1Test, SurfaceGetVisible_NullOutput) {
+TEST_F(WesterosMainL1Test, SurfaceGetVisible_DefaultValue) {
     renderer = WstRendererCreate("mock", 0, nullptr, nullptr, nullptr);
     ASSERT_NE(nullptr, renderer);
     
     WstRenderSurface *surface = WstRendererSurfaceCreate(renderer);
     ASSERT_NE(nullptr, surface);
     
-    bool result = WstRendererSurfaceGetVisible(renderer, surface, nullptr);
+    bool visible = true;
+    bool result = WstRendererSurfaceGetVisible(renderer, surface, &visible);
     EXPECT_TRUE(result);
+    EXPECT_FALSE(visible);
     
     WstRendererSurfaceDestroy(renderer, surface);
 }
@@ -521,26 +484,19 @@ TEST_F(WesterosMainL1Test, SurfaceSetGeometry_ValidValues) {
     WstRendererSurfaceDestroy(renderer, surface);
 }
 
-TEST_F(WesterosMainL1Test, SurfaceSetGeometry_NullRenderer) {
-    // Should not crash
-    WstRendererSurfaceSetGeometry(nullptr, nullptr, 0, 0, 100, 100);
-}
-
-TEST_F(WesterosMainL1Test, SurfaceGetGeometry_NullRenderer) {
-    int x = 0, y = 0, width = 0, height = 0;
-    // Should not crash
-    WstRendererSurfaceGetGeometry(nullptr, nullptr, &x, &y, &width, &height);
-}
-
-TEST_F(WesterosMainL1Test, SurfaceGetGeometry_NullOutputParams) {
+TEST_F(WesterosMainL1Test, SurfaceGetGeometry_DefaultValues) {
     renderer = WstRendererCreate("mock", 0, nullptr, nullptr, nullptr);
     ASSERT_NE(nullptr, renderer);
     
     WstRenderSurface *surface = WstRendererSurfaceCreate(renderer);
     ASSERT_NE(nullptr, surface);
     
-    // Should not crash with NULL output parameters
-    WstRendererSurfaceGetGeometry(renderer, surface, nullptr, nullptr, nullptr, nullptr);
+    int x = -1, y = -1, width = -1, height = -1;
+    WstRendererSurfaceGetGeometry(renderer, surface, &x, &y, &width, &height);
+    EXPECT_EQ(0, x);
+    EXPECT_EQ(0, y);
+    EXPECT_EQ(0, width);
+    EXPECT_EQ(0, height);
     
     WstRendererSurfaceDestroy(renderer, surface);
 }
@@ -599,26 +555,17 @@ TEST_F(WesterosMainL1Test, SurfaceSetOpacity_FullyTransparent) {
     WstRendererSurfaceDestroy(renderer, surface);
 }
 
-TEST_F(WesterosMainL1Test, SurfaceSetOpacity_NullRenderer) {
-    // Should not crash
-    WstRendererSurfaceSetOpacity(nullptr, nullptr, 0.5f);
-}
-
-TEST_F(WesterosMainL1Test, SurfaceGetOpacity_NullRenderer) {
-    float opacity = 0.0f;
-    float result = WstRendererSurfaceGetOpacity(nullptr, nullptr, &opacity);
-    EXPECT_FLOAT_EQ(0.0f, result);
-}
-
-TEST_F(WesterosMainL1Test, SurfaceGetOpacity_NullOutput) {
+TEST_F(WesterosMainL1Test, SurfaceGetOpacity_DefaultValue) {
     renderer = WstRendererCreate("mock", 0, nullptr, nullptr, nullptr);
     ASSERT_NE(nullptr, renderer);
     
     WstRenderSurface *surface = WstRendererSurfaceCreate(renderer);
     ASSERT_NE(nullptr, surface);
     
-    float result = WstRendererSurfaceGetOpacity(renderer, surface, nullptr);
+    float opacity = 0.0f;
+    float result = WstRendererSurfaceGetOpacity(renderer, surface, &opacity);
     EXPECT_FLOAT_EQ(1.0f, result); // Default opacity
+    EXPECT_FLOAT_EQ(1.0f, opacity);
     
     WstRendererSurfaceDestroy(renderer, surface);
 }
@@ -661,26 +608,17 @@ TEST_F(WesterosMainL1Test, SurfaceSetZOrder_NegativeValue) {
     WstRendererSurfaceDestroy(renderer, surface);
 }
 
-TEST_F(WesterosMainL1Test, SurfaceSetZOrder_NullRenderer) {
-    // Should not crash
-    WstRendererSurfaceSetZOrder(nullptr, nullptr, 0.5f);
-}
-
-TEST_F(WesterosMainL1Test, SurfaceGetZOrder_NullRenderer) {
-    float zorder = 1.0f;
-    float result = WstRendererSurfaceGetZOrder(nullptr, nullptr, &zorder);
-    EXPECT_FLOAT_EQ(0.0f, result);
-}
-
-TEST_F(WesterosMainL1Test, SurfaceGetZOrder_NullOutput) {
+TEST_F(WesterosMainL1Test, SurfaceGetZOrder_DefaultValue) {
     renderer = WstRendererCreate("mock", 0, nullptr, nullptr, nullptr);
     ASSERT_NE(nullptr, renderer);
     
     WstRenderSurface *surface = WstRendererSurfaceCreate(renderer);
     ASSERT_NE(nullptr, surface);
     
-    float result = WstRendererSurfaceGetZOrder(renderer, surface, nullptr);
+    float zorder = 1.0f;
+    float result = WstRendererSurfaceGetZOrder(renderer, surface, &zorder);
     EXPECT_FLOAT_EQ(0.0f, result); // Default z-order
+    EXPECT_FLOAT_EQ(0.0f, zorder);
     
     WstRendererSurfaceDestroy(renderer, surface);
 }
@@ -1112,17 +1050,19 @@ TEST_F(WesterosMainL1Test, RendererSurfaceSetCrop_ValidParameters) {
  * Objective: Cover WstRendererQueryDmabufFormats with NULL callback
  * Coverage Target: westeros-render.cpp lines 429-439
  */
-TEST_F(WesterosMainL1Test, RendererQueryDmabufFormats_NullFormats) {
+TEST_F(WesterosMainL1Test, RendererQueryDmabufFormats_NullCallback) {
     renderer = WstRendererCreate("mock", 0, nullptr, nullptr, nullptr);
     ASSERT_NE(nullptr, renderer);
     
     int* formats = nullptr;
-    int num_formats = 0;
+    int num_formats = -1;
     
-    // Call with NULL formats pointer - should handle gracefully
+    // The callback is optional, but the output count pointer is required.
+    ASSERT_EQ(nullptr, renderer->queryDmabufFormats);
     WstRendererQueryDmabufFormats(renderer, &formats, &num_formats);
     
-    // Test validates function handles NULL formats without crash
+    EXPECT_EQ(0, num_formats);
+    EXPECT_EQ(nullptr, formats);
 }
 
 // ========================================

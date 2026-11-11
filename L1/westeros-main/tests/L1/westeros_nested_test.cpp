@@ -190,11 +190,6 @@ protected:
 };
 
 // Nested Connection Creation/Destruction Tests
-TEST_F(WesterosNestedL1Test, NestedConnectionCreate_NullCompositor) {
-    nestedConnection = WstNestedConnectionCreate(nullptr, "wayland-0", 1920, 1080, &listener, this);
-    EXPECT_EQ(nullptr, nestedConnection);
-}
-
 TEST_F(WesterosNestedL1Test, NestedConnectionCreate_NullDisplayName) {
     nestedConnection = WstNestedConnectionCreate(compositor, nullptr, 1920, 1080, &listener, this);
 }
@@ -285,10 +280,6 @@ TEST_F(WesterosNestedL1Test, AttachAndCommitDevice_NullConnection) {
 
 TEST_F(WesterosNestedL1Test, AttachAndCommitClone_NullConnection) {
     WstNestedConnectionAttachAndCommitClone(nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0);
-}
-
-TEST_F(WesterosNestedL1Test, ReleaseRemoteBuffers_NullConnection) {
-    WstNestedConnectionReleaseRemoteBuffers(nullptr);
 }
 
 // Pointer Tests
@@ -407,15 +398,6 @@ TEST_F(WesterosNestedL1Test, GetCompositionSurface_ValidConnection) {
     }
 }
 
-TEST_F(WesterosNestedL1Test, GetVpcSurface_WithNullSurface) {
-    nestedConnection = WstNestedConnectionCreate(compositor, "wayland-0", 1920, 1080, &listener, this);
-    
-    if (nestedConnection) {
-        struct wl_vpc_surface* vpcSurface = WstNestedConnectionGetVpcSurface(nestedConnection, nullptr);
-        EXPECT_EQ(nullptr, vpcSurface);
-    }
-}
-
 TEST_F(WesterosNestedL1Test, GetVpcSurface_WithValidSurface) {
     nestedConnection = WstNestedConnectionCreate(compositor, "wayland-0", 1920, 1080, &listener, this);
     
@@ -437,15 +419,6 @@ TEST_F(WesterosNestedL1Test, DestroyVpcSurface_WithNullSurface) {
     if (nestedConnection) {
         WstNestedConnectionDestroyVpcSurface(nestedConnection, nullptr);
         // Should handle gracefully
-        SUCCEED();
-    }
-}
-
-TEST_F(WesterosNestedL1Test, AttachAndCommit_NullSurface) {
-    nestedConnection = WstNestedConnectionCreate(compositor, "wayland-0", 1920, 1080, &listener, this);
-    
-    if (nestedConnection) {
-        WstNestedConnectionAttachAndCommit(nestedConnection, nullptr, nullptr, 0, 0, 640, 480);
         SUCCEED();
     }
 }
@@ -480,12 +453,13 @@ TEST_F(WesterosNestedL1Test, AttachAndCommitDevice_ValidParameters) {
     }
 }
 
-TEST_F(WesterosNestedL1Test, AttachAndCommitClone_ValidParameters) {
+TEST_F(WesterosNestedL1Test, AttachAndCommitClone_MissingBuffersNoOp) {
     nestedConnection = WstNestedConnectionCreate(compositor, "wayland-0", 1920, 1080, &listener, this);
     
     if (nestedConnection) {
         struct wl_surface* surface = WstNestedConnectionCreateSurface(nestedConnection);
         if (surface) {
+            // The reference explicitly skips cloning when either buffer is absent.
             WstNestedConnectionAttachAndCommitClone(nestedConnection, surface, nullptr, nullptr, 
                                                      0, 0, 1920, 1080);
             SUCCEED();

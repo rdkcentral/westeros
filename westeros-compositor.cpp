@@ -1174,6 +1174,7 @@ const char *WstCompositorGetLastErrorDetail( WstCompositor *wctx )
       
       pthread_mutex_unlock( &ctx->mutex );
    }
+   
    return detail;
 }
 
@@ -1294,11 +1295,6 @@ exit:
 bool WstCompositorSetRendererModule( WstCompositor *wctx, const char *rendererModule )
 {
    bool result= false;
-
-   if ( !rendererModule )
-   {
-      return result;
-   }
    
    if ( wctx && wctx->ctx )
    {

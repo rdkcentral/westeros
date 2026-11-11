@@ -50,27 +50,23 @@ typedef struct _WstExplicitSync
 
 inline void WstLExpSyncClear(WstExplicitSync *sync)
 {
-   if ( !sync ) return;
   sync->bufferRelease= 0;
   sync->acquireFenceFd= -1;
 }
 
 inline void WstLExpSyncMove(WstExplicitSync *target, WstExplicitSync *source)
 {
-   if ( !target || !source || target == source ) return;
   *target= *source;
   WstLExpSyncClear(source);
 }
 
 inline void WstLExpSyncCopy(WstExplicitSync *target, WstExplicitSync *source)
 {
-   if ( !target || !source ) return;
   *target= *source;
 }
 
 inline void WstLExpSyncFdUpdate(int *fd, int newFd)
 {
-   if ( !fd ) return;
    if ( *fd == newFd )
    {
       return;
@@ -86,7 +82,7 @@ inline void WstLExpSyncFdUpdate(int *fd, int newFd)
 
 inline void WstLExpSyncFdMove(int *dest, int *src)
 {
-   if (!dest || !src || dest == src)
+   if (dest == src)
    {
       return;
    }
@@ -96,7 +92,6 @@ inline void WstLExpSyncFdMove(int *dest, int *src)
 
 inline void WstLExpSyncFdClear(int *fd)
 {
-   if ( !fd ) return;
    WstLExpSyncFdUpdate(fd, -1);
 }
 

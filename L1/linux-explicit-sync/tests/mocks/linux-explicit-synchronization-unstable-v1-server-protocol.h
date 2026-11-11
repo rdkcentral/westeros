@@ -1,6 +1,8 @@
 #ifndef LINUX_EXPLICIT_SYNCHRONIZATION_UNSTABLE_V1_SERVER_PROTOCOL_H
 #define LINUX_EXPLICIT_SYNCHRONIZATION_UNSTABLE_V1_SERVER_PROTOCOL_H
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -37,14 +39,12 @@ struct zwp_linux_surface_synchronization_v1_interface {
 };
 
 /* zwp_linux_buffer_release_v1 interface */
-struct zwp_linux_buffer_release_v1_interface {
-    /* No requests */
-};
+/* No requests: there is no request implementation structure. */
+struct zwp_linux_buffer_release_v1_interface;
 
 /* Error enums */
 enum zwp_linux_explicit_synchronization_v1_error {
-    ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_INVALID_SURFACE = 0,
-    ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_DUPLICATE_SYNCHRONIZATION = 1,
+    ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_SYNCHRONIZATION_EXISTS = 0,
 };
 
 enum zwp_linux_surface_synchronization_v1_error {

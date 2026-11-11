@@ -319,11 +319,6 @@ wl_sb* WstSBInit( struct wl_display *display, struct wayland_sb_callbacks *callb
    struct wl_sb *sb= 0;
    
 	printf("westeros-sb: WstSBInit: enter: display %p\n", display);
-   if ( !display || !callbacks )
-   {
-      goto exit;
-   }
-
    sb= (struct wl_sb*)calloc( 1, sizeof(struct wl_sb) );
    if ( !sb )
    {
@@ -365,47 +360,47 @@ struct wl_sb_buffer *WstSBBufferGet( struct wl_resource *resource )
 
 uint32_t WstSBBufferGetFormat(struct wl_sb_buffer *buffer)
 {
-   return buffer ? buffer->format : 0;
+   return buffer->format;
 }
 
 int32_t WstSBBufferGetWidth(struct wl_sb_buffer *buffer)
 {
-   return buffer ? buffer->width : 0;
+   return buffer->width;
 }
 
 int32_t WstSBBufferGetHeight(struct wl_sb_buffer *buffer)
 {
-   return buffer ? buffer->height : 0;
+   return buffer->height;
 }
 
 int32_t WstSBBufferGetStride(struct wl_sb_buffer *buffer)
 {
-   return buffer ? buffer->stride[0] : 0;
+   return buffer->stride[0];
 }
 
 void WstSBBufferGetPlaneOffsetAndStride(struct wl_sb_buffer *buffer, int plane, int32_t *offset, int32_t *stride )
 {
-   if ( buffer && (plane >=0 ) && (plane <= 2) )
+   if ( (plane >=0 ) && (plane <= 2) )
    {
-      if ( offset ) *offset= buffer->offset[plane];
-      if ( stride ) *stride= buffer->stride[plane];
+      *offset= buffer->offset[plane];
+      *stride= buffer->stride[plane];
    }
 }
 
 void *WstSBBufferGetBuffer(struct wl_sb_buffer *buffer)
 {
-   return buffer ? buffer->driverBuffer : NULL;
+   return buffer->driverBuffer;
 }
 
 int WstSBBufferGetFd(struct wl_sb_buffer *buffer)
 {
-   return buffer ? buffer->fd[0] : -1;
+   return buffer->fd[0];
 }
 
 int WstSBBufferGetPlaneFd(struct wl_sb_buffer *buffer, int plane)
 {
    int fd= -1;
-   if ( buffer && (plane >=0 ) && (plane <= 2) )
+   if ( (plane >=0 ) && (plane <= 2) )
    {
       fd= buffer->fd[plane];
    }

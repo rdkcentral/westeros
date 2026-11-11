@@ -467,11 +467,6 @@ wl_ldb* WstLDBInit( struct wl_display *display, struct wayland_ldb_callbacks *ca
    struct wl_ldb *ldb= 0;
 
    printf("westeros-ldb: WstLDBInit: enter: display %p\n", display);
-   if ( !display || !callbacks )
-   {
-      goto exit;
-   }
-
    ldb= (struct wl_ldb*)calloc( 1, sizeof(struct wl_ldb) );
    if ( !ldb )
    {
@@ -483,11 +478,6 @@ wl_ldb* WstLDBInit( struct wl_display *display, struct wayland_ldb_callbacks *ca
    ldb->userData= userData;
 
    ldb->wl_ldb_global= wl_global_create(display, &zwp_linux_dmabuf_v1_interface, 3, ldb, wstLDBBind );
-   if ( !ldb->wl_ldb_global )
-   {
-      free( ldb );
-      ldb= 0;
-   }
 
 exit:
    printf("westeros-ldb: WstLDBInit: exit: display %p sb %p\n", display, ldb);
@@ -529,53 +519,44 @@ struct wl_ldb_buffer *WstLDBBufferGet( struct wl_resource *resource )
    }
 }
 
-void *WstLDBBufferGetBuffer(struct wl_ldb_buffer *buffer)
-{
-   if ( buffer == NULL )
-   {
-      return NULL;
-   }
-   return (void*)buffer;
-}
-
 uint32_t WstLDBBufferGetFormat(struct wl_ldb_buffer *buffer)
 {
-   return buffer ? buffer->info.format : 0;
+   return buffer->info.format;
 }
 
 int32_t WstLDBBufferGetWidth(struct wl_ldb_buffer *buffer)
 {
-   return buffer ? buffer->info.width : 0;
+   return buffer->info.width;
 }
 
 int32_t WstLDBBufferGetHeight(struct wl_ldb_buffer *buffer)
 {
-   return buffer ? buffer->info.height : 0;
+   return buffer->info.height;
 }
 
 int32_t WstLDBBufferGetStride(struct wl_ldb_buffer *buffer)
 {
-   return buffer ? buffer->info.stride[0] : 0;
+   return buffer->info.stride[0];
 }
 
 void WstLDBBufferGetPlaneOffsetAndStride(struct wl_ldb_buffer *buffer, int plane, int32_t *offset, int32_t *stride )
 {
-   if ( buffer && (plane >= 0 ) && (plane < WST_LDB_MAX_PLANES) )
+   if ( (plane >= 0 ) && (plane < WST_LDB_MAX_PLANES) )
    {
-      if ( offset ) *offset= buffer->info.offset[plane];
-      if ( stride ) *stride= buffer->info.stride[plane];
+      *offset= buffer->info.offset[plane];
+      *stride= buffer->info.stride[plane];
    }
 }
 
 int WstLDBBufferGetFd(struct wl_ldb_buffer *buffer)
 {
-   return buffer ? buffer->info.fd[0] : -1;
+   return buffer->info.fd[0];
 }
 
 int WstLDBBufferGetPlaneFd(struct wl_ldb_buffer *buffer, int plane)
 {
    int fd= -1;
-   if ( buffer && (plane >= 0 ) && (plane < WST_LDB_MAX_PLANES) )
+   if ( (plane >= 0 ) && (plane < WST_LDB_MAX_PLANES) )
    {
       fd= buffer->info.fd[plane];
    }
@@ -585,7 +566,7 @@ int WstLDBBufferGetPlaneFd(struct wl_ldb_buffer *buffer, int plane)
 uint64_t WstLDBBufferGetPlaneModifier(struct wl_ldb_buffer *buffer, int plane)
 {
    uint64_t modifier= DRM_FORMAT_MOD_INVALID;
-   if ( buffer && (plane >= 0) && (plane < WST_LDB_MAX_PLANES) )
+   if ( (plane >= 0) && (plane < WST_LDB_MAX_PLANES) )
    {
       modifier= buffer->info.modifier[plane];
    }

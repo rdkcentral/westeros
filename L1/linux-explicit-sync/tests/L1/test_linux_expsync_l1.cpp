@@ -24,6 +24,10 @@ extern void mock_set_ioctl_failure(int should_fail);
 extern void mock_set_num_fences(int num_fences);
 extern int mock_create_fence_fd(void);
 extern int mock_is_valid_fence_fd(int fd);
+
+// Protocol error observation from the component Wayland mock.
+extern void mock_reset_protocol_error(void);
+extern int mock_get_protocol_error_code(void);
 }
 
 // External declarations for STATIC_TEST functions (C++ linkage)
@@ -119,14 +123,6 @@ TEST_F(LinuxExpSyncL1Test, InitSuccess) {
     // Cleanup will be done in TearDown
 }
 
-TEST_F(LinuxExpSyncL1Test, InitNullDisplay) {
-    // Initialize with NULL display
-    lexpsync = WstLExpSyncInit(nullptr, mockContext);
-    
-    // Should return NULL for invalid display
-    EXPECT_EQ(nullptr, lexpsync);
-}
-
 TEST_F(LinuxExpSyncL1Test, InitNullUserData) {
     // Initialize with NULL user data (should still succeed)
     lexpsync = WstLExpSyncInit(mockContext->display, nullptr);
@@ -195,6 +191,19 @@ TEST_F(LinuxExpSyncL1Test, WstLExpSyncMoveSuccess) {
     // Verify source is cleared
     EXPECT_EQ(-1, source.acquireFenceFd);
     EXPECT_EQ(nullptr, source.bufferRelease);
+}
+
+TEST_F(LinuxExpSyncL1Test, SyncMove_ToSelf_ClearsSync) {
+    WstExplicitSyncBufferRelease release = {};
+    WstExplicitSync sync;
+    sync.acquireFenceFd = 42;
+    sync.bufferRelease = &release;
+
+    // The reference assigns first, then clears the source even when it aliases target.
+    WstLExpSyncMove(&sync, &sync);
+
+    EXPECT_EQ(-1, sync.acquireFenceFd);
+    EXPECT_EQ(nullptr, sync.bufferRelease);
 }
 
 TEST_F(LinuxExpSyncL1Test, WstLExpSyncCopySuccess) {
@@ -631,25 +640,13 @@ TEST_F(LinuxExpSyncL1Test, MultipleSurfacesSync) {
  * ============================================================================
  */
 
-TEST_F(LinuxExpSyncL1Test, InitWithNullDisplay_ReturnsNull) {
-    // Initialize with NULL display
-    wl_lexpsync *sync = WstLExpSyncInit(nullptr, mockContext);
-    
-    // Should return NULL or handle gracefully
-    // Implementation-dependent behavior
-    if (sync) {
-        WstLExpSyncUninit(sync);
-    }
-}
-
-TEST_F(LinuxExpSyncL1Test, InitWithNullContext_ReturnsNull) {
+TEST_F(LinuxExpSyncL1Test, InitWithNullContext_ReturnsInstance) {
     // Initialize with NULL context
     wl_lexpsync *sync = WstLExpSyncInit(mockContext->display, nullptr);
-    
-    // Should return NULL or handle gracefully
-    if (sync) {
-        WstLExpSyncUninit(sync);
-    }
+
+    // Init stores the context as global user data without dereferencing it.
+    ASSERT_NE(nullptr, sync);
+    WstLExpSyncUninit(sync);
 }
 
 TEST_F(LinuxExpSyncL1Test, MultipleInitUninit_NoMemoryLeaks) {
@@ -711,28 +708,9 @@ TEST_F(LinuxExpSyncL1Test, FdUpdate_WithLargeFd) {
     EXPECT_EQ(1024, fd);
 }
 
-TEST_F(LinuxExpSyncL1Test, FdMove_WithNullDest) {
-    int src = 10;
-    
-    // Should handle NULL gracefully or crash
-    EXPECT_NO_THROW(WstLExpSyncFdMove(nullptr, &src));
-}
-
-TEST_F(LinuxExpSyncL1Test, FdMove_WithNullSrc) {
-    int dest = 20;
-    
-    // Should handle NULL gracefully or crash
-    EXPECT_NO_THROW(WstLExpSyncFdMove(&dest, nullptr));
-}
-
 TEST_F(LinuxExpSyncL1Test, FdMove_BothNull) {
-    // Should handle both NULL gracefully or crash
+    // The original equal-pointer check returns before dereferencing either pointer.
     EXPECT_NO_THROW(WstLExpSyncFdMove(nullptr, nullptr));
-}
-
-TEST_F(LinuxExpSyncL1Test, FdClear_WithNullPointer) {
-    // Should handle NULL gracefully or crash
-    EXPECT_NO_THROW(WstLExpSyncFdClear(nullptr));
 }
 
 TEST_F(LinuxExpSyncL1Test, FdClear_WithZeroFd) {
@@ -774,11 +752,6 @@ TEST_F(LinuxExpSyncL1Test, FdUpdate_MultipleSequentialUpdates) {
  * ============================================================================
  */
 
-TEST_F(LinuxExpSyncL1Test, SyncClear_WithNullPointer) {
-    // Should handle NULL gracefully or crash
-    EXPECT_NO_THROW(WstLExpSyncClear(nullptr));
-}
-
 TEST_F(LinuxExpSyncL1Test, SyncClear_MultipleClears) {
     WstExplicitSync sync;
     sync.acquireFenceFd = 100;
@@ -792,28 +765,6 @@ TEST_F(LinuxExpSyncL1Test, SyncClear_MultipleClears) {
     WstLExpSyncClear(&sync);  // Clear again
     EXPECT_EQ(-1, sync.acquireFenceFd);
     EXPECT_EQ(nullptr, sync.bufferRelease);
-}
-
-TEST_F(LinuxExpSyncL1Test, SyncMove_WithNullDest) {
-    WstExplicitSync src;
-    src.acquireFenceFd = 42;
-    src.bufferRelease = (WstExplicitSyncBufferRelease*)0x1234;
-    
-    // Should handle NULL gracefully or crash
-    EXPECT_NO_THROW(WstLExpSyncMove(nullptr, &src));
-}
-
-TEST_F(LinuxExpSyncL1Test, SyncMove_WithNullSrc) {
-    WstExplicitSync dest;
-    WstLExpSyncClear(&dest);
-    
-    // Should handle NULL gracefully or crash
-    EXPECT_NO_THROW(WstLExpSyncMove(&dest, nullptr));
-}
-
-TEST_F(LinuxExpSyncL1Test, SyncMove_BothNull) {
-    // Should handle both NULL gracefully or crash
-    EXPECT_NO_THROW(WstLExpSyncMove(nullptr, nullptr));
 }
 
 TEST_F(LinuxExpSyncL1Test, SyncMove_WithValidFdAndNullRelease) {
@@ -846,28 +797,6 @@ TEST_F(LinuxExpSyncL1Test, SyncMove_WithInvalidFdAndValidRelease) {
     EXPECT_EQ((WstExplicitSyncBufferRelease*)0xABCD, dest.bufferRelease);
     EXPECT_EQ(-1, src.acquireFenceFd);
     EXPECT_EQ(nullptr, src.bufferRelease);
-}
-
-TEST_F(LinuxExpSyncL1Test, SyncCopy_WithNullDest) {
-    WstExplicitSync src;
-    src.acquireFenceFd = 50;
-    src.bufferRelease = (WstExplicitSyncBufferRelease*)0x9999;
-    
-    // Should handle NULL gracefully or crash
-    EXPECT_NO_THROW(WstLExpSyncCopy(nullptr, &src));
-}
-
-TEST_F(LinuxExpSyncL1Test, SyncCopy_WithNullSrc) {
-    WstExplicitSync dest;
-    WstLExpSyncClear(&dest);
-    
-    // Should handle NULL gracefully or crash
-    EXPECT_NO_THROW(WstLExpSyncCopy(&dest, nullptr));
-}
-
-TEST_F(LinuxExpSyncL1Test, SyncCopy_BothNull) {
-    // Should handle both NULL gracefully or crash
-    EXPECT_NO_THROW(WstLExpSyncCopy(nullptr, nullptr));
 }
 
 TEST_F(LinuxExpSyncL1Test, SyncCopy_MultipleCopies) {
@@ -1371,47 +1300,6 @@ TEST_F(LinuxExpSyncL1Test, FireRelease_WithImmediateRelease_SendsImmediateReleas
     // Assert - Sync should be cleared
     EXPECT_EQ(-1, bufferSync.acquireFenceFd);
     EXPECT_EQ(nullptr, bufferSync.bufferRelease);
-}
-
-/**
- * @brief Test fire release with NULL resource
- * 
- * Objective: Cover NULL resource check in WstLExpSyncFireRelease()
- * Tests early return when buffer release resource is NULL
- */
-TEST_F(LinuxExpSyncL1Test, FireRelease_WithNullResource_ReturnsEarly) {
-    // Arrange
-    WstExplicitSync bufferSync;
-    bufferSync.acquireFenceFd = 10;
-    
-    WstExplicitSyncBufferRelease *release =
-        static_cast<WstExplicitSyncBufferRelease*>(calloc(1, sizeof(WstExplicitSyncBufferRelease)));
-    ASSERT_NE(nullptr, release);
-    release->renderFenceFd = -1;
-    release->resource = NULL;  // NULL resource
-
-    bufferSync.bufferRelease = release;
-    
-    // Act
-    WstLExpSyncFireRelease(&bufferSync);
-    
-    // Assert - Should clear acquire fence but not crash
-    EXPECT_EQ(-1, bufferSync.acquireFenceFd);
-    EXPECT_EQ(nullptr, bufferSync.bufferRelease);
-}
-
-/**
- * @brief Test init with NULL display
- * 
- * Objective: Cover NULL display check and early return in WstLExpSyncInit()
- * Tests error handling for invalid display parameter
- */
-TEST_F(LinuxExpSyncL1Test, Init_WithNullDisplay_ReturnsNull) {
-    // Act
-    wl_lexpsync *result = WstLExpSyncInit(NULL, mockContext);
-    
-    // Assert
-    EXPECT_EQ(nullptr, result);
 }
 
 /**
@@ -1990,6 +1878,41 @@ TEST_F(LinuxExpSyncL1Test, InterfaceMethod_GetSynchronization_CreatesSyncResourc
     wstILExpSyncGetSynchronization(mockClient, expsyncResource, 200, mockSurface->resource);
     
     SUCCEED() << "Get synchronization interface method executed";
+}
+
+/**
+ * @brief Duplicate synchronization preserves the existing object and reports error 0.
+ */
+TEST_F(LinuxExpSyncL1Test, GetSynchronization_Duplicate_PostsSynchronizationExists) {
+    initializeSync();
+    mockClient = createMockClient();
+    ASSERT_NE(nullptr, mockClient);
+    mockSurface = mock_create_surface(mockContext);
+    ASSERT_NE(nullptr, mockSurface);
+
+    auto resource = wl_resource_create(mockClient, &zwp_linux_explicit_synchronization_v1_interface, 1, 400);
+    ASSERT_NE(nullptr, resource);
+    mockSurface->resource = wl_resource_create(mockClient, nullptr, 1, 401);
+    ASSERT_NE(nullptr, mockSurface->resource);
+    wl_resource_set_user_data(mockSurface->resource, mockSurface);
+
+    wstILExpSyncGetSynchronization(mockClient, resource, 402, mockSurface->resource);
+    ASSERT_NE(nullptr, mockSurface->syncRes);
+    auto originalSync = mockSurface->syncRes;
+
+    mock_reset_protocol_error();
+    wstILExpSyncGetSynchronization(mockClient, resource, 403, mockSurface->resource);
+
+    EXPECT_EQ(0, ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_SYNCHRONIZATION_EXISTS);
+    EXPECT_EQ(ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_SYNCHRONIZATION_EXISTS,
+              mock_get_protocol_error_code());
+    EXPECT_EQ(originalSync, mockSurface->syncRes);
+
+    wl_resource_destroy(mockSurface->syncRes);
+    EXPECT_EQ(nullptr, mockSurface->syncRes);
+    wl_resource_destroy(mockSurface->resource);
+    mockSurface->resource = nullptr;
+    wl_resource_destroy(resource);
 }
 
 /**

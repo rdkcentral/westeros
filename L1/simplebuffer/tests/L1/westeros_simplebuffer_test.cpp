@@ -136,21 +136,6 @@ TEST_F(WesterosSimpleBufferTest, InitializationWithValidParameters) {
     EXPECT_NE(sb, nullptr);
 }
 
-TEST_F(WesterosSimpleBufferTest, InitializationWithNullDisplay) {
-    wl_sb* nullSB = WstSBInit(nullptr, &callbacks, testUserData);
-    EXPECT_EQ(nullSB, nullptr);
-}
-
-TEST_F(WesterosSimpleBufferTest, InitializationWithNullCallbacks) {
-    struct wl_display* tempDisplay = wl_display_create();
-    ASSERT_NE(tempDisplay, nullptr);
-    
-    wl_sb* nullSB = WstSBInit(tempDisplay, nullptr, testUserData);
-    EXPECT_EQ(nullSB, nullptr);
-    
-    wl_display_destroy(tempDisplay);
-}
-
 TEST_F(WesterosSimpleBufferTest, InitializationWithNullUserData) {
     struct wl_display* tempDisplay = wl_display_create();
     ASSERT_NE(tempDisplay, nullptr);
@@ -375,29 +360,6 @@ TEST_F(WesterosSimpleBufferPropertyTest, MultipleAccessesToSameBuffer) {
     }
 }
 
-// Null pointer safety tests
-TEST(WesterosSimpleBufferNullSafetyTest, BufferPropertyFunctionsWithNullBuffer) {
-    // These functions should handle null buffers gracefully and return safe default values
-    // This validates the NULL pointer safety improvements
-    
-    // Test format access with null buffer - should return 0
-    EXPECT_EQ(WstSBBufferGetFormat(nullptr), 0);
-    
-    // Test dimension access with null buffer - should return 0
-    EXPECT_EQ(WstSBBufferGetWidth(nullptr), 0);
-    EXPECT_EQ(WstSBBufferGetHeight(nullptr), 0);
-    
-    // Test stride access with null buffer - should return 0
-    EXPECT_EQ(WstSBBufferGetStride(nullptr), 0);
-    
-    // Test buffer pointer access with null buffer - should return nullptr
-    EXPECT_EQ(WstSBBufferGetBuffer(nullptr), nullptr);
-    
-    // Test fd access with null buffer - should return -1
-    EXPECT_EQ(WstSBBufferGetFd(nullptr), -1);
-    EXPECT_EQ(WstSBBufferGetPlaneFd(nullptr, 0), -1);
-}
-
 // Callback structure validation
 TEST_F(WesterosSimpleBufferTest, CallbackStructureIntegrity) {
     // Verify all callbacks are properly set
@@ -599,17 +561,6 @@ TEST_F(WesterosSimpleBufferPropertyTest, BufferGetPlaneOffsetAndStride_InvalidPl
     WstSBBufferGetPlaneOffsetAndStride(mockBuffer, 10, &offset, &stride);
     EXPECT_EQ(offset, 123);
     EXPECT_EQ(stride, 456);
-}
-
-TEST_F(WesterosSimpleBufferPropertyTest, BufferGetPlaneOffsetAndStride_NullPointers) {
-    // Test with null offset pointer (should not crash)
-    EXPECT_NO_THROW(WstSBBufferGetPlaneOffsetAndStride(mockBuffer, 0, nullptr, &mockBuffer->stride[0]));
-    
-    // Test with null stride pointer (should not crash)
-    EXPECT_NO_THROW(WstSBBufferGetPlaneOffsetAndStride(mockBuffer, 0, &mockBuffer->offset[0], nullptr));
-    
-    // Test with both null (should not crash)
-    EXPECT_NO_THROW(WstSBBufferGetPlaneOffsetAndStride(mockBuffer, 0, nullptr, nullptr));
 }
 
 TEST_F(WesterosSimpleBufferPropertyTest, BufferGetBuffer_VariousPointers) {
@@ -856,17 +807,6 @@ TEST_F(WesterosSimpleBufferTest, ReleaseBufferCallback_Invoked) {
     if (callbacks.release_buffer) {
         callbacks.release_buffer(testUserData, buffer);
     }
-}
-
-// Test: Buffer property getters with NULL buffer
-TEST_F(WesterosSimpleBufferTest, BufferGetters_WithNullBuffer_HandleGracefully) {
-    // These should handle NULL gracefully (return 0 or -1)
-    EXPECT_EQ(WstSBBufferGetFormat(nullptr), 0);
-    EXPECT_EQ(WstSBBufferGetWidth(nullptr), 0);
-    EXPECT_EQ(WstSBBufferGetHeight(nullptr), 0);
-    EXPECT_EQ(WstSBBufferGetStride(nullptr), 0);
-    EXPECT_EQ(WstSBBufferGetFd(nullptr), -1);
-    EXPECT_EQ(WstSBBufferGetBuffer(nullptr), nullptr);
 }
 
 // Test: Buffer FD handling - multiple FDs
@@ -1365,26 +1305,6 @@ TEST_F(WesterosSimpleBufferTest, CompleteWorkflow_InitOperationsUninit_Success) 
 }
 
 /**
- * @brief Test WstSBInit with NULL display
- * 
- * Objective: Cover NULL display handling
- */
-TEST_F(WesterosSimpleBufferTest, Init_WithNullDisplay_ReturnsNull) {
-    wl_sb* result = WstSBInit(nullptr, &callbacks, testUserData);
-    EXPECT_EQ(result, nullptr);
-}
-
-/**
- * @brief Test WstSBInit with NULL callbacks
- * 
- * Objective: Cover NULL callbacks handling
- */
-TEST_F(WesterosSimpleBufferTest, Init_WithNullCallbacks_ReturnsNull) {
-    wl_sb* result = WstSBInit(display, nullptr, testUserData);
-    EXPECT_EQ(result, nullptr);
-}
-
-/**
  * @brief Test WstSBUninit with NULL sb
  * 
  * Objective: Cover NULL handling in Uninit
@@ -1472,9 +1392,6 @@ TEST_F(WesterosSimpleBufferTest, BufferGetBuffer_VariousScenarios_ReturnsCorrect
     void* mockDriver = reinterpret_cast<void*>(0xDEADBEEF);
     buffer.driverBuffer = mockDriver;
     EXPECT_EQ(WstSBBufferGetBuffer(&buffer), mockDriver);
-    
-    // NULL buffer parameter
-    EXPECT_EQ(WstSBBufferGetBuffer(nullptr), nullptr);
 }
 
 /**
@@ -1501,33 +1418,6 @@ TEST_F(WesterosSimpleBufferTest, BufferFormats_AllSupported_Success) {
         buffer.format = formats[i];
         EXPECT_EQ(WstSBBufferGetFormat(&buffer), formats[i]);
     }
-}
-
-/**
- * @brief Test plane offset and stride with NULL output pointers
- * 
- * Objective: Cover NULL output parameter handling
- */
-TEST_F(WesterosSimpleBufferTest, PlaneOffsetStride_NullOutputs_HandlesGracefully) {
-    struct wl_sb_buffer buffer;
-    memset(&buffer, 0, sizeof(buffer));
-    
-    buffer.offset[0] = 1000;
-    buffer.stride[0] = 2000;
-    
-    // Test with NULL offset
-    int32_t stride;
-    WstSBBufferGetPlaneOffsetAndStride(&buffer, 0, nullptr, &stride);
-    EXPECT_EQ(stride, 2000);
-    
-    // Test with NULL stride
-    int32_t offset;
-    WstSBBufferGetPlaneOffsetAndStride(&buffer, 0, &offset, nullptr);
-    EXPECT_EQ(offset, 1000);
-    
-    // Test with both NULL (should not crash)
-    WstSBBufferGetPlaneOffsetAndStride(&buffer, 0, nullptr, nullptr);
-    SUCCEED();
 }
 
 /**
@@ -1664,25 +1554,6 @@ TEST_F(WesterosSimpleBufferTest, BufferGet_WithNullResource_ReturnsNull) {
 }
 
 /**
- * @brief Test all buffer property getters with NULL buffer - FAILURE PATH
- * 
- * Objective: Comprehensive NULL safety check
- */
-TEST_F(WesterosSimpleBufferTest, AllBufferGetters_WithNullBuffer_ReturnSafeValues) {
-    EXPECT_EQ(WstSBBufferGetFormat(nullptr), 0U);
-    EXPECT_EQ(WstSBBufferGetWidth(nullptr), 0);
-    EXPECT_EQ(WstSBBufferGetHeight(nullptr), 0);
-    EXPECT_EQ(WstSBBufferGetStride(nullptr), 0);
-    EXPECT_EQ(WstSBBufferGetFd(nullptr), -1);
-    EXPECT_EQ(WstSBBufferGetBuffer(nullptr), nullptr);
-    
-    // Plane accessors
-    EXPECT_EQ(WstSBBufferGetPlaneFd(nullptr, 0), -1);
-    EXPECT_EQ(WstSBBufferGetPlaneFd(nullptr, 1), -1);
-    EXPECT_EQ(WstSBBufferGetPlaneFd(nullptr, 2), -1);
-}
-
-/**
  * @brief Test BufferGetBuffer with valid buffer - SUCCESS PATH
  * 
  * Objective: Cover WstSBBufferGetBuffer function
@@ -1695,21 +1566,6 @@ TEST_F(WesterosSimpleBufferTest, BufferGetBuffer_WithValidBuffer_ReturnsDriverBu
     
     void *result = WstSBBufferGetBuffer(&buffer);
     EXPECT_EQ(result, driverBuf);
-}
-
-/**
- * @brief Test BufferGetPlaneOffsetAndStride with NULL buffer - FAILURE PATH
- * 
- * Objective: Cover NULL buffer check
- */
-TEST_F(WesterosSimpleBufferTest, BufferGetPlaneOffsetAndStride_WithNullBuffer_NoChange) {
-    int32_t offset = 12345, stride = 67890;
-    
-    WstSBBufferGetPlaneOffsetAndStride(nullptr, 0, &offset, &stride);
-    
-    // Values should NOT change
-    EXPECT_EQ(offset, 12345);
-    EXPECT_EQ(stride, 67890);
 }
 
 /**
@@ -1876,46 +1732,6 @@ TEST_F(WesterosSimpleBufferTest, BufferPlaneFunctions_BoundaryIndex_Success) {
     WstSBBufferGetPlaneOffsetAndStride(&buffer, 2, &offset, &stride);
     EXPECT_EQ(offset, 256);
     EXPECT_EQ(stride, 512);
-}
-
-/**
- * @brief Test WstSBBufferGetPlaneOffsetAndStride with NULL offset pointer
- * 
- * Objective: Cover NULL offset handling
- */
-TEST_F(WesterosSimpleBufferTest, BufferGetPlaneOffsetAndStride_NullOffsetPointer_SetsOnlyStride) {
-    struct wl_sb_buffer buffer;
-    memset(&buffer, 0, sizeof(buffer));
-    buffer.offset[0] = 100;
-    buffer.stride[0] = 200;
-    
-    int32_t stride = 0;
-    
-    // Act
-    WstSBBufferGetPlaneOffsetAndStride(&buffer, 0, nullptr, &stride);
-    
-    // Assert
-    EXPECT_EQ(stride, 200);
-}
-
-/**
- * @brief Test WstSBBufferGetPlaneOffsetAndStride with NULL stride pointer
- * 
- * Objective: Cover NULL stride handling
- */
-TEST_F(WesterosSimpleBufferTest, BufferGetPlaneOffsetAndStride_NullStridePointer_SetsOnlyOffset) {
-    struct wl_sb_buffer buffer;
-    memset(&buffer, 0, sizeof(buffer));
-    buffer.offset[0] = 100;
-    buffer.stride[0] = 200;
-    
-    int32_t offset = 0;
-    
-    // Act
-    WstSBBufferGetPlaneOffsetAndStride(&buffer, 0, &offset, nullptr);
-    
-    // Assert
-    EXPECT_EQ(offset, 100);
 }
 
 /**
