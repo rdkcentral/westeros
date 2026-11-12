@@ -1202,7 +1202,7 @@ void WstCompositorDestroy( WstCompositor *wctx )
    if ( wctx && wctx->ctx )
    {
       WstContext *ctx= wctx->ctx;
-      TRACE_MONARCH_SCOPE("WstCompositorDestroy\n");
+      TRACE_MONARCH("WstCompositorDestroy\n");
       if ( wctx->isVirtual )
       {
          pthread_mutex_lock( &ctx->mutex );
