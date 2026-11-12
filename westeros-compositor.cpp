@@ -5142,7 +5142,7 @@ static int wstCompositorFinishFrame( int fd, uint32_t mask, void *data )
       ERROR("wstCompositorFinishFrame read err %d\n", errno);
 		return -1;
    }
-   frameTime = (uint32_t)frameTime64;
+   frameTime = (uint32_t)wstGetCurrentTimeMillis();
 
    if ( ctx )
    {
