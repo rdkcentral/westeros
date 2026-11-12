@@ -36,6 +36,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/eventfd.h>
+#include <sys/syscall.h>
 
 #include <map>
 #include <vector>
@@ -6009,17 +6010,17 @@ static void wstICompositorCreateRegion(struct wl_client *client, struct wl_resou
 static void wstAttachedBufferDestroyCallback(struct wl_listener *listener, void *data )
 {
    WstSurface *surface= wl_container_of(listener, surface, attachedBufferDestroyListener );
+   WstContext *ctx= surface->compositor->ctx;
    TRACE_MONARCH("destroy attachedBufferResource=%p", surface->attachedBufferResource);   
    surface->attachedBufferResource= 0;
-   WstContext *ctx= surface->compositor->ctx;
 }
 
 static void wstDetachedBufferDestroyCallback(struct wl_listener *listener, void *data )
 {
    WstSurface *surface= wl_container_of(listener, surface, detachedBufferDestroyListener );
+   WstContext *ctx= surface->compositor->ctx;
    TRACE_MONARCH("destroy detachedBufferResource=%p", surface->detachedBufferResource);
    surface->detachedBufferResource= 0;
-   WstContext *ctx= surface->compositor->ctx;
 }
 
 static void wstDestroySurfaceCallback(struct wl_resource *resource)
