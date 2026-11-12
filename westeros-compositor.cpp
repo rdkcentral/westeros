@@ -1036,70 +1036,110 @@ static void wstLog( int level, const char *format, ... )
    }
 }
 
+/* WstCheckRuntimeControls
+   Set of temporary control switches for some new optimizations we need to test.
+   Once these have been fully validated and we commit completely to these, when can remove these checks.
+   Currently none, except betterBufferHandling possibly, make sense unless in embedded mode.
+   betterBufferSync: only applicable when explicit sync is disabled
+      Disables the renderMutex locking scheme which tries to replicate a form of sync when expsync is disabled.
+      This locking scheme adds delay which decreases the fps. Disabling this locking scheme, so far, does not 
+      introduce artifacts, such as 'tearing'. The only side effect seen so far is a higher fps. 
+   betterInvalidate:
+      Calls the embedders invalidate callback from the commit handler instead of from the
+      wstCompositorDisplayTimeOut callback, which fires on a framerate based timer.
+      This allows the embedder to start composition of the new commited buffers, as fast as possible.
+      Calling from wstCompositorDisplayTimeOut also introduces double invalidate or missed invalidate
+      sometimes, as the actual vsync period isn't aligned to whole number miliseconds used by the timer.
+   betterFrameDone:
+      Calls the wayland frame callbacks asap after the buffer is composed instead of from the
+      wstCompositorDisplayTimeOut callback which fires on a framerate based timer.
+      This allows the frame callbacks to be made exactly after the buffer is drawn instead of
+      after the wstCompositorDisplayTimeOut timer fires, which could take up to a full frame period
+      based on how drifted the timer is from the compositor timing.
+   betterBufferHandling:
+      Allows buffers to be released sooner then the previous scheme allowed.  
+      The previous scheme releases the buffer on the 2nd attach after the attach that binds the buffer.
+      Like this: attach(binds)/commit, attach/commit, attach(releases)
+      The new shceme will release the buffer on the next commit after the buffer is commited.
+      Like this: attach(binds)/commit, attach/commit(release)
+      So we no long wait for that 3rd attach but instead the 2nd commit, to release the buffer.
+   westerosTraceMonarch: allows us to trace the iUIv2 (what's inspiring these optimization) wayland thread's activity.
+   westerosTSLOG: provides a way to get detailed logs to our log file.  This may remain after removing other checks.
+ */
 void WstCheckRuntimeControls(WstContext *ctx)
 {
    struct stat fileinfo;
 
-   if ( stat("/opt/westerosBetterBufferSyncEnabled", &fileinfo) == 0 )
+   if ( ctx->isEmbedded )
    {
-      ctx->betterBufferSync= true;
+      if ( stat("/opt/westerosBetterBufferSyncEnabled", &fileinfo) == 0 )
+      {
+         ctx->betterBufferSync= true;
+      }
+      else if ( stat("/opt/westerosBetterBufferSyncDisabled", &fileinfo) == 0 )
+      {
+         ctx->betterBufferSync= false;
+      }
+      else
+      {
+         ctx->betterBufferSync= true;
+      }
+
+      if ( stat("/opt/westerosBetterInvalidateEnabled", &fileinfo) == 0 )
+      {
+         ctx->betterInvalidate= true;
+      }
+      else if ( stat("/opt/westerosBetterInvalidateDisabled", &fileinfo) == 0 )
+      {
+         ctx->betterInvalidate= false;
+      }
+      else
+      {
+         ctx->betterInvalidate= true;
+      }
+
+      if ( stat("/opt/westerosBetterFrameDoneEnabled", &fileinfo) == 0 )
+      {
+         ctx->betterFrameDone= true;
+      }
+      else if ( stat("/opt/westerosBetterFrameDoneDisabled", &fileinfo) == 0 )
+      {
+         ctx->betterFrameDone= false;
+      }
+      else
+      {
+         ctx->betterFrameDone= true;
+      }
+
+      if ( stat("/opt/westerosBetterBufferHandlingEnabled", &fileinfo) == 0 )
+      {
+         ctx->betterBufferHandling= true;
+      }
+      else if ( stat("/opt/westerosBetterBufferHandlingDisabled", &fileinfo) == 0 )
+      {
+         ctx->betterBufferHandling= false;
+      }
+      else
+      {
+         ctx->betterBufferHandling= true;
+      }
+
+      if ( stat("/opt/westerosTraceMonarch", &fileinfo) == 0 )
+      {
+         ctx->traceMonarch= true;
+         ctx->traceMonarchCheck= false;
+      }
+      else
+      {
+         ctx->traceMonarch= false;
+      }
    }
-   else if ( stat("/opt/westerosBetterBufferSyncDisabled", &fileinfo) == 0 )
+   else
    {
       ctx->betterBufferSync= false;
-   }
-   else
-   {
-      ctx->betterBufferSync= true;
-   }
-
-   if ( stat("/opt/westerosBetterInvalidateEnabled", &fileinfo) == 0 )
-   {
-      ctx->betterInvalidate= true;
-   }
-   else if ( stat("/opt/westerosBetterInvalidateDisabled", &fileinfo) == 0 )
-   {
       ctx->betterInvalidate= false;
-   }
-   else
-   {
-      ctx->betterInvalidate= true;
-   }
-
-   if ( stat("/opt/westerosBetterFrameDoneEnabled", &fileinfo) == 0 )
-   {
-      ctx->betterFrameDone= true;
-   }
-   else if ( stat("/opt/westerosBetterFrameDoneDisabled", &fileinfo) == 0 )
-   {
       ctx->betterFrameDone= false;
-   }
-   else
-   {
-      ctx->betterFrameDone= true;
-   }
-
-   if ( stat("/opt/westerosBetterBufferHandlingEnabled", &fileinfo) == 0 )
-   {
-      ctx->betterBufferHandling= true;
-   }
-   else if ( stat("/opt/westerosBetterBufferHandlingDisabled", &fileinfo) == 0 )
-   {
       ctx->betterBufferHandling= false;
-   }
-   else
-   {
-      ctx->betterBufferHandling= true;
-   }
-
-   if ( stat("/opt/westerosTraceMonarch", &fileinfo) == 0 )
-   {
-      ctx->traceMonarch= true;
-      ctx->traceMonarchCheck= false;
-   }
-   else
-   {
-      ctx->traceMonarch= false;
    }
 
    if ( stat("/opt/westerosTSLOG", &fileinfo) == 0 )
@@ -1695,6 +1735,8 @@ bool WstCompositorSetIsEmbedded( WstCompositor *wctx, bool isEmbedded )
          }
          wstCompositorCheckForRepeaterSupport( ctx );
       }
+
+      WstCheckRuntimeControls( ctx );
                
       pthread_mutex_unlock( &ctx->mutex );
             
@@ -7034,13 +7076,6 @@ static void wstISurfaceCommit(struct wl_client *client, struct wl_resource *reso
                                                 0  //height
                                               );
          }
-         #ifdef ENABLE_LEXPSYNCPROTOCOL
-         if ( ctx->isEmbedded )
-         {
-            wstCompositorReleaseDetachedBuffers( ctx );
-         }
-         #endif
-
          if ( ctx->betterBufferHandling )
          {
             /*
@@ -7090,6 +7125,15 @@ static void wstISurfaceCommit(struct wl_client *client, struct wl_resource *reso
                wl_resource_add_destroy_listener( surface->detachedBufferResource, &surface->detachedBufferDestroyListener );
             }
             surface->attachedBufferResource= 0;
+         }
+         else
+         {
+            #ifdef ENABLE_LEXPSYNCPROTOCOL
+            if ( ctx->isEmbedded )
+            {
+               wstCompositorReleaseDetachedBuffers( ctx );
+            }
+            #endif            
          }
       }      
    }
