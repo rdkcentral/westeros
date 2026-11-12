@@ -972,9 +972,9 @@ void TS_LOG(const char *format, ... )
 class ScopeTrace
 {
 public:
-   ScopeTrace( WstContext *ctxIn, const char* format, ... ) : ctx(ctxIn)
+   ScopeTrace( WstContext *ctxIn, const char* format, ... )
    {
-      if (ctx->traceMonarch)
+      if ( ctxIn->traceMonarch )
       {
         int sz= 0;
         memcpy(buff, "ENTER ", 6);
@@ -983,27 +983,40 @@ public:
         va_start(ap, format);
         sz= vsnprintf(buff + 6, FTRACE_BUF_SIZE - 7, format, ap );
         va_end(ap);
-        if (buff[sz+5] != '\n')
+        if ( sz < 0 )
+        {
+           entered= false;
+           return;
+        }
+        else if ( sz > FTRACE_BUF_SIZE - 8 )
+        {
+           sz= FTRACE_BUF_SIZE - 8;
+        }
+        if ( buff[sz+5] != '\n' )
         {
             buff[sz+6]= '\n';
             buff[sz+7]= 0;
         }
         prctl(PR_SET_FTRACE_MARKER, buff, 0, 0, 0);
+        entered= true;
+      }
+      else
+      {
+        entered= false;
       }
    }
 
    ~ScopeTrace()
    {
-      if (ctx->traceMonarch)
+      if ( entered )
       {
         memcpy(buff, "EXIT  ", 6);
         prctl(PR_SET_FTRACE_MARKER, buff, 0, 0, 0);
       }
    }
 private:
-   WstContext *ctx;
+   bool entered;
    char buff[FTRACE_BUF_SIZE];
-   int szBase;
 };
 
 #define TRACE_MONARCH_SCOPE(...) ScopeTrace my_monarch_scope_trace(ctx, __VA_ARGS__);
