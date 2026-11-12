@@ -3512,8 +3512,21 @@ static void simpleShellSetVisible( void* userData, uint32_t surfaceId, bool visi
    WstContext *ctx= (WstContext*)userData;
 
    WstSurface *surface= wstGetSurfaceFromSurfaceId(ctx, surfaceId);
+   fprintf(stderr, "cc_test compositor set_visible begin ctx=%p display=%s id=%u requested=%d found=%d repeater=%d nested=%d embedded=%d module=%s renderer=%p\n",
+           (void*)ctx, ctx->displayName ? ctx->displayName : "(null)", surfaceId, visible,
+           surface != 0, ctx->isRepeater, ctx->isNested, ctx->isEmbedded,
+           ctx->rendererModule ? ctx->rendererModule : "(null)", (void*)ctx->renderer);
+   fflush(stderr);
    if ( surface )
    {
+      WstVpcSurface *vpc= surface->vpcSurface;
+      fprintf(stderr, "cc_test compositor target id=%u name=%s owner=%p renderSurface=%p nestedSurface=%p previousShellVisible=%d requested=%d geometry=%d,%d,%d,%d opacity=%f zorder=%f vpc=%p hwPath=%d hwPathNext=%d pending=%d vpcStatusForcedVisible=%d\n",
+              surfaceId, surface->name ? surface->name : "(unnamed)", (void*)surface->compositor,
+              (void*)surface->surface, (void*)surface->surfaceNested, surface->visible, visible,
+              surface->x, surface->y, surface->width, surface->height, surface->opacity, surface->zorder,
+              (void*)vpc, vpc ? vpc->useHWPath : -1, vpc ? vpc->useHWPathNext : -1,
+              vpc ? vpc->pathTransitionPending : -1, vpc && !ctx->isRepeater);
+      fflush(stderr);
       surface->visible= visible;
       if ( ctx->isRepeater )
       {
@@ -3521,9 +3534,16 @@ static void simpleShellSetVisible( void* userData, uint32_t surfaceId, bool visi
       }
       else
       {
+         fprintf(stderr, "cc_test compositor renderer_dispatch ctx=%p id=%u renderSurface=%p rendererState=%p fastHint=%d hints=0x%x needHolePunch=%d\n",
+                 (void*)ctx, surfaceId, (void*)surface->surface, ctx->renderer->renderer, ctx->renderer->fastHint,
+                 (unsigned int)ctx->renderer->hints, ctx->renderer->needHolePunch);
+         fflush(stderr);
          WstRendererSurfaceSetVisible( ctx->renderer, surface->surface, visible );
       }
    }
+   fprintf(stderr, "cc_test compositor set_visible end ctx=%p id=%u found=%d repaintNotAdded=1\n",
+           (void*)ctx, surfaceId, surface != 0);
+   fflush(stderr);
 }
 
 static void simpleShellSetGeometry( void* userData, uint32_t surfaceId, int x, int y, int width, int height )
@@ -6609,6 +6629,11 @@ static void wstISurfaceCommit(struct wl_client *client, struct wl_resource *reso
       {
          surface->vpcSurface->useHWPath= surface->vpcSurface->useHWPathNext;
          surface->vpcSurface->pathTransitionPending= false;
+         fprintf(stderr, "cc_test compositor vpc_transition_commit ctx=%p id=%d name=%s buffer=%p hwPath=%d rendererVisible=%d\n",
+                 (void*)ctx, surface->surfaceId, surface->name ? surface->name : "(unnamed)",
+                 (void*)committedBufferResource, surface->vpcSurface->useHWPath,
+                 !surface->vpcSurface->useHWPath);
+         fflush(stderr);
          if ( surface->renderer )
          {
             WstRendererSurfaceSetVisible( surface->renderer, surface->surface, !surface->vpcSurface->useHWPath );
@@ -8089,10 +8114,16 @@ static void wstDefaultNestedVpcVideoPathChange( void *userData, struct wl_surfac
             {
                if ( ctx->hasVpcBridge )
                {
+                  fprintf(stderr, "cc_test compositor nested_vpc_path ctx=%p id=%d name=%s newPath=%u bridge=1\n",
+                          (void*)ctx, surface->surfaceId, surface->name ? surface->name : "(unnamed)", newVideoPath);
+                  fflush(stderr);
                   vpcSurface->useHWPathVpcBridge= (newVideoPath == WL_VPC_SURFACE_PATHWAY_HARDWARE);
                }
                else
                {
+                  fprintf(stderr, "cc_test compositor nested_vpc_path ctx=%p id=%d name=%s newPath=%u bridge=0 forwarded=1\n",
+                          (void*)ctx, surface->surfaceId, surface->name ? surface->name : "(unnamed)", newVideoPath);
+                  fflush(stderr);
                   wl_vpc_surface_send_video_path_change( vpcSurface->resource, newVideoPath );
                }
             }
@@ -9102,6 +9133,15 @@ static void wstUpdateVPCSurfaces( WstCompositor *wctx, std::vector<WstRect> &rec
             if ( !vpcSurface->pathTransitionPending || !useHWPathEffective )
             {
                DEBUG("vpcSurface %p useHWPath %d", vpcSurface, useHWPathEffective );
+               if ( !vpcSurface->videoPathSet || vpcSurface->useHWPathNext != useHWPathEffective )
+               {
+                  fprintf(stderr, "cc_test compositor vpc_path_request ctx=%p id=%d name=%s oldHW=%d requestedHW=%d hints=0x%x bridgeHW=%d videoPathSet=%d pending=%d\n",
+                          (void*)ctx, vpcSurface->surface->surfaceId,
+                          vpcSurface->surface->name ? vpcSurface->surface->name : "(unnamed)",
+                          vpcSurface->useHWPath, useHWPathEffective, (unsigned int)ctx->renderer->hints,
+                          vpcSurface->useHWPathVpcBridge, vpcSurface->videoPathSet, vpcSurface->pathTransitionPending);
+                  fflush(stderr);
+               }
             }
             vpcSurface->useHWPathNext= useHWPathEffective;
             if ( vpcSurface->videoPathSet && ctx->haveRepeaterSupport )
