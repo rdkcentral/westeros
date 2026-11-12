@@ -910,23 +910,6 @@ static long long GetTimeUS()
    return (long long)ts.tv_sec * 1000000LL + (long long)ts.tv_nsec / 1000LL;
 }
 
-static int GetTimeUTC(char* buf, size_t sz)
-{
-    time_t now = time(NULL);
-    struct tm utc_tm;
-
-    if (gmtime_r(&now, &utc_tm) == NULL) {
-        perror("gmtime_r");
-        return 1;
-    }
-
-    if (strftime(buf, sz, "%a %b %d %H:%M:%S UTC %Y", &utc_tm) == 0) {
-        fprintf(stderr, "strftime failed\n");
-        return 1;
-    }
-    return 0;
-}
-
 void TS_LOGV(const char *format, va_list argptr )
 {
    if ( !g_TSLOGEnabled )
@@ -944,7 +927,7 @@ void TS_LOGV(const char *format, va_list argptr )
       }
    }
    long long curTime= GetTimeUS();
-   fprintf(g_TSLOGFile, "TS_LOG %09lld %09lld %d ", curTime, curTime - g_TSLOGLastTime, gettid());
+   fprintf(g_TSLOGFile, "TS_LOG %09lld %09lld %d ", curTime, curTime - g_TSLOGLastTime, syscall(SYS_gettid));
    g_TSLOGLastTime= curTime;
    vfprintf(g_TSLOGFile, format, argptr);
    fflush(g_TSLOGFile);
@@ -5984,17 +5967,17 @@ static void wstICompositorCreateRegion(struct wl_client *client, struct wl_resou
 static void wstAttachedBufferDestroyCallback(struct wl_listener *listener, void *data )
 {
    WstSurface *surface= wl_container_of(listener, surface, attachedBufferDestroyListener );
+   TRACE_MONARCH("destroy attachedBufferResource=%p", surface->attachedBufferResource);   
    surface->attachedBufferResource= 0;
    WstContext *ctx= surface->compositor->ctx;
-   TRACE_MONARCH("destroy attachedBufferResource=%p", surface->attachedBufferResource);
 }
 
 static void wstDetachedBufferDestroyCallback(struct wl_listener *listener, void *data )
 {
    WstSurface *surface= wl_container_of(listener, surface, detachedBufferDestroyListener );
+   TRACE_MONARCH("destroy detachedBufferResource=%p", surface->detachedBufferResource);
    surface->detachedBufferResource= 0;
    WstContext *ctx= surface->compositor->ctx;
-   TRACE_MONARCH("destroy detachedBufferResource=%p", surface->detachedBufferResource);
 }
 
 static void wstDestroySurfaceCallback(struct wl_resource *resource)
