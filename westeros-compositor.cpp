@@ -963,6 +963,14 @@ void TS_LOG(const char *format, ... )
    va_end(argptr);
 }
 
+#ifndef PR_SET_FTRACE_MARKER
+#define PR_SET_FTRACE_MARKER 99
+#endif
+
+#ifndef FTRACE_BUF_SIZE
+#define FTRACE_BUF_SIZE 1024
+#endif
+
 class ScopeTrace
 {
 public:
