@@ -59,6 +59,9 @@ struct wl_list {
     struct wl_list *next;
 };
 
+/*Copyright 2008-2013 Kristian Høgsberg
+Licensed under the MIT License*/
+
 struct wl_message {
     const char *name;
     const char *signature;
