@@ -474,9 +474,7 @@ typedef struct _WstContext
    struct wl_lexpsync *lexpsync;
    #endif
    struct wl_simple_shell *simpleShell;
-   struct wl_event_loop *eventLoop;
    struct wl_event_source *displayTimer;
-   struct wl_event_source *idleEventSourc;
    struct wl_event_source *finishFrameSource;
    int finishFrameFd;
 
@@ -1157,6 +1155,7 @@ WstCompositor* WstCompositorCreate()
 
          ctx->frameRate= DEFAULT_FRAME_RATE;
          ctx->framePeriodMillis= (1000/ctx->frameRate);
+         ctx->finishFrameFd= -1;
 
          ctx->nestedWidth= DEFAULT_NESTED_WIDTH;
          ctx->nestedHeight= DEFAULT_NESTED_HEIGHT;
@@ -2934,8 +2933,11 @@ static void WstCompositorFinishFrame( WstCompositor *wctx )
    if ( wctx && wctx->ctx )
    {
       WstContext *ctx= wctx->ctx;
-      uint64_t frameTime = (uint64_t)wstGetCurrentTimeMillis();
-      write( ctx->finishFrameFd, &frameTime, sizeof(frameTime) );
+      uint64_t wake= 1;
+      if ( write( ctx->finishFrameFd, &wake, sizeof(wake) ) < 0 && errno != EAGAIN )
+      {
+         ERROR("WstCompositorFinishFrame write err %d\n", errno);
+      }
    }
 }
 
@@ -4336,6 +4338,7 @@ static void* wstCompositorThread( void *arg )
    wl_event_source_timer_update( ctx->displayTimer, ctx->framePeriodMillis );
    pthread_mutex_unlock( &ctx->mutex );
 
+   pthread_mutex_lock( &ctx->mutex );
    if ( ctx->betterFrameDone )
    {
       ctx->finishFrameFd = eventfd( 0, EFD_CLOEXEC | EFD_NONBLOCK );
@@ -4349,8 +4352,8 @@ static void* wstCompositorThread( void *arg )
          ERROR("unable to create finish frame event: %d\n", errno);
          ctx->finishFrameSource= NULL;
       }
-      ctx->eventLoop = loop;
    }
+   pthread_mutex_unlock( &ctx->mutex );
 
    for ( std::vector<WstModule*>::iterator it= ctx->modules.begin();
          it != ctx->modules.end();
@@ -4453,6 +4456,29 @@ exit:
    {
       wl_event_source_remove( ctx->displayTimer );
       ctx->displayTimer= 0;
+   }
+
+   {
+      // Clear under the lock so the render thread (WstCompositorComposeEmbedded)
+      // can no longer signal the eventfd, then release outside the lock.
+      struct wl_event_source *finishFrameSource;
+      int finishFrameFd;
+
+      pthread_mutex_lock( &ctx->mutex );
+      finishFrameSource= ctx->finishFrameSource;
+      finishFrameFd= ctx->finishFrameFd;
+      ctx->finishFrameSource= NULL;
+      ctx->finishFrameFd= -1;
+      pthread_mutex_unlock( &ctx->mutex );
+
+      if ( finishFrameSource )
+      {
+         wl_event_source_remove( finishFrameSource );
+      }
+      if ( finishFrameFd >= 0 )
+      {
+         close( finishFrameFd );
+      }
    }
    TRACE_MONARCH("wstCompositorThread exit\n");
    return NULL;
@@ -5134,13 +5160,13 @@ static int wstCompositorDisplayTimeOut( void *data )
 static int wstCompositorFinishFrame( int fd, uint32_t mask, void *data )
 {
    WstContext *ctx = (WstContext*)data;
-	uint64_t frameTime64;
+   uint64_t wakeCount;
    uint32_t frameTime;
 
-	if (read(fd, &frameTime64, sizeof(frameTime64)) < 0 && errno != EAGAIN)
+   if ( read( fd, &wakeCount, sizeof(wakeCount) ) < 0 && errno != EAGAIN )
    {
       ERROR("wstCompositorFinishFrame read err %d\n", errno);
-		return -1;
+      return -1;
    }
    frameTime = (uint32_t)wstGetCurrentTimeMillis();
 
