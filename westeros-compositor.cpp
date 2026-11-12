@@ -4385,6 +4385,16 @@ static void* wstCompositorThread( void *arg )
       {
          ctx->finishFrameSource = wl_event_loop_add_fd( loop, ctx->finishFrameFd,
             WL_EVENT_READABLE, wstCompositorFinishFrame, ctx);
+
+         if ( !ctx->finishFrameSource )
+         {
+            ERROR("unable to create finish frame source\n");
+            if ( ctx->finishFrameFd >= 0 )
+            {
+               close( ctx->finishFrameFd );
+               ctx->finishFrameFd= -1;
+            }
+         }
       }
       else
       {
