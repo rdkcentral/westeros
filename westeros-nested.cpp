@@ -968,9 +968,23 @@ void WstNestedConnectionSurfaceSetVisible( WstNestedConnection *nc,
       if ( it != nc->surfaceMap.end() )
       {
          int32_t surfaceId= it->second;
-         
+         fprintf(stderr, "cc_test nested set_visible nc=%p surface=%p upstreamId=%d requested=%d shell=%p\n",
+                 (void*)nc, (void*)surface, surfaceId, visible, (void*)nc->simpleShell);
+         fflush(stderr);
          wl_simple_shell_set_visible( nc->simpleShell, surfaceId, visible );
       }
+      else
+      {
+         fprintf(stderr, "cc_test nested set_visible not_forwarded nc=%p surface=%p requested=%d reason=no_surface_mapping\n",
+                 (void*)nc, (void*)surface, visible);
+         fflush(stderr);
+      }
+   }
+   else
+   {
+      fprintf(stderr, "cc_test nested set_visible not_forwarded nc=%p requested=%d reason=null_surface\n",
+              (void*)nc, visible);
+      fflush(stderr);
    }
 }
 
@@ -1268,4 +1282,3 @@ void WstNestedConnectionShmBufferPoolDestroy( WstNestedConnection *nc,
       wl_display_flush( nc->display );      
    }
 }
-

@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <memory.h>
+#include <sys/types.h>
 #include <sys/time.h>
 
 #include <vector>
@@ -110,7 +111,7 @@ const static struct wl_simple_shell_interface simple_shell_interface = {
    wstISimpleShellIsSurfacePopup
 };
 
-static void wstSimpleShellBroadcastSurfaceUpdate(struct wl_client *client, struct wl_simple_shell *shell, uint32_t surfaceId )
+static void wstSimpleShellBroadcastSurfaceUpdate(struct wl_client *client, struct wl_simple_shell *shell, uint32_t surfaceId, bool traceVisibility= false )
 {
    const char *name= 0;
 
@@ -133,6 +134,13 @@ static void wstSimpleShellBroadcastSurfaceUpdate(struct wl_client *client, struc
    fixedOpacity= wl_fixed_from_double( (double)opacity );
    fixedZOrder= wl_fixed_from_double( (double)zorder );
 
+   if ( traceVisibility )
+   {
+      fprintf(stderr, "cc_test shell broadcast shell=%p sender=%p id=%u name=%s visible=%d geometry=%d,%d,%d,%d opacity=%f zorder=%f senderExcluded=1\n",
+              (void*)shell, (void*)client, surfaceId, name, visible, x, y, width, height, opacity, zorder);
+      fflush(stderr);
+   }
+
    // Broadcast the surface update announcement to all other clients.
    for( std::vector<ShellInfo>::iterator it= shell->shells.begin();
         it != shell->shells.end();
@@ -141,6 +149,12 @@ static void wstSimpleShellBroadcastSurfaceUpdate(struct wl_client *client, struc
       if ((*it).client != client) {
          struct wl_resource *shell_resource = (*it).resource;
 
+         if ( traceVisibility )
+         {
+            fprintf(stderr, "cc_test shell status_send shell=%p recipient=%p resource=%p id=%u name=%s visible=%d\n",
+                    (void*)shell, (void*)(*it).client, (void*)shell_resource, surfaceId, name, visible);
+            fflush(stderr);
+         }
          wl_simple_shell_send_surface_status(shell_resource, surfaceId,
                                              name, (visible ? 1 : 0),
                                              x, y, width, height, fixedOpacity, fixedZOrder);
@@ -180,12 +194,20 @@ static void wstISimpleShellSetVisible(struct wl_client *client, struct wl_resour
 {
    struct wl_simple_shell *shell= (struct wl_simple_shell*)wl_resource_get_user_data(resource);
 
+   pid_t pid= 0;
+   wl_client_get_credentials(client, &pid, NULL, NULL);
+   fprintf(stderr, "cc_test shell set_visible begin client=%p pid=%ld resource=%p shell=%p id=%u requested=%u\n",
+           (void*)client, (long)pid, (void*)resource, (void*)shell, surfaceId, visible);
+   fflush(stderr);
    if ( shell )
    {
       shell->callbacks->set_visible( shell->userData, surfaceId, (visible != 0) );
 
-      wstSimpleShellBroadcastSurfaceUpdate(client, shell, surfaceId );
+      wstSimpleShellBroadcastSurfaceUpdate(client, shell, surfaceId, true );
    }
+   fprintf(stderr, "cc_test shell set_visible end shell=%p id=%u dispatched=%d\n",
+           (void*)shell, surfaceId, shell != 0);
+   fflush(stderr);
 }
 
 static void wstISimpleShellSetGeometry(struct wl_client *client, struct wl_resource *resource, 
@@ -581,5 +603,3 @@ void WstSimpleShellNotifySurfaceDestroyed( wl_simple_shell *shell, struct wl_cli
       }
    }
 }
-
-

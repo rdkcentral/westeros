@@ -252,6 +252,7 @@ struct _WstRenderSurface
    int height;
 
    bool visible;
+   unsigned int ccTestVisibilityLogs;
    float opacity;
    float zorder;
    bool sizeOverride;
@@ -2421,6 +2422,19 @@ static void wstRendererSurfaceSetVisible( WstRenderer *renderer, WstRenderSurfac
 
    if ( surface )
    {
+      // Virtual composition can toggle surfaces every frame: cap this trace per surface.
+      if ( surface->ccTestVisibilityLogs < 16 )
+      {
+         ++surface->ccTestVisibilityLogs;
+         fprintf(stderr, "cc_test embedded set_visible renderer=%p state=%p surface=%p fastRenderer=%p fastSurface=%p fastActive=%d previous=%d requested=%d geometry=%d,%d,%d,%d opacity=%f zorder=%f trace=%u/16 lastTrace=%d\n",
+                 (void*)renderer, (void*)rendererEMB, (void*)surface,
+                 (void*)rendererEMB->rendererFast, (void*)surface->surfaceFast,
+                 rendererEMB->fastPathActive, surface->visible, visible,
+                 surface->x, surface->y, surface->width, surface->height,
+                 surface->opacity, surface->zorder, surface->ccTestVisibilityLogs,
+                 surface->ccTestVisibilityLogs == 16);
+         fflush(stderr);
+      }
       surface->visible= visible;
 
       if ( surface->surfaceFast )
@@ -2821,6 +2835,9 @@ static void wstRendererInitFastPath( WstRendererEMB *renderer )
          }
       }
       printf("wstRendererInitFastPath: module (%s) loaded and intialized\n", moduleName );
+      fprintf(stderr, "cc_test embedded fast_renderer renderer=%p module=%s fastRenderer=%p\n",
+              (void*)renderer, moduleName, (void*)renderer->rendererFast);
+      fflush(stderr);
    }
    
 exit:
@@ -2978,4 +2995,3 @@ int renderer_init( WstRenderer *renderer, int argc, char **argv )
 }
 
 }
-
