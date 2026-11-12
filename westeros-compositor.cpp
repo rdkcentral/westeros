@@ -928,7 +928,7 @@ void TS_LOGV(const char *format, va_list argptr )
       }
    }
    long long curTime= GetTimeUS();
-   fprintf(g_TSLOGFile, "TS_LOG %09lld %09lld %d ", curTime, curTime - g_TSLOGLastTime, syscall(SYS_gettid));
+   fprintf(g_TSLOGFile, "TS_LOG %09lld %09lld %ld ", curTime, curTime - g_TSLOGLastTime, syscall(SYS_gettid));
    g_TSLOGLastTime= curTime;
    vfprintf(g_TSLOGFile, format, argptr);
    fflush(g_TSLOGFile);
