@@ -73,6 +73,8 @@ if(GTest_FOUND OR GTEST_FOUND)
     target_compile_options(test_westeros_main_l1 PRIVATE
         -Wno-c++20-extensions
         -Wno-unused-function
+        -Wno-unused-parameter
+        -Wno-unused-variable
     )
     
     # Enable coverage for the source files being tested
@@ -135,6 +137,8 @@ if(GTest_FOUND OR GTEST_FOUND)
     target_compile_options(test_westeros_nested_l1 PRIVATE
         -Wno-c++20-extensions
         -Wno-unused-function
+        -Wno-unused-parameter
+        -Wno-unused-variable
     )
     
     # Enable coverage for the source files being tested
