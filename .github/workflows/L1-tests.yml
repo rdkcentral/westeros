@@ -56,7 +56,10 @@ jobs:
         env:
           # L1 compiles production translation units directly. Keep the
           # expected production-source warnings from failing this test build.
-          CXXFLAGS: "-Wno-c++20-extensions -Wno-unused-function -Wno-unused-parameter -Wno-unused-variable"
+          # Keep all warnings non-fatal for this test-only build. The L1
+          # targets compile production sources and intentionally incomplete
+          # protocol mocks directly into the test executables.
+          CXXFLAGS: "-Wno-error -Wno-c++20-extensions -Wno-unused-function -Wno-unused-parameter -Wno-unused-variable -Wno-missing-field-initializers -Wno-format -Wno-type-limits"
         run: |
           rm -rf build
           cmake -S . -B build \

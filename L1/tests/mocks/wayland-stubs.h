@@ -125,6 +125,14 @@ struct wl_event_loop {
     void *dummy;
 };
 
+/* Match the event-mask constants provided by wayland-server-core.h. */
+enum wl_event_loop_fd_mask {
+    WL_EVENT_READABLE = 0x01,
+    WL_EVENT_WRITABLE = 0x02,
+    WL_EVENT_HANGUP = 0x04,
+    WL_EVENT_ERROR = 0x08
+};
+
 struct wl_resource {
     void *data;
     void (*destroy)(struct wl_resource *resource);

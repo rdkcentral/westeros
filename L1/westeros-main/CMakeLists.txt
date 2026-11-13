@@ -71,10 +71,14 @@ if(GTest_FOUND OR GTEST_FOUND)
     # units use GNU variadic-macro syntax and contain static protocol handlers
     # that are intentionally not exercised by every test executable.
     target_compile_options(test_westeros_main_l1 PRIVATE
+        -Wno-error
         -Wno-c++20-extensions
         -Wno-unused-function
         -Wno-unused-parameter
         -Wno-unused-variable
+        -Wno-missing-field-initializers
+        -Wno-format
+        -Wno-type-limits
     )
     
     # Enable coverage for the source files being tested
@@ -135,10 +139,14 @@ if(GTest_FOUND OR GTEST_FOUND)
     # Match the main L1 target: production sources are compiled into this
     # executable and contain intentional unused protocol handlers.
     target_compile_options(test_westeros_nested_l1 PRIVATE
+        -Wno-error
         -Wno-c++20-extensions
         -Wno-unused-function
         -Wno-unused-parameter
         -Wno-unused-variable
+        -Wno-missing-field-initializers
+        -Wno-format
+        -Wno-type-limits
     )
     
     # Enable coverage for the source files being tested
