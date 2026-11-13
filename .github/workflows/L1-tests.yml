@@ -53,6 +53,10 @@ jobs:
           }
 
       - name: Configure coverage build
+        env:
+          # L1 compiles production translation units directly. Keep the
+          # expected production-source warnings from failing this test build.
+          CXXFLAGS: "-Wno-c++20-extensions -Wno-unused-function"
         run: |
           rm -rf build
           cmake -S . -B build \
