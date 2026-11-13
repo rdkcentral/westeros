@@ -1,6 +1,12 @@
 # Changelog
 
-Consolidated release details generated from docs/relnotes.
+
+## 2.1.4
+- Date: 13 October 2026
+- Tag/Revision: 2.1.4
+- Highlights:
+  - Create README.md for Westeros component
+  - Fix render fence assert crash by closing stale FD before reuse
 
 ## 2.1.3
 - Date: 01 September 2026

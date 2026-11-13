@@ -380,3 +380,13 @@ The frame rate and display name can also be passed on the command line when invo
 ```bash
 westeros --renderer /usr/lib/libwesteros_render_gl.so.0 --framerate 60 --display wayland-0
 ```
+
+##Dependencies
+
+wayland >= 1.6.0
+libxkbcommon >= 0.8.3
+xkeyboard-config >= 2.18
+gstreamer >= 1.10.4
+EGL >= 1.4
+GLES >= 2.0
+
