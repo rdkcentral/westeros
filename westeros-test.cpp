@@ -243,6 +243,7 @@ typedef struct _AppCtx
    bool needRedraw;
    bool verboseLog;
    int pointerX, pointerY;
+   int swapInterval;
 
    AppSurface* keyboardFocus;
    AppSurface* pointerFocus;
@@ -1345,6 +1346,11 @@ int main( int argc, char** argv)
       {
          ctx.noAnimation= true;
       }
+      else if (!strcmp( (const char*)argv[i], "--swap" ) )
+      {
+         ctx.swapInterval= atoi(argv[++i]);
+         printf("using swap=%d\n", ctx.swapInterval);
+      }
       else if ( !strcmp( (const char*)argv[i], "-?" ) )
       {
          showUsage();
@@ -1405,8 +1411,8 @@ int main( int argc, char** argv)
    }
    
    
-   eglSwapInterval( ctx.eglDisplay, 1 );
-   printf("swap interface set to 1\n" );//TODO add 'swap' command line parameter
+   eglSwapInterval( ctx.eglDisplay, ctx.swapInterval == 0 ? 1 : ctx.swapInterval);
+   printf("swap interface set to:%d\n", ctx.swapInterval == 0 ? 1 : ctx.swapInterval );
    
    setupGL(&ctx);
    
