@@ -25,13 +25,36 @@
 
 #include "westeros-linux-expsync.h"
 
+#ifdef UNIT_TEST
+#include "wayland-stubs.h"
+#include "linux-explicit-synchronization-unstable-v1-server-protocol.h"
+#include "sync-file-stubs.h"
+#else
 #include "wayland-server.h"
-
 #include <linux/ioctl.h>
 #include <linux/types.h>
 #include <linux/sync_file.h>
 #include <sys/ioctl.h>
 #include "linux-explicit-synchronization-unstable-v1-server-protocol.h"
+#endif
+
+#ifdef UNIT_TEST
+typedef struct _WstContext {
+   struct wl_display *display;
+   void *lexpsync;
+   int initialized;
+} WstContext;
+
+typedef struct _WstSurface {
+   struct wl_resource *resource;
+   struct wl_resource *syncRes;
+   WstExplicitSync createdBufferSync;
+   WstExplicitSync attachedBufferSync;
+   WstExplicitSync detachedBufferSync;
+   int surfaceId;
+   int destroyed;
+} WstSurface;
+#endif
 
 struct wl_lexpsync
 {
@@ -39,7 +62,13 @@ struct wl_lexpsync
    struct wl_global *wl_lexpsync_global;
 };
 
-static bool wstLExpSyncFileIsValid(int fd)
+#ifdef UNIT_TEST
+#define WST_L_EXPSYNC_TESTABLE extern
+#else
+#define WST_L_EXPSYNC_TESTABLE static
+#endif
+
+WST_L_EXPSYNC_TESTABLE bool wstLExpSyncFileIsValid(int fd)
 {
    bool result;
    struct sync_file_info fInfo= { { 0 } };
@@ -61,12 +90,13 @@ static bool wstLExpSyncFileIsValid(int fd)
  */
 static void wstLExpSyncSurfaceDestroyed(struct wl_listener *listener, void *data)
 {
+   (void)data;
    WstExplicitSyncBufferRelease *bufferRelease= wl_container_of(listener, bufferRelease, surfaceDestroyListener);
    bufferRelease->surface= NULL;
    wl_list_remove(&bufferRelease->surfaceDestroyListener.link);
 }
 
-static void wstLExpSyncBufferRelease(struct wl_resource *resource)
+WST_L_EXPSYNC_TESTABLE void wstLExpSyncBufferRelease(struct wl_resource *resource)
 {
    WstExplicitSyncBufferRelease *bufferRelease= (WstExplicitSyncBufferRelease*)wl_resource_get_user_data(resource);
    WstSurface *surface= bufferRelease->surface;
@@ -87,7 +117,7 @@ static void wstLExpSyncBufferRelease(struct wl_resource *resource)
    free(bufferRelease);
 }
 
-static void wstLExpSyncDestroySync(struct wl_resource *resource)
+WST_L_EXPSYNC_TESTABLE void wstLExpSyncDestroySync(struct wl_resource *resource)
 {
    WstSurface *surface= (WstSurface*)wl_resource_get_user_data(resource);
 
@@ -105,16 +135,18 @@ static void wstLExpSyncDestroySync(struct wl_resource *resource)
  * Copyright (C) 2018 Collabora, Ltd.
  * Licensed under the MIT License
  */
-static void wstILExpSyncSurfaceSyncDestroy(struct wl_client *client,
-                                           struct wl_resource *resource)
+WST_L_EXPSYNC_TESTABLE void wstILExpSyncSurfaceSyncDestroy(struct wl_client *client,
+                                                          struct wl_resource *resource)
 {
+   (void)client;
    wl_resource_destroy(resource);
 }
 
-static void wstILExpSyncSurfaceSyncSetAcquireFence(struct wl_client *client,
-                                                   struct wl_resource *resource,
-                                                   int32_t fd)
+WST_L_EXPSYNC_TESTABLE void wstILExpSyncSurfaceSyncSetAcquireFence(struct wl_client *client,
+                                                                  struct wl_resource *resource,
+                                                                  int32_t fd)
 {
+   (void)client;
    WstSurface *surface= (WstSurface*)wl_resource_get_user_data(resource);
 
    if (!surface)
@@ -152,9 +184,9 @@ exit:
    }
 }
 
-static void wstILExpSyncSurfaceSyncGetRelease(struct wl_client *client,
-                                              struct wl_resource *resource,
-                                              uint32_t id)
+WST_L_EXPSYNC_TESTABLE void wstILExpSyncSurfaceSyncGetRelease(struct wl_client *client,
+                                                             struct wl_resource *resource,
+                                                             uint32_t id)
 {
    WstSurface *surface= (WstSurface*)wl_resource_get_user_data(resource);
    WstExplicitSyncBufferRelease *bufferRelease;
@@ -215,31 +247,32 @@ err_alloc:
    wl_client_post_no_memory(client);
 }
 
-const struct zwp_linux_surface_synchronization_v1_interface linux_surface_synchronization_implementation = {
+WST_L_EXPSYNC_TESTABLE const struct zwp_linux_surface_synchronization_v1_interface linux_surface_synchronization_implementation = {
    wstILExpSyncSurfaceSyncDestroy,
    wstILExpSyncSurfaceSyncSetAcquireFence,
    wstILExpSyncSurfaceSyncGetRelease
 };
 
-static void wstILExpSyncDestroy(struct wl_client *client,
-                                struct wl_resource *resource)
+WST_L_EXPSYNC_TESTABLE void wstILExpSyncDestroy(struct wl_client *client,
+                                               struct wl_resource *resource)
 {
+   (void)client;
    wl_resource_destroy(resource);
 }
 
-static void wstILExpSyncGetSynchronization(struct wl_client *client,
-                                           struct wl_resource *resource,
-                                           uint32_t id,
-                                           struct wl_resource *surface_resource)
+WST_L_EXPSYNC_TESTABLE void wstILExpSyncGetSynchronization(struct wl_client *client,
+                                                          struct wl_resource *resource,
+                                                          uint32_t id,
+                                                          struct wl_resource *surface_resource)
 {
    WstSurface *surface= (WstSurface*)wl_resource_get_user_data(surface_resource);
 
    if (surface->syncRes)
    {
       wl_resource_post_error( resource,
-                              ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_SYNCHRONIZATION_EXISTS,
-                              "wl_surface@%"PRIu32" already has a synchronization object",
-                              wl_resource_get_id(surface_resource));
+                  ZWP_LINUX_EXPLICIT_SYNCHRONIZATION_V1_ERROR_SYNCHRONIZATION_EXISTS,
+                  "wl_surface@%" PRIu32 " already has a synchronization object",
+                  wl_resource_get_id(surface_resource));
        return;
    }
 
@@ -258,17 +291,17 @@ static void wstILExpSyncGetSynchronization(struct wl_client *client,
                       wstLExpSyncDestroySync);
 }
 
-static const struct zwp_linux_explicit_synchronization_v1_interface linux_explicit_synchronization_implementation = {
+WST_L_EXPSYNC_TESTABLE const struct zwp_linux_explicit_synchronization_v1_interface linux_explicit_synchronization_implementation = {
    wstILExpSyncDestroy,
    wstILExpSyncGetSynchronization
 };
 
-static void wstExplicitSyncBind( struct wl_client *client, void *data, uint32_t version, uint32_t id )
+WST_L_EXPSYNC_TESTABLE void wstExplicitSyncBind( struct wl_client *client, void *data, uint32_t version, uint32_t id )
 {
    WstContext *ctx= (WstContext*)data;
    struct wl_resource *resource;
 
-   printf("wstExplicitSyncBind: client %p data %p version %d id %d", client, data, version, id );
+   printf("wstExplicitSyncBind: client %p data %p version %d id %d", (void*)client, data, version, id );
 
    resource= wl_resource_create(client,
                                 &zwp_linux_explicit_synchronization_v1_interface,
@@ -329,7 +362,7 @@ wl_lexpsync* WstLExpSyncInit( struct wl_display *display, void *userData )
    struct wl_lexpsync *lexpsync= 0;
    WstContext *ctx= (WstContext*)userData;
 
-   printf("westeros-lexpsync: WstLExpSyncInit: enter: display %p\n", display);
+   printf("westeros-lexpsync: WstLExpSyncInit: enter: display %p\n", (void*)display);
    lexpsync= (struct wl_lexpsync*)calloc( 1, sizeof(struct wl_lexpsync) );
    if ( !lexpsync )
    {
@@ -341,7 +374,7 @@ wl_lexpsync* WstLExpSyncInit( struct wl_display *display, void *userData )
    lexpsync->wl_lexpsync_global= wl_global_create(display, &zwp_linux_explicit_synchronization_v1_interface, 2, ctx, wstExplicitSyncBind);
 
 exit:
-   printf("westeros-lexpsync: WstLExpSyncInit: exit: display %p lexpsync %p\n", display, lexpsync);
+   printf("westeros-lexpsync: WstLExpSyncInit: exit: display %p lexpsync %p\n", (void*)display, (void*)lexpsync);
 
    return lexpsync;
 }

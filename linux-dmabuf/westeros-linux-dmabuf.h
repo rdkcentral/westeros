@@ -21,7 +21,11 @@
 #define _WESTEROS_LINUX_DMABUF_H
 
 #include <drm_fourcc.h>
+#ifdef UNIT_TEST
+#include "wayland-stubs.h"
+#else
 #include "wayland-server.h"
+#endif
 #include "westeros-render.h"
 
 #define WST_LDB_MAX_PLANES 4
