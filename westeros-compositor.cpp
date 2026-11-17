@@ -513,6 +513,9 @@ typedef struct _WstContext
 
    WstCompositor *wctx;
    std::vector<WstCompositor*> virt;
+
+   // SimpleShell dispatch does not hold mutex; publish diagnostic windows atomically.
+   unsigned int ccTestTraceSerial;
    
 } WstContext;
 
@@ -548,7 +551,12 @@ typedef struct _WstCompositor
 
    int eventIndex;
    WstEvent eventQueue[WST_EVENT_QUEUE_SIZE];
+
+   unsigned int ccTestTraceSerial;
+   unsigned int ccTestTraceRemaining;
 } WstCompositor;
+
+#define CC_TEST_COMPOSE_LIMIT (6)
 
 #ifdef ENABLE_LEXPSYNCPROTOCOL
 #include "linux-expsync/westeros-linux-expsync.cpp"
@@ -2529,6 +2537,32 @@ bool WstCompositorComposeEmbedded( WstCompositor *wctx,
 
       pthread_mutex_lock( &ctx->mutex );
 
+      unsigned int traceSerial= __sync_fetch_and_add( &ctx->ccTestTraceSerial, 0 );
+      if ( traceSerial != wctx->ccTestTraceSerial )
+      {
+         wctx->ccTestTraceSerial= traceSerial;
+         wctx->ccTestTraceRemaining= CC_TEST_COMPOSE_LIMIT;
+      }
+      bool trace= (wctx->ccTestTraceRemaining > 0);
+      unsigned int traceFrame= trace ? CC_TEST_COMPOSE_LIMIT-wctx->ccTestTraceRemaining+1 : 0;
+      if ( trace )
+      {
+         --wctx->ccTestTraceRemaining;
+         fprintf(stderr, "cc_test compose begin ctx=%p display=%s displayObject=%p owner=%p virtual=%d window=%u frame=%u/%d output=%d,%d,%d,%d ownerOutput=%d,%d alpha=%f hints=0x%x hidden=%d embedded=%d running=%d ready=%d renderer=%p inputRects=%zu\n",
+                 (void*)ctx, ctx->displayName ? ctx->displayName : "(null)", (void*)ctx->display,
+                 (void*)wctx, wctx->isVirtual, traceSerial, traceFrame, CC_TEST_COMPOSE_LIMIT,
+                 x, y, width, height, wctx->outputWidth, wctx->outputHeight, alpha, hints,
+                 !!(hints & WstHints_hidden), ctx->isEmbedded, ctx->running, ctx->compositorReady,
+                 (void*)ctx->renderer, rects.size());
+         if ( matrix )
+         {
+            fprintf(stderr, "cc_test compose transform ctx=%p owner=%p window=%u matrix=%p m0=%f m1=%f m4=%f m5=%f tx=%f ty=%f\n",
+                    (void*)ctx, (void*)wctx, traceSerial, (void*)matrix,
+                    matrix[0], matrix[1], matrix[4], matrix[5], matrix[12], matrix[13]);
+         }
+         fflush(stderr);
+      }
+
       for (std::vector<WstSurface *>::iterator it = ctx->surfaces.begin(); it != ctx->surfaces.end(); ++it)
       {
          WstSurface *surface= (*it);
@@ -2543,6 +2577,12 @@ bool WstCompositorComposeEmbedded( WstCompositor *wctx,
       {
          sprintf( wctx->lastErrorDetail,
                   "Bad state.  Compositor is not embedded" );
+         if ( trace )
+         {
+            fprintf(stderr, "cc_test compose end ctx=%p owner=%p window=%u frame=%u/%d success=0 reason=not_embedded needHolePunch=not_written remaining=%u\n",
+                    (void*)ctx, (void*)wctx, traceSerial, traceFrame, CC_TEST_COMPOSE_LIMIT, wctx->ccTestTraceRemaining);
+            fflush(stderr);
+         }
          pthread_mutex_unlock( &ctx->mutex );
          goto exit;
       }
@@ -2551,6 +2591,12 @@ bool WstCompositorComposeEmbedded( WstCompositor *wctx,
       {
          sprintf( wctx->lastErrorDetail,
                   "Bad state.  Compositor is not running" );
+         if ( trace )
+         {
+            fprintf(stderr, "cc_test compose end ctx=%p owner=%p window=%u frame=%u/%d success=0 reason=not_running needHolePunch=not_written remaining=%u\n",
+                    (void*)ctx, (void*)wctx, traceSerial, traceFrame, CC_TEST_COMPOSE_LIMIT, wctx->ccTestTraceRemaining);
+            fflush(stderr);
+         }
          pthread_mutex_unlock( &ctx->mutex );
          goto exit;
       }
@@ -2567,6 +2613,22 @@ bool WstCompositorComposeEmbedded( WstCompositor *wctx,
          ctx->renderer->hints= hints;
          ctx->renderer->needHolePunch= false;
          ctx->renderer->rects.clear();
+         ctx->renderer->ccTestTraceSerial= traceSerial;
+         ctx->renderer->ccTestTraceFrame= traceFrame;
+
+         if ( trace )
+         {
+            for ( size_t i= 0; i < ctx->surfaces.size(); ++i )
+            {
+               WstSurface *surface= ctx->surfaces[i];
+               fprintf(stderr, "cc_test compose surface ctx=%p owner=%p window=%u id=%d name=%s surfaceOwner=%p renderSurface=%p shellVisible=%d geometry=%d,%d,%d,%d opacity=%f zorder=%f attachedBuffer=%p vpc=%p\n",
+                       (void*)ctx, (void*)wctx, traceSerial, surface->surfaceId,
+                       surface->name ? surface->name : "(unnamed)", (void*)surface->compositor,
+                       (void*)surface->surface, surface->visible, surface->x, surface->y,
+                       surface->width, surface->height, surface->opacity, surface->zorder,
+                       (void*)surface->attachedBufferResource, (void*)surface->vpcSurface);
+            }
+         }
 
          if ( wctx->isVirtual )
          {
@@ -2580,6 +2642,12 @@ bool WstCompositorComposeEmbedded( WstCompositor *wctx,
                else
                {
                   WstRendererSurfaceGetVisible( ctx->renderer, surface->surface, &surface->tempVisible );
+                  if ( trace )
+                  {
+                     fprintf(stderr, "cc_test compose temp_hide ctx=%p owner=%p id=%d name=%s surfaceOwner=%p renderSurface=%p previous=%d requested=0\n",
+                             (void*)ctx, (void*)wctx, surface->surfaceId, surface->name ? surface->name : "(unnamed)",
+                             (void*)surface->compositor, (void*)surface->surface, surface->tempVisible);
+                  }
                   WstRendererSurfaceSetVisible( ctx->renderer, surface->surface, false );
                }
             }
@@ -2606,6 +2674,11 @@ bool WstCompositorComposeEmbedded( WstCompositor *wctx,
                }
             }
          }
+         else if ( trace )
+         {
+            fprintf(stderr, "cc_test compose scene_skip ctx=%p owner=%p window=%u reason=WstHints_hidden\n",
+                    (void*)ctx, (void*)wctx, traceSerial);
+         }
 
          if ( wctx->isVirtual )
          {
@@ -2614,6 +2687,12 @@ bool WstCompositorComposeEmbedded( WstCompositor *wctx,
                WstSurface *surface= (*it);
                if ( surface->compositor != wctx )
                {
+                  if ( trace )
+                  {
+                     fprintf(stderr, "cc_test compose temp_restore ctx=%p owner=%p id=%d name=%s surfaceOwner=%p renderSurface=%p requested=%d\n",
+                             (void*)ctx, (void*)wctx, surface->surfaceId, surface->name ? surface->name : "(unnamed)",
+                             (void*)surface->compositor, (void*)surface->surface, surface->tempVisible);
+                  }
                   WstRendererSurfaceSetVisible( ctx->renderer, surface->surface, surface->tempVisible );
                }
             }
@@ -2634,6 +2713,24 @@ bool WstCompositorComposeEmbedded( WstCompositor *wctx,
          }
 
          *needHolePunch= ( rects.size() > 0 );
+         ctx->renderer->ccTestTraceFrame= 0;
+      }
+
+      if ( trace )
+      {
+         fprintf(stderr, "cc_test compose end ctx=%p owner=%p window=%u frame=%u/%d success=1 scene=%s needHolePunch=%s rendererNeedHolePunch=%d returnedRects=%zu rendererRects=%zu remaining=%u exhausted=%d\n",
+                 (void*)ctx, (void*)wctx, traceSerial, traceFrame, CC_TEST_COMPOSE_LIMIT,
+                 !ctx->compositorReady ? "not_ready" : ((hints & WstHints_hidden) ? "hidden" : "updated"),
+                 ctx->compositorReady ? (*needHolePunch ? "1" : "0") : "not_written",
+                 ctx->compositorReady ? ctx->renderer->needHolePunch : -1, rects.size(),
+                 ctx->compositorReady ? ctx->renderer->rects.size() : size_t(0),
+                 wctx->ccTestTraceRemaining, wctx->ccTestTraceRemaining == 0);
+         for ( size_t i= 0; i < rects.size(); ++i )
+         {
+            fprintf(stderr, "cc_test compose returned_rect ctx=%p owner=%p window=%u index=%zu rect=%d,%d,%d,%d\n",
+                    (void*)ctx, (void*)wctx, traceSerial, i, rects[i].x, rects[i].y, rects[i].width, rects[i].height);
+         }
+         fflush(stderr);
       }
 
       #ifndef ENABLE_LEXPSYNCPROTOCOL
@@ -3520,6 +3617,7 @@ static void simpleShellSetVisible( void* userData, uint32_t surfaceId, bool visi
    fflush(stderr);
    if ( surface )
    {
+      bool visibilityChanged= (surface->visible != visible);
       WstVpcSurface *vpc= surface->vpcSurface;
       fprintf(stderr, "cc_test compositor target id=%u name=%s owner=%p renderSurface=%p nestedSurface=%p previousShellVisible=%d requested=%d geometry=%d,%d,%d,%d opacity=%f zorder=%f vpc=%p hwPath=%d hwPathNext=%d pending=%d vpcStatusForcedVisible=%d\n",
               surfaceId, surface->name ? surface->name : "(unnamed)", (void*)surface->compositor,
@@ -3540,6 +3638,14 @@ static void simpleShellSetVisible( void* userData, uint32_t surfaceId, bool visi
                  (unsigned int)ctx->renderer->hints, ctx->renderer->needHolePunch);
          fflush(stderr);
          WstRendererSurfaceSetVisible( ctx->renderer, surface->surface, visible );
+      }
+      if ( visibilityChanged )
+      {
+         unsigned int serial= __sync_add_and_fetch( &ctx->ccTestTraceSerial, 1 );
+         fprintf(stderr, "cc_test compose arm ctx=%p window=%u trigger=shell_visibility id=%u name=%s owner=%p visible=%d callsPerOwner=%d previousWindowMayBeSuperseded=1\n",
+                 (void*)ctx, serial, surfaceId, surface->name ? surface->name : "(unnamed)",
+                 (void*)surface->compositor, visible, CC_TEST_COMPOSE_LIMIT);
+         fflush(stderr);
       }
    }
    fprintf(stderr, "cc_test compositor set_visible end ctx=%p id=%u found=%d repaintNotAdded=1\n",
@@ -9039,6 +9145,7 @@ static void wstIVpcSurfaceSetGeometryWithCrop( struct wl_client *client, struct 
 static void wstUpdateVPCSurfaces( WstCompositor *wctx, std::vector<WstRect> &rects )
 {
    WstContext *ctx= wctx->ctx;
+   bool trace= (ctx->renderer->ccTestTraceFrame != 0);
    bool useHWPath= (ctx->renderer->hints & WstHints_noRotation) && !(ctx->renderer->hints & WstHints_animating);
    bool isRotated= false;
    float scaleX, scaleY;
@@ -9106,6 +9213,17 @@ static void wstUpdateVPCSurfaces( WstCompositor *wctx, std::vector<WstRect> &rec
          ++it )
    {
       WstVpcSurface *vpcSurface= (*it);
+      if ( trace )
+      {
+         WstSurface *surface= vpcSurface->surface;
+         fprintf(stderr, "cc_test vpc surface ctx=%p owner=%p window=%u id=%d name=%s surfaceOwner=%p renderSurface=%p shellVisible=%d hwCurrent=%d hwNext=%d pending=%d pathSet=%d bridgeHW=%d sizeOverride=%d geometry=%d,%d,%d,%d rotated=%d hints=0x%x\n",
+                 (void*)ctx, (void*)wctx, ctx->renderer->ccTestTraceSerial, surface->surfaceId,
+                 surface->name ? surface->name : "(unnamed)", (void*)surface->compositor,
+                 (void*)surface->surface, surface->visible, vpcSurface->useHWPath, vpcSurface->useHWPathNext,
+                 vpcSurface->pathTransitionPending, vpcSurface->videoPathSet, vpcSurface->useHWPathVpcBridge,
+                 vpcSurface->sizeOverride, surface->x, surface->y, surface->width, surface->height,
+                 isRotated, (unsigned int)ctx->renderer->hints);
+      }
       if ( vpcSurface->surface->compositor == wctx )
       {
          WstRect rect;
@@ -9210,6 +9328,17 @@ static void wstUpdateVPCSurfaces( WstCompositor *wctx, std::vector<WstRect> &rec
             rect.y= vpcSurface->hwY;
             rect.width= vpcSurface->hwWidth;
             rect.height= vpcSurface->hwHeight;
+            if ( trace )
+            {
+               fprintf(stderr, "cc_test vpc rect ctx=%p owner=%p window=%u id=%d action=%s rect=%d,%d,%d,%d hwRectUpdate=%s hwCurrent=%d hwNext=%d pending=%d visibilityNotTested=1\n",
+                       (void*)ctx, (void*)wctx, ctx->renderer->ccTestTraceSerial, vpcSurface->surface->surfaceId,
+                       !vpcSurface->sizeOverride ? "omit_no_size_override" :
+                       ((ctx->renderer->hints & WstHints_holePunch) ? "direct_hole_punch" : "append_returned_rect"),
+                       rect.x, rect.y, rect.width, rect.height,
+                       isRotated ? "held_rotated" :
+                       ((vpcSurface->pathTransitionPending && !vpcSurface->useHWPathNext) ? "held_pending_graphics" : "updated"),
+                       vpcSurface->useHWPath, vpcSurface->useHWPathNext, vpcSurface->pathTransitionPending);
+            }
             if ( vpcSurface->sizeOverride )
             {
                if ( ctx->renderer->hints & WstHints_holePunch )
@@ -9228,6 +9357,11 @@ static void wstUpdateVPCSurfaces( WstCompositor *wctx, std::vector<WstRect> &rec
          }
          else if ( !vpcSurface->sizeOverride )
          {
+            if ( trace )
+            {
+               fprintf(stderr, "cc_test vpc rect ctx=%p owner=%p window=%u id=%d action=omit_graphics_update_geometry hwCurrent=0 hwNext=0\n",
+                       (void*)ctx, (void*)wctx, ctx->renderer->ccTestTraceSerial, vpcSurface->surface->surfaceId);
+            }
             WstSurface *surface= vpcSurface->surface;
             double sizeFactorX, sizeFactorY;
 
@@ -9240,6 +9374,17 @@ static void wstUpdateVPCSurfaces( WstCompositor *wctx, std::vector<WstRect> &rec
                                            surface->width*sizeFactorX,
                                            surface->height*sizeFactorY );
          }
+         else if ( trace )
+         {
+            fprintf(stderr, "cc_test vpc rect ctx=%p owner=%p window=%u id=%d action=omit_graphics_size_override hwCurrent=0 hwNext=0\n",
+                    (void*)ctx, (void*)wctx, ctx->renderer->ccTestTraceSerial, vpcSurface->surface->surfaceId);
+         }
+      }
+      else if ( trace )
+      {
+         fprintf(stderr, "cc_test vpc rect ctx=%p owner=%p window=%u id=%d action=omit_other_owner surfaceOwner=%p\n",
+                 (void*)ctx, (void*)wctx, ctx->renderer->ccTestTraceSerial,
+                 vpcSurface->surface->surfaceId, (void*)vpcSurface->surface->compositor);
       }
    }
 }

@@ -1824,6 +1824,16 @@ static void wstRendererEMBRenderSurface( WstRendererEMB *renderer, WstRenderSurf
       resH= viewport[3];
    }
 
+   if ( renderer->renderer->ccTestTraceFrame )
+   {
+      fprintf(stderr, "cc_test embedded draw_submit renderer=%p state=%p surface=%p window=%u frame=%u geometry=%d,%d,%d,%d alpha=%f resolution=%d,%d textures=%d texture0=%u texture1=%u external=%d\n",
+              (void*)renderer->renderer, (void*)renderer, (void*)surface,
+              renderer->renderer->ccTestTraceSerial, renderer->renderer->ccTestTraceFrame,
+              surface->x, surface->y, surface->width, surface->height, alpha, resW, resH,
+              surface->textureCount, surface->textureId[0], surface->textureId[1], surface->externalImage);
+      fflush(stderr);
+   }
+
    if ( surface->textureCount == 1 )
    {
       wstRendererEMBShaderDraw( surface->externalImage ? renderer->textureShaderExternal : renderer->textureShader,
@@ -2075,9 +2085,27 @@ static void wstRendererTerm( WstRenderer *renderer )
    }
 }
 
+static void wstRendererEMBTraceSurface( WstRenderer *renderer, WstRenderSurface *surface, const char *decision )
+{
+   void *image= 0;
+   void *pixmap= 0;
+   #if defined (WESTEROS_PLATFORM_EMBEDDED) || defined (WESTEROS_HAVE_WAYLAND_EGL)
+   image= (void*)surface->eglImage[0];
+   pixmap= surface->nativePixmap;
+   #endif
+   fprintf(stderr, "cc_test embedded surface renderer=%p state=%p surface=%p window=%u frame=%u decision=%s visible=%d geometry=%d,%d,%d,%d bufferSize=%d,%d sizeOverride=%d opacity=%f zorder=%f textures=%d texture0=%u texture1=%u image=%p pixmap=%p mem=%p memDirty=%d dirty=%d fastSurface=%p\n",
+           (void*)renderer, renderer->renderer, (void*)surface, renderer->ccTestTraceSerial, renderer->ccTestTraceFrame,
+           decision, surface->visible, surface->x, surface->y, surface->width, surface->height,
+           surface->bufferWidth, surface->bufferHeight, surface->sizeOverride, surface->opacity, surface->zorder,
+           surface->textureCount, surface->textureId[0], surface->textureId[1], image, pixmap,
+           (void*)surface->mem, surface->memDirty, surface->dirty, (void*)surface->surfaceFast);
+}
+
 static void wstRendererUpdateScene( WstRenderer *renderer )
 {
    WstRendererEMB *rendererEMB= (WstRendererEMB*)renderer->renderer;
+   bool trace= (renderer->ccTestTraceFrame != 0);
+   bool fastWasActive= rendererEMB->fastPathActive;
    #ifdef ENABLE_LEXPSYNCPROTOCOL
    bool isFenced= false;
    #endif
@@ -2124,8 +2152,28 @@ static void wstRendererUpdateScene( WstRenderer *renderer )
       rendererEMB->fastPathActive= false;
    }
 
+   if ( trace || (fastWasActive != rendererEMB->fastPathActive) )
+   {
+      fprintf(stderr, "cc_test embedded scene renderer=%p state=%p window=%u frame=%u reason=%s path=%s fastHint=%d fastActive=%d fastRenderer=%p hints=0x%x surfaces=%zu\n",
+              (void*)renderer, (void*)rendererEMB, renderer->ccTestTraceSerial, renderer->ccTestTraceFrame,
+              trace ? "trace_window" : "path_change",
+              rendererEMB->fastPathActive ? "fast_delegate" : "embedded_gl",
+              renderer->fastHint, rendererEMB->fastPathActive, (void*)rendererEMB->rendererFast,
+              (unsigned int)renderer->hints, rendererEMB->surfaces.size());
+      fflush(stderr);
+   }
+
    if ( rendererEMB->fastPathActive )
    {
+      if ( trace )
+      {
+         for ( size_t i= 0; i < rendererEMB->surfaces.size(); ++i )
+         {
+            WstRenderSurface *surface= rendererEMB->surfaces[i];
+            wstRendererEMBTraceSurface( renderer, surface, !surface->visible ? "delegate_hidden" :
+                                       (surface->surfaceFast ? "delegate_surface" : "delegate_no_fast_surface") );
+         }
+      }
       rendererEMB->rendererFast->outputX= renderer->outputX;
       rendererEMB->rendererFast->outputY= renderer->outputY;
       rendererEMB->rendererFast->outputWidth= renderer->outputWidth;
@@ -2157,6 +2205,11 @@ static void wstRendererUpdateScene( WstRenderer *renderer )
                      r.width= renderer->matrix[0]*sw;
                      r.height= renderer->matrix[5]*sh;
 
+                     if ( trace )
+                     {
+                        fprintf(stderr, "cc_test embedded fast_hole_punch renderer=%p surface=%p window=%u rect=%d,%d,%d,%d\n",
+                                (void*)renderer, (void*)surface, renderer->ccTestTraceSerial, r.x, r.y, r.width, r.height);
+                     }
                      wstRendererHolePunch( renderer, r.x, r.y, r.width, r.height );
                   }
                }
@@ -2171,6 +2224,12 @@ static void wstRendererUpdateScene( WstRenderer *renderer )
 
       rendererEMB->rendererFast->delegateUpdateScene( rendererEMB->rendererFast, renderer->rects );
 
+      if ( trace )
+      {
+         fprintf(stderr, "cc_test embedded scene_end renderer=%p window=%u frame=%u path=fast_delegate needHolePunch=%d rects=%zu\n",
+                 (void*)renderer, renderer->ccTestTraceSerial, renderer->ccTestTraceFrame, renderer->needHolePunch, renderer->rects.size());
+         fflush(stderr);
+      }
       return;
    }
 
@@ -2195,15 +2254,20 @@ static void wstRendererUpdateScene( WstRenderer *renderer )
    {
       WstRenderSurface *surface= rendererEMB->surfaces[i];
 
-      if ( surface->visible && 
+      bool drawSurface= surface->visible &&
           (
             #if defined (WESTEROS_PLATFORM_EMBEDDED) || defined (WESTEROS_HAVE_WAYLAND_EGL)
             surface->eglImage[0] ||
             #endif
             surface->memDirty ||
             (surface->textureId[0] != GL_NONE)
-          )
-        )
+          );
+      if ( trace )
+      {
+         wstRendererEMBTraceSurface( renderer, surface, !surface->visible ? "skip_hidden" :
+                                    (drawSurface ? "render_surface" : "skip_no_image_dirty_mem_or_texture") );
+      }
+      if ( drawSurface )
       {
          #ifdef ENABLE_LEXPSYNCPROTOCOL
          if (surface->bufferSync.acquireFenceFd != -1)
@@ -2253,6 +2317,12 @@ static void wstRendererUpdateScene( WstRenderer *renderer )
       close(renderFenceFd);
    }
    #endif
+   if ( trace )
+   {
+      fprintf(stderr, "cc_test embedded scene_end renderer=%p window=%u frame=%u path=embedded_gl needHolePunch=%d rects=%zu\n",
+              (void*)renderer, renderer->ccTestTraceSerial, renderer->ccTestTraceFrame, renderer->needHolePunch, renderer->rects.size());
+      fflush(stderr);
+   }
 }
 
 static WstRenderSurface* wstRendererSurfaceCreate( WstRenderer *renderer )
@@ -2715,6 +2785,15 @@ static void wstRendererHolePunch( WstRenderer *renderer, int x, int y, int width
 
    glScissor( r.x, viewport[3]-(r.y+r.height), r.width, r.height );
    glClear( GL_COLOR_BUFFER_BIT );
+
+   if ( renderer->ccTestTraceFrame )
+   {
+      fprintf(stderr, "cc_test embedded hole_punch_submit renderer=%p state=%p window=%u frame=%u rect=%d,%d,%d,%d viewport=%d,%d,%d,%d scissor=%d,%d,%d,%d gpuResult=not_queried\n",
+              (void*)renderer, renderer->renderer, renderer->ccTestTraceSerial, renderer->ccTestTraceFrame,
+              r.x, r.y, r.width, r.height, viewport[0], viewport[1], viewport[2], viewport[3],
+              r.x, viewport[3]-(r.y+r.height), r.width, r.height);
+      fflush(stderr);
+   }
 
    glClearColor( priorColor[0], priorColor[1], priorColor[2], priorColor[3] );
 

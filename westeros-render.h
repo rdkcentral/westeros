@@ -141,6 +141,10 @@ typedef struct _WstRenderer
    int hints;
    bool needHolePunch;
    std::vector<WstRect> rects;
+
+   // Diagnostic scope: written/read only during composition under the context mutex.
+   unsigned int ccTestTraceSerial;
+   unsigned int ccTestTraceFrame;
 } WstRenderer;
 
 WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, 

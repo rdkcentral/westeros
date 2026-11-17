@@ -23,8 +23,49 @@ The trace includes the requesting client's PID and surface ID, the target's
 cached state, renderer/repeater selection, nested-to-upstream surface ID mapping,
 visibility-status recipients, VPC hardware-path transitions and the embedded
 fast-renderer/surface mapping. Generic status queries, geometry/opacity/z-order
-broadcasts and per-frame composition are not logged. No mutex calls, repaints,
-Wayland requests or renderer queries are added.
+broadcasts are not logged. No mutex calls, repaints, Wayland requests, GL queries,
+delays or renderer queries are added. Diagnostic output itself adds some overhead.
+
+Each actual SimpleShell visibility transition arms a numbered composition trace
+window (`cc_test compose arm`). This includes caption show/hide and possible
+subsequent UI/video visibility requests, without relying on fixed surface IDs.
+Repeated requests with unchanged shell visibility do not rearm the window.
+Each compositor owner sharing that context logs its next **six** composition calls,
+including hidden/not-ready/failed calls. A newer transition supersedes an unfinished
+window; multiple transitions before an owner's next call coalesce to the latest
+window number. Virtual-composition temporary hide/restore calls never arm a window.
+`frame=.../6`, `remaining`, and `exhausted=1` identify the capture boundary. An arm
+without subsequent compose logs means no composition was observed for that window
+(or the window was superseded), not that rendering succeeded.
+
+Within a window, `compose begin/surface/temp_hide/temp_restore/end` identify the
+context, display, composing owner, surface owner, shell state and renderer pointer.
+`scene_skip` identifies `WstHints_hidden`. `vpc surface/rect` records current/next
+hardware path, pending transitions, and whether a rectangle was returned, directly
+hole-punched, or omitted (other owner, graphics path, or no size override). Hardware
+rectangles held during rotation/pending graphics transitions are identified.
+`compose end` reports the existing API result, whether `needHolePunch` was written,
+and the final returned rectangles, including any supplied by the caller.
+`embedded hole_punch_submit` records the actual GL clear submission's rectangle,
+viewport and computed scissor using already-queried state, not GPU completion.
+
+`embedded scene` identifies embedded GL versus fast delegation; actual fast-path
+changes are also logged outside windows. `embedded surface` records each GL
+draw/skip decision and the available image, CPU-memory and texture state.
+`embedded draw_submit` records geometry, effective alpha and textures after
+preparation, immediately before the shader draw helper. Fast delegation logs
+describe the handoff, not platform-renderer draw decisions. Match `surface` in
+renderer logs to `renderSurface` in compositor logs; renderer objects have no
+protocol surface IDs. Visibility, buffers and a draw submission alone do not prove
+pixel contents, successful GPU execution, hardware-plane state, or scanout.
+
+Build/deploy the compositor library and embedded renderer modules
+together: temporary trace-scope fields were appended to the internal `WstRenderer`
+interface. A proprietary wrapper must reach this instrumented embedded renderer
+for `embedded scene` messages to appear; wrapper/driver internals are not traced.
+Trace scope uses the existing composition mutex; only the diagnostic window number
+is atomically published from the unlocked SimpleShell callback. Existing locking
+and rendering decisions are unchanged.
 
 Embedded renderer visibility calls can occur every frame during virtual
 composition. That trace is capped at 16 lines per render surface over its
