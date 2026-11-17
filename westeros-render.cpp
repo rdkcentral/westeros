@@ -21,6 +21,10 @@
 #include <memory.h>
 #include <pthread.h>
 #include <unistd.h>
+#ifdef UNIT_TEST
+#include <string.h>
+#include <new>
+#endif
 
 #include <dlfcn.h>
 
@@ -32,13 +36,123 @@
 
 #define WESTEROS_UNUSED(x) ((void)(x))
 
+#ifdef UNIT_TEST
+namespace {
+struct WstTestRenderSurface {
+   bool visible;
+   int x;
+   int y;
+   int width;
+   int height;
+   float opacity;
+   float zorder;
+
+   WstTestRenderSurface(): visible(false), x(0), y(0), width(0), height(0), opacity(1.0f), zorder(0.0f) {}
+};
+
+void wstTestRenderUpdateScene(WstRenderer *) {}
+
+WstRenderSurface* wstTestRenderSurfaceCreate(WstRenderer *)
+{
+   return reinterpret_cast<WstRenderSurface*>(new (std::nothrow) WstTestRenderSurface());
+}
+
+void wstTestRenderSurfaceDestroy(WstRenderer *, WstRenderSurface *surface)
+{
+   delete reinterpret_cast<WstTestRenderSurface*>(surface);
+}
+
+void wstTestRenderSurfaceCommit(WstRenderer *, WstRenderSurface *, struct wl_resource *) {}
+
+void wstTestRenderSurfaceSetVisible(WstRenderer *, WstRenderSurface *surface, bool visible)
+{
+   if ( surface ) reinterpret_cast<WstTestRenderSurface*>(surface)->visible= visible;
+}
+
+bool wstTestRenderSurfaceGetVisible(WstRenderer *, WstRenderSurface *surface, bool *visible)
+{
+   if ( !surface ) return false;
+   if ( visible ) *visible= reinterpret_cast<WstTestRenderSurface*>(surface)->visible;
+   return true;
+}
+
+void wstTestRenderSurfaceSetGeometry(WstRenderer *, WstRenderSurface *surface, int x, int y, int width, int height)
+{
+   if ( surface )
+   {
+      WstTestRenderSurface *testSurface= reinterpret_cast<WstTestRenderSurface*>(surface);
+      testSurface->x= x;
+      testSurface->y= y;
+      testSurface->width= width;
+      testSurface->height= height;
+   }
+}
+
+void wstTestRenderSurfaceGetGeometry(WstRenderer *, WstRenderSurface *surface, int *x, int *y, int *width, int *height)
+{
+   if ( !surface ) return;
+   WstTestRenderSurface *testSurface= reinterpret_cast<WstTestRenderSurface*>(surface);
+   if ( x ) *x= testSurface->x;
+   if ( y ) *y= testSurface->y;
+   if ( width ) *width= testSurface->width;
+   if ( height ) *height= testSurface->height;
+}
+
+void wstTestRenderSurfaceSetOpacity(WstRenderer *, WstRenderSurface *surface, float opacity)
+{
+   if ( surface ) reinterpret_cast<WstTestRenderSurface*>(surface)->opacity= opacity;
+}
+
+float wstTestRenderSurfaceGetOpacity(WstRenderer *, WstRenderSurface *surface, float *opacity)
+{
+   if ( !surface ) return 0.0f;
+   float value= reinterpret_cast<WstTestRenderSurface*>(surface)->opacity;
+   if ( opacity ) *opacity= value;
+   return value;
+}
+
+void wstTestRenderSurfaceSetZOrder(WstRenderer *, WstRenderSurface *surface, float zorder)
+{
+   if ( surface ) reinterpret_cast<WstTestRenderSurface*>(surface)->zorder= zorder;
+}
+
+float wstTestRenderSurfaceGetZOrder(WstRenderer *, WstRenderSurface *surface, float *zorder)
+{
+   if ( !surface ) return 0.0f;
+   float value= reinterpret_cast<WstTestRenderSurface*>(surface)->zorder;
+   if ( zorder ) *zorder= value;
+   return value;
+}
+
+void wstTestRenderInit(WstRenderer *renderer)
+{
+   renderer->updateScene= wstTestRenderUpdateScene;
+   renderer->surfaceCreate= wstTestRenderSurfaceCreate;
+   renderer->surfaceDestroy= wstTestRenderSurfaceDestroy;
+   renderer->surfaceCommit= wstTestRenderSurfaceCommit;
+   renderer->surfaceSetVisible= wstTestRenderSurfaceSetVisible;
+   renderer->surfaceGetVisible= wstTestRenderSurfaceGetVisible;
+   renderer->surfaceSetGeometry= wstTestRenderSurfaceSetGeometry;
+   renderer->surfaceGetGeometry= wstTestRenderSurfaceGetGeometry;
+   renderer->surfaceSetOpacity= wstTestRenderSurfaceSetOpacity;
+   renderer->surfaceGetOpacity= wstTestRenderSurfaceGetOpacity;
+   renderer->surfaceSetZOrder= wstTestRenderSurfaceSetZOrder;
+   renderer->surfaceGetZOrder= wstTestRenderSurfaceGetZOrder;
+}
+}
+#endif
+
 
 WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, struct wl_display *display, WstNestedConnection *nc )
 {
    bool error= false;
    void *module= 0, *init;
 
+#ifdef UNIT_TEST
+   WstRenderer *renderer= new (std::nothrow) WstRenderer{};
+#else
    WstRenderer *renderer= (WstRenderer*)calloc( 1, sizeof(WstRenderer) );
+#endif
    if ( renderer )
    {
       int rc;
@@ -100,6 +214,17 @@ WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, s
          renderer->surfaceNested= WstNestedConnectionGetCompositionSurface( nc );
       }
             
+   #ifdef UNIT_TEST
+      if ( moduleName && strcmp(moduleName, "mock") == 0 )
+      {
+         renderer->outputWidth= width;
+         renderer->outputHeight= height;
+         renderer->nativeWindow= nativeWindow;
+         wstTestRenderInit(renderer);
+      }
+      else
+      {
+   #endif
       module= dlopen( moduleName, RTLD_NOW );
       if ( !module )
       {
@@ -131,6 +256,9 @@ WstRenderer* WstRendererCreate( const char *moduleName, int argc, char **argv, s
       }
       
       printf("WstRendererCreate: module (%s) loaded and intialized\n", moduleName );
+   #ifdef UNIT_TEST
+      }
+   #endif
    }
    
 exit:
@@ -145,6 +273,9 @@ exit:
       {
          dlclose( module );
       }
+   #ifdef UNIT_TEST
+      renderer= 0;
+   #endif
    }
    
    return renderer;
@@ -154,12 +285,20 @@ void WstRendererDestroy( WstRenderer *renderer )
 {
    if ( renderer )
    {
+   #ifdef UNIT_TEST
+      if ( renderer->renderer && renderer->renderTerm )
+   #else
       if ( renderer->renderer )
+   #endif
       {
          renderer->renderTerm( renderer );
          renderer->renderer= 0;
       }
+   #ifdef UNIT_TEST
+      delete renderer;
+   #else
       free( renderer );      
+   #endif
    }
 }
 

@@ -21,10 +21,18 @@
 #define _WESTEROS_LINUX_EXPSYNC_H
 
 #include <unistd.h>
+#ifdef UNIT_TEST
+#include "wayland-stubs.h"
+#else
 #include "wayland-server.h"
+#endif
 
-struct wl_lexpsync;
+typedef struct wl_lexpsync wl_lexpsync;
+struct _WstContext;
 struct _WstSurface;
+
+typedef struct _WstContext WstContext;
+typedef struct _WstSurface WstSurface;
 
 typedef struct _WstExplicitSyncBufferRelease
 {
@@ -88,7 +96,7 @@ inline void WstLExpSyncFdClear(int *fd)
 }
 
 
-wl_lexpsync* WstLExpSyncInit( struct wl_display *display, void *userData );
+struct wl_lexpsync* WstLExpSyncInit( struct wl_display *display, void *userData );
 void WstLExpSyncUninit( struct wl_lexpsync *lexpsync );
 void WstLExpSyncFireRelease( WstExplicitSync *bufferSync );
 
