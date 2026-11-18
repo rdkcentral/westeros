@@ -23,7 +23,6 @@
 #include <string.h>
 #include <limits.h>
 #include <memory.h>
-#include <math.h>
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
@@ -344,6 +343,7 @@ typedef struct _WstSurface
    int attachedX;
    int attachedY;
    bool vpcBridgeSignal;
+   bool pendingAttach; /* wl_surface.attach (including attach(NULL)) since last commit */
    int commitCount;
 
    struct wl_list frameCallbackList;
@@ -352,8 +352,8 @@ typedef struct _WstSurface
 
    #ifdef ENABLE_LEXPSYNCPROTOCOL
    struct wl_resource *syncRes;
-   WstExplicitSync createdBufferSync; /* from create to attach */
-   WstExplicitSync attachedBufferSync; /* from attach to commit */
+   WstExplicitSync createdBufferSync; /* pending: from get_release/set_acquire_fence to commit */
+   WstExplicitSync attachedBufferSync; /* latched for the duration of wstISurfaceCommit only */
    WstExplicitSync detachedBufferSync; /* from commit to the next commit */
    #endif
 
@@ -524,7 +524,6 @@ typedef struct _WstContext
    bool betterBufferSync;
    bool betterInvalidate;
    bool betterFrameDone;
-   bool betterBufferHandling;
    bool traceMonarch;
    bool traceMonarchCheck;
 } WstContext;
@@ -586,7 +585,7 @@ static int wstCompositorDisplayTimeOut( void *data );
 static int wstCompositorFinishFrame( int fd, uint32_t mask, void *data );
 static void WstCompositorFinishFrame( WstCompositor *wctx );
 static void wstCompositorScheduleRepaint( WstContext *ctx );
-static void wstCompositorReleaseDetachedBuffers( WstContext *ctx );
+static void wstSurfaceRetireCommittedBuffer( WstContext *ctx, WstSurface *surface );
 static void wstReleaseDetachBuffer( WstContext *ctx, WstSurface *surface );
 static void wstCompositorSendBufferRelease( WstContext *ctx, struct wl_resource *resource );
 static void wstShmBind( struct wl_client *client, void *data, uint32_t version, uint32_t id);
@@ -1041,7 +1040,7 @@ static void wstLog( int level, const char *format, ... )
 /* WstCheckRuntimeControls
    Set of temporary control switches for some new optimizations we need to test.
    Once these have been fully validated and we commit completely to these, when can remove these checks.
-   Currently none, except betterBufferHandling possibly, make sense unless in embedded mode.
+   Currently none make sense unless in embedded mode.
    betterBufferSync: only applicable when explicit sync is disabled
       Disables the renderMutex locking scheme which tries to replicate a form of sync when expsync is disabled.
       This locking scheme adds delay which decreases the fps. Disabling this locking scheme, so far, does not 
@@ -1058,13 +1057,6 @@ static void wstLog( int level, const char *format, ... )
       This allows the frame callbacks to be made exactly after the buffer is drawn instead of
       after the wstCompositorDisplayTimeOut timer fires, which could take up to a full frame period
       based on how drifted the timer is from the compositor timing.
-   betterBufferHandling:
-      Allows buffers to be released sooner then the previous scheme allowed.  
-      The previous scheme releases the buffer on the 2nd attach after the attach that binds the buffer.
-      Like this: attach(binds)/commit, attach/commit, attach(releases)
-      The new shceme will release the buffer on the next commit after the buffer is commited.
-      Like this: attach(binds)/commit, attach/commit(release)
-      So we no long wait for that 3rd attach but instead the 2nd commit, to release the buffer.
    westerosTraceMonarch: allows us to trace the iUIv2 (what's inspiring these optimization) wayland thread's activity.
    westerosTSLOG: provides a way to get detailed logs to our log file.  This may remain after removing other checks.
  */
@@ -1113,19 +1105,6 @@ void WstCheckRuntimeControls(WstContext *ctx)
          ctx->betterFrameDone= true;
       }
 
-      if ( stat("/opt/westerosBetterBufferHandlingEnabled", &fileinfo) == 0 )
-      {
-         ctx->betterBufferHandling= true;
-      }
-      else if ( stat("/opt/westerosBetterBufferHandlingDisabled", &fileinfo) == 0 )
-      {
-         ctx->betterBufferHandling= false;
-      }
-      else
-      {
-         ctx->betterBufferHandling= true;
-      }
-
       if ( stat("/opt/westerosTraceMonarch", &fileinfo) == 0 )
       {
          ctx->traceMonarch= true;
@@ -1141,7 +1120,6 @@ void WstCheckRuntimeControls(WstContext *ctx)
       ctx->betterBufferSync= false;
       ctx->betterInvalidate= false;
       ctx->betterFrameDone= false;
-      ctx->betterBufferHandling= false;
    }
 
    if ( stat("/opt/westerosTSLOG", &fileinfo) == 0 )
@@ -1158,7 +1136,6 @@ void WstCheckRuntimeControls(WstContext *ctx)
    INFO("%s betterBufferSync=%d\n", __func__, ctx->betterBufferSync);
    INFO("%s betterInvalidate=%d\n", __func__, ctx->betterInvalidate);
    INFO("%s betterFrameDone=%d\n", __func__, ctx->betterFrameDone);
-   INFO("%s betterBufferHandling=%d\n", __func__, ctx->betterBufferHandling);
 }
 
 WstCompositor* WstCompositorCreate()
@@ -1470,7 +1447,7 @@ bool WstCompositorSetDisplayName( WstCompositor *wctx, const char *displayName )
                   "Bad state.  Cannot set display name while compositor is running" );
          goto exit;
       }
-
+      
       pthread_mutex_lock( &ctx->mutex );
 
       if ( ctx->displayName )
@@ -5088,10 +5065,7 @@ static void wstCompositorComposeFrame( WstContext *ctx, uint32_t frameTime )
       #ifdef ENABLE_LEXPSYNCPROTOCOL
       wstInvalidateImportedSync( ctx );
       #endif
-      if ( !ctx->betterBufferHandling )
-      {
-         wstCompositorReleaseDetachedBuffers( ctx );
-      }
+      //Buffers are released from wstISurfaceCommit once superseded by a later commit
    }
    
    if ( !ctx->betterFrameDone )
@@ -5281,24 +5255,61 @@ static void wstCompositorScheduleRepaint( WstContext *ctx )
    }
 }
 
-static void wstCompositorReleaseDetachedBuffers( WstContext *ctx )
+/*
+   Called from wstISurfaceCommit once a commit that carries a buffer (or a null buffer) has been
+   handed to the renderer or the nested (repeater) connection.  Releases the surface's previous
+   buffer, which is now superseded, and makes the newly committed attachedBufferResource the
+   surface's current buffer (detachedBufferResource).  A buffer is thus released on the next
+   commit after it was committed:
+
+   wstiSurfaceAttach(buf=1) attachedBufferResource=1
+   wstiSurfaceCommit        detachedBufferResource=1, attachedBufferResource=NULL
+   wstiSurfaceAttach(buf=2) attachedBufferResource=2
+   wstiSurfaceCommit        detachedBufferResource=2, attachedBufferResource=NULL, release 1
+
+   Paths that hand the buffer to another release mechanism (eg. nested remote clone) clear
+   attachedBufferResource first, in which case only the previous buffer is released.
+
+   TODO: implement the proper method where the buffer is released after its actually composed.
+         this is more complex and risky as we need to marshal from render thread back to wayland thread to do the release
+*/
+static void wstSurfaceRetireCommittedBuffer( WstContext *ctx, WstSurface *surface )
 {
-   for ( std::vector<WstSurface*>::iterator it= ctx->surfaces.begin();
-         it != ctx->surfaces.end();
-         ++it )
+   #ifdef ENABLE_LEXPSYNCPROTOCOL
+   //The previous commit is superseded: fire its release object, even if its buffer has since been
+   //destroyed or was handed to another release mechanism (detachedBufferResource NULL)
+   WstLExpSyncFireRelease(&surface->detachedBufferSync);
+   #endif
+
+   //release the previous detachedBufferResource from the previous commit
+   if ( surface->detachedBufferResource )
    {
-      WstSurface *surface= (*it);
-      if ( surface->detachedBufferResource )
+      TRACE_MONARCH("wstSurfaceRetireCommittedBuffer releasing detachedBufferResource=%p\n", surface->detachedBufferResource);
+      wl_list_remove(&surface->detachedBufferDestroyListener.link);
+      //If the same buffer was re-attached and committed it remains the current buffer, so don't release it.
+      //Any explicit sync release object above belongs to the previous commit and is still fired.
+      if ( surface->detachedBufferResource != surface->attachedBufferResource )
       {
-         TRACE_MONARCH("wstCompositorReleaseDetachedBuffers res=%p", surface->detachedBufferResource);
-         #ifdef ENABLE_LEXPSYNCPROTOCOL
-         WstLExpSyncFireRelease(&surface->detachedBufferSync);
-         #endif
-         wl_list_remove(&surface->detachedBufferDestroyListener.link);
-         wl_buffer_send_release( surface->detachedBufferResource );
-         surface->detachedBufferResource= 0;
+         wstCompositorSendBufferRelease( ctx, surface->detachedBufferResource );
       }
+      surface->detachedBufferResource= 0;
    }
+
+   //move the incoming attachedBufferResource to detachedBufferResource
+   TRACE_MONARCH("wstSurfaceRetireCommittedBuffer moving attachedBufferResource=%p to detachedBufferResource\n", surface->attachedBufferResource);
+   if ( surface->attachedBufferResource )
+   {
+      wl_list_remove(&surface->attachedBufferDestroyListener.link);
+   }
+   surface->detachedBufferResource= surface->attachedBufferResource;
+   #ifdef ENABLE_LEXPSYNCPROTOCOL
+   WstLExpSyncMove(&surface->detachedBufferSync, &surface->attachedBufferSync);
+   #endif
+   if ( surface->detachedBufferResource )
+   {
+      wl_resource_add_destroy_listener( surface->detachedBufferResource, &surface->detachedBufferDestroyListener );
+   }
+   surface->attachedBufferResource= 0;
 }
 
 static void wstCompositorSendBufferRelease( WstContext *ctx, struct wl_resource *resource )
@@ -6742,68 +6753,44 @@ static void wstISurfaceAttach(struct wl_client *client,
 
    pthread_mutex_lock( &ctx->mutex );
 
-   if ( ctx->betterBufferHandling )
-   {
-      //Update attachedBufferResource here and detachedBufferResource in wstISurfaceCommit
-      if ( surface->attachedBufferResource && surface->attachedBufferResource != bufferResource )
-      {
-         TRACE_MONARCH("wstISurfaceAttach releasing attachedBufferResource=%p\n", surface->attachedBufferResource);
+   surface->pendingAttach= true;
 
-         #ifdef ENABLE_LEXPSYNCPROTOCOL
-         //Its unclear if we should fire expsync since the previous attached buffer was never committed
-         WstLExpSyncFireRelease(&surface->attachedBufferSync);
-         #endif
-         wl_list_remove(&surface->attachedBufferDestroyListener.link);
-         wstCompositorSendBufferRelease( ctx, surface->attachedBufferResource );
-         surface->attachedBufferResource= 0;
-      }
-   }
-   else
+   //attachedBufferResource holds the pending uncommitted buffer, and detachedBufferResource
+   //holds the surface's current committed buffer set in wstISurfaceCommit
+   if ( surface->attachedBufferResource != bufferResource )
    {
-      if ( surface->attachedBufferResource != bufferResource )
+      //The following would only occur if the previous attach did not have a subsequent commit
+      //because surface->attachedBufferResource is set NULL in wstISurfaceCommit
+      //i.e. the client attaches a buffer, doesn't commit it, and then attaches another buffer.
+      if ( surface->attachedBufferResource )
       {
-         if ( surface->detachedBufferResource )
+         //Note in this block there is no explicit sync release because its latched only withing wstISurfaceCommit
+         TRACE_MONARCH("wstISurfaceAttach releasing attachedBufferResource=%p\n", surface->attachedBufferResource);
+         wl_list_remove(&surface->attachedBufferDestroyListener.link);
+         //Release the previous buffer but only if its being replaced with a different buffer and thus no longer in-use
+         if ( surface->attachedBufferResource != surface->detachedBufferResource )
          {
-            #ifdef ENABLE_LEXPSYNCPROTOCOL
-            WstLExpSyncFireRelease(&surface->detachedBufferSync);
-            #endif
-            wl_list_remove(&surface->detachedBufferDestroyListener.link);
-            wstCompositorSendBufferRelease( ctx, surface->detachedBufferResource );
+            wstCompositorSendBufferRelease( ctx, surface->attachedBufferResource );
          }
-         if ( surface->attachedBufferResource )
-         {
-            wl_list_remove(&surface->attachedBufferDestroyListener.link);
-         }
-         surface->detachedBufferResource= surface->attachedBufferResource;
-         #ifdef ENABLE_LEXPSYNCPROTOCOL
-         WstLExpSyncMove(&surface->detachedBufferSync, &surface->attachedBufferSync);
-         #endif
-         if ( surface->detachedBufferResource )
-         {
-            wl_resource_add_destroy_listener( surface->detachedBufferResource, &surface->detachedBufferDestroyListener );
-         }
-         surface->attachedBufferResource= 0;
+      }
+      //Assign the new buffer, which can be null
+      TRACE_MONARCH("wstISurfaceAttach setting attachedBufferResource=%p\n", bufferResource);
+      surface->attachedBufferResource= bufferResource;
+      if ( bufferResource )
+      {
+         wl_resource_add_destroy_listener( bufferResource, &surface->attachedBufferDestroyListener );
       }
    }
    if ( bufferResource )
    {
-      if ( surface->attachedBufferResource != bufferResource )
-      {
-         TRACE_MONARCH("wstISurfaceAttach setting attachedBufferResource=%p\n", bufferResource);
-         surface->attachedBufferResource= bufferResource;
-         #ifdef ENABLE_LEXPSYNCPROTOCOL
-         WstLExpSyncMove(&surface->attachedBufferSync, &surface->createdBufferSync);
-         WstLExpSyncClear(&surface->createdBufferSync);
-         #endif
-         wl_resource_add_destroy_listener( surface->attachedBufferResource, &surface->attachedBufferDestroyListener );
-      }
       surface->attachedX= sx;
       surface->attachedY= sy;
    }
    else
    {
       surface->vpcBridgeSignal= ((sx == VPCBRIDGE_SIGNAL) && (sy == VPCBRIDGE_SIGNAL));
-   }
+   } 
+
    pthread_mutex_unlock( &ctx->mutex );
 }
 
@@ -6874,13 +6861,49 @@ static void wstISurfaceCommit(struct wl_client *client, struct wl_resource *reso
    WstSurface *surface= (WstSurface*)wl_resource_get_user_data(resource);
    WstContext *ctx= surface->compositor->ctx;
    struct wl_resource *committedBufferResource;
+   bool bufferUnchanged;
 
    pthread_mutex_lock( &ctx->mutex );
 
    TRACE_MONARCH_SCOPE("wstISurfaceCommit res=%p\n", surface->attachedBufferResource);
 
-   committedBufferResource= surface->attachedBufferResource;
-   if ( surface->attachedBufferResource )
+   /*
+      attachedBufferResource is cleared on commit and the surface's current buffer is held in
+      detachedBufferResource (see wstSurfaceRetireCommittedBuffer).  A commit that is not
+      preceded by a wl_surface.attach (eg. EGL swap interval > 1 issues attach, commit, commit)
+      must leave the current buffer in place per wayland semantics, rather than being treated
+      as a commit of a null buffer (which would flush the surface and release its buffer).
+   */
+   bufferUnchanged= !surface->pendingAttach;
+
+   #ifdef ENABLE_LEXPSYNCPROTOCOL
+   /*
+      Per linux-explicit-synchronization, the acquire fence and release object are double-buffered
+      state associated with the buffer attached at wl_surface.commit time, regardless of whether the
+      client sent them before or after wl_surface.attach.  Latch them onto attachedBufferSync here.
+      attachedBufferSync is always empty at this point: it only holds state for the duration of this
+      commit, as wstSurfaceRetireCommittedBuffer moves it to detachedBufferSync below.
+   */
+   if ( surface->pendingAttach && surface->attachedBufferResource )
+   {
+      WstLExpSyncMove(&surface->attachedBufferSync, &surface->createdBufferSync);
+   }
+   else if ( (surface->createdBufferSync.bufferRelease != NULL) || (surface->createdBufferSync.acquireFenceFd != -1) )
+   {
+      // The protocol calls for a NO_BUFFER error here.  Be lenient: release immediately and drop the fence.
+      WARNING("wstISurfaceCommit: explicit sync state without a buffer attached for this commit\n");
+      WstLExpSyncFireRelease(&surface->createdBufferSync);
+   }
+   #endif
+
+   surface->pendingAttach= false;
+
+   committedBufferResource= bufferUnchanged ? surface->detachedBufferResource : surface->attachedBufferResource;
+   if ( bufferUnchanged )
+   {
+      TRACE_MONARCH("wstISurfaceCommit no attach since last commit, keeping buffer=%p\n", surface->detachedBufferResource);
+   }
+   else if ( surface->attachedBufferResource )
    {
       if ( !surface->compositor->clientCommit )
       {
@@ -7088,66 +7111,8 @@ static void wstISurfaceCommit(struct wl_client *client, struct wl_resource *reso
                                                 0  //height
                                               );
          }
-         if ( ctx->betterBufferHandling )
-         {
-            /*
-               Release the previous detachedBufferResource and move attachedBufferResource to detachedBufferResource
-               Without betterBufferHandling, a buffer is attached and then released after 2 more frames (a frame is a attach/commit sequence):
-
-               wstiSurfaceAttach(buf=1) attachedBufferResource=1
-               wstiSurfaceCommit
-               wstiSurfaceAttach(buf=2) attachedBufferResource=2, detachedBufferResource=1
-               wstiSurfaceCommit
-               wstiSurfaceAttach(buf=3) attachedBufferResource=3, detachedBufferResource=2, release 1
-               wstiSurfaceCommit
-
-               With betterBufferHandling, the buffer is released on the next frame:
-               wstiSurfaceAttach(buf=1) attachedBufferResource=1
-               wstiSurfaceCommit        detachedBufferResource=1, attachedBufferResource=NULL
-               wstiSurfaceAttach(buf=2) attachedBufferResource=2
-               wstiSurfaceCommit        detachedBufferResource=2, attachedBufferResource=NULL, release 1
-
-               TODO: implement the proper method where the buffer is released after its actually composed.
-                     this is more complex and risky as we need to marshal from render thread back to wayland thread to do the release
-            */
-
-            //release the previous detachedBufferResource from the previous commit
-            if ( surface->detachedBufferResource )
-            {
-               TRACE_MONARCH("wstISurfaceCommit releasing detachedBufferResource=%p\n", surface->detachedBufferResource);
-               #ifdef ENABLE_LEXPSYNCPROTOCOL
-               WstLExpSyncFireRelease(&surface->detachedBufferSync);
-               #endif
-               wl_list_remove(&surface->detachedBufferDestroyListener.link);
-               wstCompositorSendBufferRelease( ctx, surface->detachedBufferResource );
-            }
-
-            //move the incoming attachedBufferResource to detachedBufferResource
-            TRACE_MONARCH("wstISurfaceCommit moving attachedBufferResource=%p to detachedBufferResource\n", surface->attachedBufferResource);
-            if ( surface->attachedBufferResource )
-            {
-               wl_list_remove(&surface->attachedBufferDestroyListener.link);
-            }
-            surface->detachedBufferResource= surface->attachedBufferResource;
-            #ifdef ENABLE_LEXPSYNCPROTOCOL
-            WstLExpSyncMove(&surface->detachedBufferSync, &surface->attachedBufferSync);
-            #endif
-            if ( surface->detachedBufferResource )
-            {
-               wl_resource_add_destroy_listener( surface->detachedBufferResource, &surface->detachedBufferDestroyListener );
-            }
-            surface->attachedBufferResource= 0;
-         }
-         else
-         {
-            #ifdef ENABLE_LEXPSYNCPROTOCOL
-            if ( ctx->isEmbedded )
-            {
-               wstCompositorReleaseDetachedBuffers( ctx );
-            }
-            #endif            
-         }
-      }      
+      }
+      wstSurfaceRetireCommittedBuffer( ctx, surface );
    }
    else
    {
@@ -7182,7 +7147,8 @@ static void wstISurfaceCommit(struct wl_client *client, struct wl_resource *reso
                                               );
          }
       }
-      wstCompositorReleaseDetachedBuffers( ctx );
+      // Null buffer committed: release this surface's current buffer (no attached buffer to move in)
+      wstSurfaceRetireCommittedBuffer( ctx, surface );
    }
 
    if ( surface->vpcSurface && surface->vpcSurface->pathTransitionPending )

@@ -1290,6 +1290,7 @@ int main( int argc, char** argv)
    const char *display_name= 0;
    bool paceRendering= true;
    bool isBackgroundProcess;
+   int swapInterval= 1;
 
    printf("westeros_test: v1.0\n" );
 
@@ -1344,6 +1345,10 @@ int main( int argc, char** argv)
       else if (!strcmp( (const char*)argv[i], "--noanimate" ) )
       {
          ctx.noAnimation= true;
+      }
+      else if (!strcmp( (const char*)argv[i], "--swap" ) )
+      {
+         swapInterval= atoi(argv[++i]);
       }
       else if ( !strcmp( (const char*)argv[i], "-?" ) )
       {
@@ -1405,8 +1410,8 @@ int main( int argc, char** argv)
    }
    
    
-   eglSwapInterval( ctx.eglDisplay, 1 );
-   printf("swap interface set to 1\n" );//TODO add 'swap' command line parameter
+   eglSwapInterval( ctx->eglDisplay, swapInterval);
+   printf("eglSwapInterval %d\n", swapInterval);
    
    setupGL(&ctx);
    
