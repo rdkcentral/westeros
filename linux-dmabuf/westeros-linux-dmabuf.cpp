@@ -24,10 +24,21 @@
 
 #include "westeros-linux-dmabuf.h"
 
+#ifdef UNIT_TEST
+#include "wayland-stubs.h"
+#include "linux-dmabuf-unstable-v1-server-protocol.h"
+#else
 #include "wayland-server.h"
 #include "linux-dmabuf-unstable-v1-server-protocol.h"
+#endif
 
 #define MIN(x,y) (((x) < (y)) ? (x) : (y))
+
+#ifdef UNIT_TEST
+#define UNIT_TEST_STATIC
+#else
+#define UNIT_TEST_STATIC static
+#endif
 
 static const uint32_t gLDBFormats[]= {
    DRM_FORMAT_XRGB8888,
@@ -52,7 +63,7 @@ struct wl_ldb
    WstRenderer *renderer;
 };
 
-static void wstLDBBufferDestroy(struct wl_ldb_buffer *buffer)
+UNIT_TEST_STATIC void wstLDBBufferDestroy(struct wl_ldb_buffer *buffer)
 {
    int i;
 
@@ -69,17 +80,22 @@ static void wstLDBBufferDestroy(struct wl_ldb_buffer *buffer)
    free(buffer);
 }
 
-static void wstILDBBufferDestroy(struct wl_client *client,
+UNIT_TEST_STATIC void wstILDBBufferDestroy(struct wl_client *client,
                                  struct wl_resource *resource)
 {
    wl_resource_destroy(resource);
 }
 
-static const struct wl_buffer_interface linux_dmabuf_buffer_interface = {
+#ifdef UNIT_TEST
+extern
+#else
+static
+#endif
+const struct wl_buffer_interface linux_dmabuf_buffer_interface = {
    wstILDBBufferDestroy
 };
 
-static void wstLDBDestroyBuffer(struct wl_resource *resource)
+UNIT_TEST_STATIC void wstLDBDestroyBuffer(struct wl_resource *resource)
 {
    struct wl_ldb_buffer *buffer;
 
@@ -90,12 +106,12 @@ static void wstLDBDestroyBuffer(struct wl_resource *resource)
    }
 }
 
-static void wstILDBParamsDestroy(struct wl_client *client, struct wl_resource *resource)
+UNIT_TEST_STATIC void wstILDBParamsDestroy(struct wl_client *client, struct wl_resource *resource)
 {
    wl_resource_destroy(resource);
 }
 
-static void wstILDBParamsAdd(struct wl_client *client,
+UNIT_TEST_STATIC void wstILDBParamsAdd(struct wl_client *client,
                             struct wl_resource *resourceParams,
                             int32_t name_fd,
                             uint32_t plane_idx,
@@ -165,7 +181,7 @@ static void wstILDBParamsAdd(struct wl_client *client,
    buffer->info.planeCount++;
 }
 
-static void wstLDBParamsCreate(struct wl_client *client,
+UNIT_TEST_STATIC void wstLDBParamsCreate(struct wl_client *client,
                                struct wl_resource *resourceParams,
                                uint32_t buffer_id,
                                int32_t width,
@@ -262,7 +278,7 @@ static void wstLDBParamsCreate(struct wl_client *client,
    return;
 }
 
-static void wstILDBParamsCreate(struct wl_client *client,
+UNIT_TEST_STATIC void wstILDBParamsCreate(struct wl_client *client,
                                struct wl_resource *resourceParams,
                                int32_t width, 
                                int32_t height,
@@ -272,7 +288,7 @@ static void wstILDBParamsCreate(struct wl_client *client,
    wstLDBParamsCreate(client, resourceParams, 0, width, height, format, flags);
 }
 
-static void  wstILDBParamsCreateImmed(struct wl_client *client,
+UNIT_TEST_STATIC void  wstILDBParamsCreateImmed(struct wl_client *client,
                                      struct wl_resource *resourceParams,
                                      uint32_t buffer_id,
                                      int32_t width,
@@ -283,14 +299,19 @@ static void  wstILDBParamsCreateImmed(struct wl_client *client,
    wstLDBParamsCreate(client, resourceParams, buffer_id, width, height, format, flags);
 }
 
-static const struct zwp_linux_buffer_params_v1_interface zwp_linux_buffer_params_interface = {
+#ifdef UNIT_TEST
+extern
+#else
+static
+#endif
+const struct zwp_linux_buffer_params_v1_interface zwp_linux_buffer_params_interface = {
    wstILDBParamsDestroy,
    wstILDBParamsAdd,
    wstILDBParamsCreate,
    wstILDBParamsCreateImmed
 };
 
-static void wstLDBDestroyParams(struct wl_resource *resourceParams)
+UNIT_TEST_STATIC void wstLDBDestroyParams(struct wl_resource *resourceParams)
 {
    struct wl_ldb_buffer *buffer;
 
@@ -301,12 +322,12 @@ static void wstLDBDestroyParams(struct wl_resource *resourceParams)
    }
 }
 
-static void wstILDBDestroy(struct wl_client *client, struct wl_resource *resource)
+UNIT_TEST_STATIC void wstILDBDestroy(struct wl_client *client, struct wl_resource *resource)
 {
    wl_resource_destroy(resource);
 }
 
-static void wstILDBCreateParams(struct wl_client *client,
+UNIT_TEST_STATIC void wstILDBCreateParams(struct wl_client *client,
                                 struct wl_resource *linux_dmabuf_resource,
                                 uint32_t params_id)
 {
@@ -351,12 +372,17 @@ static void wstILDBCreateParams(struct wl_client *client,
    return;
 }
 
-static const struct zwp_linux_dmabuf_v1_interface linux_dmabuf_interface = {
+#ifdef UNIT_TEST
+extern
+#else
+static
+#endif
+const struct zwp_linux_dmabuf_v1_interface linux_dmabuf_interface = {
    wstILDBDestroy,
    wstILDBCreateParams
 };
 
-static void wstLDBBind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+UNIT_TEST_STATIC void wstLDBBind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 {
    struct wl_ldb *ldb= (struct wl_ldb*)data;
    struct wl_resource *resource;
