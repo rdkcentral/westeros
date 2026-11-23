@@ -2,6 +2,24 @@
 
 Consolidated release details generated from docs/relnotes.
 
+## 2.1.2.1
+- Date: 23 November 2026
+- Tag/Revision: 2.1.2.1
+- Highlights:
+  - RDKEMW-26702:
+    - composer surface commit optimizations to improve framerate
+    - fix ubuntu build failure related to prctl
+    - Potential fix for pull request finding ‘Use eventfd only to wake the loop, not to carry timestamps’
+    - Potential fix for pull request finding ‘Avoid accessing compositor context after it is freed’
+    - Cleanup finishFrame fd and source and lock against ComposeEmbedded reuse
+    - Fix ScopeTrace vsnprintf overflow issue
+    - Fix logs and remove unused function
+    - apply new optimizations only in embedded mode. fix double buffer release when expsync is being used.
+    - Fix compile errors
+    - Potential fix for pull request finding ‘CodeQL / Wrong type of arguments to formatting function’
+    - add wl_event_loop_add_fd error handling
+
+
 ## 2.1.2
 - Date: 23 June 2026
 - Tag/Revision: 2.1.2
